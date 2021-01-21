@@ -200,6 +200,13 @@ class AuthConsentModel(S3Model):
                      s3_comments(),
                      *s3_meta_fields())
 
+        # Table configuration
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("code",),
+                                                 secondary = ("name",),
+                                                 ),
+                       )
+
         # Representation
         type_represent = S3Represent(lookup=tablename)
 
@@ -316,6 +323,7 @@ class AuthConsentModel(S3Model):
 
         # Table Configuration
         self.configure(tablename,
+                       # NB must not deduplicate! (invalid operation + breaks vhash chain)
                        list_fields = list_fields,
                        onaccept = self.consent_option_onaccept,
                        )
@@ -344,6 +352,7 @@ class AuthConsentModel(S3Model):
                      Field("vhash", "text"),
                      Field("option_id", "reference auth_consent_option",
                            ondelete = "RESTRICT",
+                           represent = S3Represent(lookup="auth_consent_option"),
                            ),
                      Field("consenting", "boolean",
                            default = False,

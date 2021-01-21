@@ -9,10 +9,10 @@
 
 from collections import OrderedDict
 
-from gluon import current, URL, A, DIV, TAG
+from gluon import current, URL, A, DIV, IS_EMPTY_OR, IS_IN_SET, TAG
 from gluon.storage import Storage
 
-from s3 import FS, IS_ONE_OF, s3_str
+from s3 import FS, IS_ONE_OF, S3Represent, s3_str
 from s3dal import original_tablename
 
 from .rlpgeonames import rlp_GeoNames
@@ -62,6 +62,7 @@ def config(settings):
     settings.auth.privileged_roles = {"PROGRAM_MANAGER": "ORG_GROUP_ADMIN",
                                       "VOUCHER_ISSUER": "VOUCHER_ISSUER",
                                       "VOUCHER_PROVIDER": "VOUCHER_PROVIDER",
+                                      "DISEASE_TEST_READER": "ORG_GROUP_ADMIN",
                                       }
 
     settings.auth.password_min_length = 8
@@ -191,6 +192,19 @@ def config(settings):
         #    # Persons are owned by the org employing them (default ok)
         #    realm_entity = 0
         #
+        if tablename == "disease_case_diagnostics":
+
+            # Test results are owned by the user organisation
+            user = current.auth.user
+            organisation_id = user.organisation_id if user else None
+            if not organisation_id:
+                # Fall back to default organisation
+                organisation_id = settings.get_org_default_organisation()
+            if organisation_id:
+                realm_entity = s3db.pr_get_pe_id("org_organisation",
+                                                 organisation_id,
+                                                 )
+
         #elif tablename == "fin_voucher_program":
         #
         #    # Voucher programs are owned by the organisation managing
@@ -207,7 +221,7 @@ def config(settings):
         #    # Debits are owned by the provider PE (default ok)
         #    realm_entity = 0
         #
-        if tablename == "fin_voucher_transaction":
+        elif tablename == "fin_voucher_transaction":
 
             # Vouchers inherit the realm-entity from the program
             table = s3db.table(tablename)
@@ -326,6 +340,140 @@ def config(settings):
         return attr
 
     settings.customise_cms_post_controller = customise_cms_post_controller
+
+    # -------------------------------------------------------------------------
+    def customise_disease_case_diagnostics_resource(r, tablename):
+
+        s3db = current.s3db
+
+        table = s3db.disease_case_diagnostics
+
+        # Enable project link and make it mandatory
+        field = table.project_id
+        field.readable = field.writable = True
+        field.comment = None # TODO add tooltip
+        requires = field.requires
+        if isinstance(requires, (list, tuple)):
+            requires = requires[0]
+        if isinstance(requires, IS_EMPTY_OR):
+            field.requires = requires.other
+
+        # Enable disease link and make it mandatory
+        field = table.disease_id
+        field.readable = field.writable = True
+        field.comment = None # TODO add tooltip?
+        requires = field.requires
+        if isinstance(requires, (list, tuple)):
+            requires = requires[0]
+        if isinstance(requires, IS_EMPTY_OR):
+            field.requires = requires.other
+
+        # Default result date
+        field = table.result_date
+        field.default = current.request.utcnow.date()
+
+        # Formal test types
+        # TODO move to lookup table?
+        type_options = (("LFD", T("LFD Antigen Test")),
+                        ("PCR", T("PCR Test")),
+                        ("SER", T("Serum Antibody Test")),
+                        ("OTH", T("Other")),
+                        )
+        field = table.test_type
+        field.default = "LFD"
+        field.requires = IS_IN_SET(type_options,
+                                   zero = "",
+                                   sort = False,
+                                   )
+        field.represent = S3Represent(options=dict(type_options))
+
+        # Formal results
+        result_options = (("NEG", T("Negative")),
+                          ("POS", T("Positive")),
+                          ("INC", T("Inconclusive")),
+                          )
+        field = table.result
+        field.requires = IS_IN_SET(result_options,
+                                   zero = "",
+                                   sort = False,
+                                   )
+        field.represent = S3Represent(options=dict(result_options))
+
+        # Custom list_fields
+        list_fields = ["project_id",
+                       "disease_id",
+                       "test_type",
+                       "result_date",
+                       "result",
+                       ]
+
+        # Custom form
+        from s3 import S3SQLCustomForm
+        crud_form = S3SQLCustomForm("project_id",
+                                    "disease_id",
+                                    "test_type",
+                                    "result_date",
+                                    "result",
+                                    )
+
+        # Filters
+        from s3 import S3DateFilter, S3OptionsFilter
+        filter_widgets = [S3DateFilter("result_date",
+                                       label = T("Date"),
+                                       ),
+                          S3OptionsFilter("disease_id", hidden=True),
+                          S3OptionsFilter("project_id", hidden=True),
+                          S3OptionsFilter("test_type",
+                                          options = OrderedDict(type_options),
+                                          hidden = True,
+                                          ),
+                          S3OptionsFilter("result",
+                                          options = OrderedDict(result_options),
+                                          hidden = True,
+                                          ),
+                          ]
+
+        # Report options
+        facts = ((T("Number of Tests"), "count(id)"),
+                 )
+        axes = ["result",
+                "test_type",
+                "disease_id",
+                "project_id",
+                ]
+        report_options = {
+            "rows": axes,
+            "cols": axes,
+            "fact": facts,
+            "defaults": {"rows": axes[1],
+                         "cols": axes[0],
+                         "fact": facts[0],
+                         "totals": True,
+                         },
+            }
+
+        s3db.configure("disease_case_diagnostics",
+                       crud_form = crud_form,
+                       filter_widgets = filter_widgets,
+                       list_fields = list_fields,
+                       report_options = report_options,
+                       )
+
+        crud_strings = current.response.s3.crud_strings
+        crud_strings["disease_case_diagnostics"] = Storage(
+            label_create = T("Register Test Result"),
+            title_display = T("Test Result"),
+            title_list = T("Test Results"),
+            title_update = T("Edit Test Result"),
+            title_upload = T("Import Test Results"),
+            label_list_button = T("List Test Results"),
+            label_delete_button = T("Delete Test Result"),
+            msg_record_created = T("Test Result added"),
+            msg_record_modified = T("Test Result updated"),
+            msg_record_deleted = T("Test Result deleted"),
+            msg_list_empty = T("No Test Results currently registered"))
+
+    settings.customise_disease_case_diagnostics_resource = customise_disease_case_diagnostics_resource
 
     # -------------------------------------------------------------------------
     def customise_fin_voucher_resource(r, tablename):
@@ -868,7 +1016,7 @@ def config(settings):
             name_nice = T("Home"),
             restricted = False, # Use ACLs to control access to this module
             access = None,      # All Users (inc Anonymous) can see this module in the default menu & access the controller
-            module_type = None  # This item is not shown in the menu
+            module_type = None, # This item is not shown in the menu
         )),
         ("admin", Storage(
             name_nice = T("Administration"),
@@ -881,13 +1029,13 @@ def config(settings):
             name_nice = T("Administration"),
             #description = "Site Administration",
             restricted = True,
-            module_type = None  # No Menu
+            module_type = None, # No Menu
         )),
         ("errors", Storage(
             name_nice = T("Ticket Viewer"),
             #description = "Needed for Breadcrumbs",
             restricted = False,
-            module_type = None  # No Menu
+            module_type = None, # No Menu
         )),
         #("sync", Storage(
         #    name_nice = T("Synchronization"),
@@ -900,20 +1048,20 @@ def config(settings):
             name_nice = T("Map"),
             #description = "Situation Awareness & Geospatial Analysis",
             restricted = True,
-            module_type = 6,     # 6th item in the menu
+            module_type = 6,
         )),
         ("pr", Storage(
             name_nice = T("Person Registry"),
             #description = "Central point to record details on People",
             restricted = True,
             access = "|1|",     # Only Administrators can see this module in the default menu (access to controller is possible to all still)
-            module_type = 10
+            module_type = 10,
         )),
         ("org", Storage(
             name_nice = T("Organizations"),
             #description = 'Lists "who is doing what & where". Allows relief agencies to coordinate their activities',
             restricted = True,
-            module_type = 1
+            module_type = 1,
         )),
         # HRM is required for access to default realm permissions
         ("hrm", Storage(
@@ -938,12 +1086,23 @@ def config(settings):
             name_nice = T("Messaging"),
             #description = "Sends & Receives Alerts via Email & SMS",
             restricted = True,
-            # The user-visible functionality of this module isn't normally required. Rather it's main purpose is to be accessed from other modules.
+            module_type = None,
+        )),
+        ("project", Storage(
+            name_nice = T("Projects"),
+            #description = "Tracking of Projects, Activities and Tasks",
+            restricted = True,
             module_type = None,
         )),
         ("fin", Storage(
             name_nice = T("Finance"),
             #description = "Finance Management / Accounting",
+            restricted = True,
+            module_type = None,
+        )),
+        ("disease", Storage(
+            name_nice = T("Disease Tracking"),
+            #description = "Helps to track cases and trace contacts in disease outbreaks",
             restricted = True,
             module_type = None,
         )),
