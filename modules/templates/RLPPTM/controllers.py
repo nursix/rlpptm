@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from gluon import A, BR, CRYPT, DIV, Field, FORM, H3, INPUT, \
                   IS_EMAIL, IS_EMPTY_OR, IS_EXPR, IS_LOWER, IS_NOT_EMPTY, IS_NOT_IN_DB, \
-                  P, SQLFORM, TABLE, TD, TR, URL, XML, current, redirect
+                  P, SQLFORM, TABLE, TD, TR, URL, XML, HTTP, current, redirect
 
 from gluon.storage import Storage
 
@@ -1339,8 +1339,6 @@ class register_invited(S3CustomController):
             redirect(URL(c="default", f="index"))
 
         T = current.T
-        db = current.db
-        s3db = current.s3db
 
         settings = current.deployment_settings
 
@@ -1745,11 +1743,27 @@ class geocode(S3CustomController):
 
     def __call__(self):
 
+        vars_get = current.request.post_vars.get
+
+        # Validate the formkey
+        formkey = vars_get("k")
+        keyname = "_formkey[geocode]"
+        if not formkey or formkey not in current.session.get(keyname, []):
+            status = 403
+            message = current.ERROR.NOT_PERMITTED
+            headers = {"Content-Type":"application/json"}
+            current.log.error(message)
+            raise HTTP(status,
+                       body = current.xml.json_message(success = False,
+                                                       statuscode = status,
+                                                       message = message),
+                       web2py_error = message,
+                       **headers)
+
         gis = current.gis
 
-        post_vars_get = current.request.post_vars.get
-        postcode = post_vars_get("postcode")
-        address = post_vars_get("address")
+        postcode = vars_get("postcode")
+        address = vars_get("address")
         if address:
             full_address = "%s %s" %(postcode, address)
         else:
@@ -1766,7 +1780,8 @@ class geocode(S3CustomController):
             results["lat"] = lat
             results["lon"] = lon
 
-            output = json.dumps(results)
+            from s3.s3xml import SEPARATORS
+            output = json.dumps(results, separators=SEPARATORS)
 
         current.response.headers["Content-Type"] = "application/json"
         return output

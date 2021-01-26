@@ -6118,7 +6118,6 @@ i18n.map_feature_required="%s"''' % (show_map_add,
 
         # Geocoder?
         if geocoder:
-
             if not location_selector_loaded:
                 global_append('''i18n.address_mapped="%s"
 i18n.address_not_mapped="%s"
@@ -6129,16 +6128,25 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                                    T("Address NOT Found"),
                                    ))
 
-            map_icon.append(DIV(DIV(_class = "throbber hide"),
-                                DIV(_class = "geocode_success hide"),
-                                DIV(_class = "geocode_fail hide"),
-                                BUTTON(T("Geocode"),
-                                       _type = "button", # defaults to 'submit' otherwise!
-                                       _class = "hide",
-                                       ),
-                                _id = "%s_geocode" % fieldname,
-                                _class = "controls geocode",
-                                ))
+        # Generate form key
+        formkey = uuid4().hex
+
+        # Store form key in session
+        session = current.session
+        keyname = "_formkey[geocode]"
+        session[keyname] = session.get(keyname, [])[-9:] + [formkey]
+
+        map_icon.append(DIV(DIV(_class = "throbber hide"),
+                            DIV(_class = "geocode_success hide"),
+                            DIV(_class = "geocode_fail hide"),
+                            BUTTON(T("Geocode"),
+                                   _class = "hide",
+                                   _type = "button", # defaults to 'submit' otherwise!
+                                   data = {"k": formkey},
+                                   ),
+                            _class = "controls geocode",
+                            _id = "%s_geocode" % fieldname,
+                            ))
 
         # Inject map directly behind map icon
         map_icon.append(_map)
