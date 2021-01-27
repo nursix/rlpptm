@@ -240,6 +240,36 @@ def config(settings):
     settings.auth.realm_entity = rlpptm_realm_entity
 
     # -------------------------------------------------------------------------
+    def consent_check():
+        """
+            Check pending consent at login
+        """
+
+        auth = current.auth
+
+        person_id = auth.s3_logged_in_person()
+        if not person_id:
+            return None
+
+        has_role = auth.s3_has_role
+        if has_role("ADMIN"):
+            required = None
+        elif has_role("VOUCHER_ISSUER"):
+            required = ["STORE", "RULES_ISS"]
+        else:
+            required = None
+
+        if required:
+            consent = current.s3db.auth_Consent(required)
+            pending = consent.pending_responses(person_id)
+        else:
+            pending = None
+
+        return pending
+
+    settings.auth.consent_check = consent_check
+
+    # -------------------------------------------------------------------------
     def customise_auth_user_resource(r, tablename):
         """
             Configure custom approvals function
@@ -820,10 +850,10 @@ def config(settings):
 
         text_fields = ["name",
                        #"code",
-                       "comments",
-                       "organisation_id$name",
-                       "organisation_id$acronym",
-                       "location_id$L1",
+                       #"comments",
+                       #"organisation_id$name",
+                       #"organisation_id$acronym",
+                       #"location_id$L1",
                        "location_id$L2",
                        "location_id$L3",
                        "location_id$L4",
@@ -848,25 +878,25 @@ def config(settings):
                               widget = "groupedopts",
                               cols = 3,
                         ),
-                       "organisation_id",
+                       #"organisation_id",
                        "location_id",
                        (T("Telephone"), "phone1"),
                        (T("Opening Hours"), "opening_times"),
-                       "obsolete",
+                       #"obsolete",
                        "comments",
                        ]
 
         list_fields = ["name",
                        #"site_facility_type.facility_type_id",
-                       "location_id$L1",
-                       "location_id$L2",
-                       "location_id$L3",
-                       "location_id$L4",
-                       "location_id$addr_street",
-                       "location_id$addr_postcode",
                        (T("Telephone"), "phone1"),
                        (T("Opening Hours"), "opening_times"),
-                       "organisation_id",
+                       "location_id$addr_street",
+                       "location_id$addr_postcode",
+                       "location_id$L4",
+                       "location_id$L3",
+                       "location_id$L2",
+                       #"location_id$L1",
+                       #"organisation_id",
                        #"obsolete",
                        #"comments",
                        ]

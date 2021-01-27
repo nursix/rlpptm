@@ -939,6 +939,71 @@ def organisation():
     return items
 
 # -----------------------------------------------------------------------------
+def page():
+    """
+        Show a custom CMS page
+    """
+
+    if not settings.get_cms_expose_pages():
+        raise HTTP(403, "CMS pages disabled")
+
+    try:
+        page = request.args[0]
+    except:
+        raise HTTP(400, "Page not specified")
+
+    # Find a post with the given page name that is linked to this controller:
+    ctable = s3db.cms_post
+    ltable = s3db.cms_post_module
+    join = ltable.on((ltable.post_id == ctable.id) & \
+                     (ltable.module == "default") & \
+                     (ltable.resource == "page") & \
+                     (ltable.deleted == False))
+
+    query = auth.s3_accessible_query("read", ctable) & \
+            (ctable.name == page) & \
+            (ctable.deleted == False)
+    row = db(query).select(ctable.id,
+                           ctable.title,
+                           ctable.body,
+                           join = join,
+                           cache = s3db.cache,
+                           limitby = (0, 1),
+                           ).first()
+    try:
+        title = row.title
+    except:
+        raise HTTP(404, "Page not found in CMS")
+
+    if row.body:
+        from s3compat import StringIO
+        try:
+            body = current.response.render(StringIO(row.body), {})
+        except:
+            body = row.body
+    else:
+        body = ""
+    item = DIV(XML(body), _class="cms-item")
+
+    if auth.s3_has_role("ADMIN"):
+        # Add edit-action
+        item.append(BR())
+        item.append(A(current.T("Edit"),
+                    _href = URL(c="cms", f="post",
+                                args = [row.id, "update"],
+                                vars = {"page": page},
+                                ),
+                    _class = "action-btn",
+                    ))
+
+    response.title = title
+    _custom_view("page")
+
+    return {#"title": title, # Page would normally render the title itself?
+            "item": item,
+            }
+
+# -----------------------------------------------------------------------------
 def person():
     """
         Profile to show:
@@ -1421,6 +1486,10 @@ def user():
     elif arg == "profile":
         title = response.title = T("User Profile")
         form = auth.profile()
+
+    elif arg == "consent":
+        title = response.title = T("Consent")
+        form = auth.consent()
 
     elif arg == "options.s3json":
         # Used when adding organisations from registration form
