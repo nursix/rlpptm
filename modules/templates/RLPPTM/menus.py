@@ -241,6 +241,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         ),
                     M("Vouchers", f="voucher")(
                         M("Create Voucher", m="create", restrict=("VOUCHER_ISSUER")),
+                        M("Statistics", m="report", restrict=("PROGRAM_MANAGER")),
                         ),
                     M("Accepted Vouchers", f="voucher_debit")(
                         M("Accept Voucher", m="create", restrict=("VOUCHER_PROVIDER")),
@@ -262,10 +263,16 @@ class S3OptionsMenu(default.S3OptionsMenu):
 
         org_menu = M("Organizations", f="organisation", link=False)
 
-        if current.auth.s3_has_role("ORG_GROUP_ADMIN"):
-            realms = current.auth.permission.permitted_realms("org_group", "update")
+        auth = current.auth
+
+        ORG_GROUP_ADMIN = auth.get_system_roles().ORG_GROUP_ADMIN
+        has_role = auth.s3_has_role
+
+        if has_role(ORG_GROUP_ADMIN):
             gtable = current.s3db.org_group
             query = (gtable.deleted == False)
+            realms = auth.user.realms[ORG_GROUP_ADMIN] \
+                     if not has_role("ADMIN") else None
             if realms is not None:
                 query = (gtable.pe_id.belongs(realms)) & query
             groups = current.db(query).select(gtable.id,

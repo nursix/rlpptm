@@ -4,7 +4,7 @@
 
     @requires: U{B{I{gluon}} <http://web2py.com>}
 
-    @copyright: (c) 2010-2020 Sahana Software Foundation
+    @copyright: (c) 2010-2021 Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -1288,7 +1288,8 @@ Thank you"""
 
         # Remind the user that form should be submitted even if they didn't
         # enter anything:
-        response.s3.jquery_ready.append('''S3SetNavigateAwayConfirm();''')
+        response.s3.jquery_ready.append('''S3SetNavigateAwayConfirm();
+$('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
 
         return form
 

@@ -2,7 +2,7 @@
 
 """ Sahana Eden Auth Model
 
-    @copyright: 2009-2020 (c) Sahana Software Foundation
+    @copyright: 2009-2021 (c) Sahana Software Foundation
     @license: MIT
 
     Permission is hereby granted, free of charge, to any person
@@ -301,6 +301,7 @@ class AuthConsentModel(S3Model):
                      Field("obsolete", "boolean",
                            default = False,
                            label = T("Obsolete"),
+                           represent = s3_yes_no_represent,
                            comment = DIV(_class = "tooltip",
                                          _title = "%s|%s" % (T("Obsolete"),
                                                              T("This description of the data processing is obsolete"),
