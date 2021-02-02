@@ -1313,6 +1313,12 @@ class S3Config(Storage):
         """
         return self.fin.get("voucher_personalize")
 
+    def get_fin_voucher_eligibility_types(self):
+        """
+            Enable UI to manage eligibility types in voucher programs
+        """
+        return self.fin.get("voucher_eligibility_types")
+
     # -------------------------------------------------------------------------
     # GIS (Map) Settings
     #
@@ -3316,12 +3322,6 @@ class S3Config(Storage):
     # -------------------------------------------------------------------------
     # CMS: Content Management System
     #
-    def get_cms_expose_pages(self):
-        """
-            Global control over default/page controller
-        """
-        return self.cms.get("expose_pages", False)
-
     def get_cms_bookmarks(self):
         """
             Whether to allow users to bookmark Posts in News feed

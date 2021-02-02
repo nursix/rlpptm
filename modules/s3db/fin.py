@@ -34,6 +34,7 @@ __all__ = ("FinExpensesModel",
            "FinSubscriptionModel",
            "fin_rheader",
            "fin_voucher_permitted_programs",
+           "fin_voucher_eligibility_types",
            )
 
 from gluon import *
@@ -180,6 +181,8 @@ class FinVoucherModel(S3Model):
         bearer_dob = personalize == "dob"
         bearer_pin = personalize == "pin"
 
+        use_eligibility_types = settings.get_fin_voucher_eligibility_types()
+
         # -------------------------------------------------------------------------
         # Voucher Program
         # - holds the overall credit/compensation balance for a voucher program
@@ -286,6 +289,7 @@ class FinVoucherModel(S3Model):
                             fin_voucher = "program_id",
                             fin_voucher_debit = "program_id",
                             fin_voucher_transaction = "program_id",
+                            fin_voucher_eligibility_type = "program_id",
                             )
 
         # CRUD Strings
@@ -314,6 +318,61 @@ class FinVoucherModel(S3Model):
                                      )
 
         # -------------------------------------------------------------------------
+        # Voucher eligibility type
+        # - represents a eligibility criterion for beneficiaries of a
+        #   voucher program
+        #
+        tablename = "fin_voucher_eligibility_type"
+        define_table(tablename,
+                     program_id(empty=False),
+                     Field("name",
+                           label = T("Type of Eligibility"),
+                           requires = IS_NOT_EMPTY(),
+                           ),
+                     Field("issuer_types", "list:reference org_organisation_type",
+                           label = T("Permitted Issuers"),
+                           represent = S3Represent(lookup = "org_organisation_type",
+                                                   multiple = True,
+                                                   translate = True,
+                                                   ),
+                           requires = IS_EMPTY_OR(
+                                        IS_ONE_OF(db, "org_organisation_type.id",
+                                                  S3Represent(lookup = "org_organisation_type",
+                                                              translate = True,
+                                                              ),
+                                                  multiple = True,
+                                                  )),
+                           widget = S3MultiSelectWidget(),
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Create Eligibility Type"),
+            title_display = T("Eligibility Type Details"),
+            title_list = T("Eligibility Types"),
+            title_update = T("Edit Eligibility Type"),
+            label_list_button = T("List Eligibility Types"),
+            label_delete_button = T("Delete Eligibility Type"),
+            msg_record_created = T("Eligibility Type created"),
+            msg_record_modified = T("Eligibility Type updated"),
+            msg_record_deleted = T("Eligibility Type deleted"),
+            msg_list_empty = T("No Eligibility Types currently registered"),
+        )
+
+        represent = S3Represent(lookup = tablename, translate = True)
+        eligibility_type_id = S3ReusableField("eligibility_type_id", "reference %s" % tablename,
+                                              label = T("Type of Eligibility"),
+                                              ondelete = "RESTRICT",
+                                              represent = represent,
+                                              requires = IS_EMPTY_OR(
+                                                            IS_ONE_OF(db, "%s.id" % tablename,
+                                                                      represent,
+                                                                      )),
+                                              )
+
+        # -------------------------------------------------------------------------
         # Voucher
         # - represents a credit granted to the bearer to purchase a
         #   service/product under the program
@@ -322,13 +381,17 @@ class FinVoucherModel(S3Model):
         define_table(tablename,
                      program_id(empty = False),
                      Field("pe_id", "reference pr_pentity",
-                           label = T("Bearer##fin"),
+                           label = T("Issuer##fin"),
                            represent = pe_represent,
                            requires = IS_EMPTY_OR(IS_ONE_OF(db, "pr_pentity.pe_id",
                                                             pe_represent,
                                                             instance_types = ["org_organisation"],
                                                             )),
                            ),
+                     eligibility_type_id(
+                            readable = use_eligibility_types,
+                            writable = use_eligibility_types,
+                            ),
                      Field("signature", length=64,
                            label = T("Voucher ID"),
                            writable = False,
@@ -566,10 +629,15 @@ class FinVoucherModel(S3Model):
         """
             Form validation of new vouchers:
             - check that program is active and hasn't ended
+            - if using eligibility types, verify that the chosen type
+              matches the program and is permissible for the issuer
         """
 
         db = current.db
         s3db = current.s3db
+
+        T = current.T
+        settings = current.deployment_settings
 
         table = s3db.fin_voucher
         ptable = s3db.fin_voucher_program
@@ -593,6 +661,49 @@ class FinVoucherModel(S3Model):
             end_date = program.end_date
             if end_date and end_date < current.request.utcnow.date():
                 form.errors["program_id"] = T("Program has ended")
+
+        if settings.get_fin_voucher_eligibility_types() and \
+           "eligibility_type_id" in form_vars:
+
+            # Verify that eligibility type matches program
+            eligibility_type_id = form_vars["eligibility_type_id"]
+            ttable = s3db.fin_voucher_eligibility_type
+            if eligibility_type_id:
+                query = (ttable.id == eligibility_type_id) & \
+                        (ttable.program_id == program_id) & \
+                        (ttable.deleted == False)
+                etype = db(query).select(ttable.issuer_types,
+                                        limitby = (0, 1),
+                                        ).first()
+                if not etype:
+                    form.errors["eligibility_type_id"] = T("Invalid eligibility type")
+            else:
+                query = (ttable.program_id == program_id) & \
+                        (ttable.deleted == False)
+                anytype = db(query).select(ttable.id, limitby=(0, 1)).first()
+                if anytype:
+                    form.errors["eligibility_type_id"] = T("Eligibility type required")
+                etype = None
+
+            # Verify that eligibility type is permissible for issuer
+            if etype and etype.issuer_types:
+                if "pe_id" in form_vars:
+                    issuer = form_vars["pe_id"]
+                else:
+                    issuer = table.pe_id.default
+                permitted_types = etype.issuer_types
+                otable = s3db.org_organisation
+                ltable = s3db.org_organisation_organisation_type
+                join = ltable.on((ltable.organisation_id == otable.id) & \
+                                 (ltable.organisation_type_id.belongs(permitted_types)) & \
+                                 (ltable.deleted == False))
+                query = (otable.pe_id == issuer)
+                row = db(query).select(otable.id,
+                                       join = join,
+                                       limitby = (0, 1),
+                                       ).first()
+                if not row:
+                    form.errors["eligibility_type_id"] = T("Eligibility type not permissible for issuer")
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1669,6 +1780,8 @@ def fin_rheader(r, tabs=None):
     if record:
 
         T = current.T
+        settings = current.deployment_settings
+
         if tablename == "fin_voucher_program":
 
             if not tabs:
@@ -1676,6 +1789,8 @@ def fin_rheader(r, tabs=None):
                         (T("Vouchers"), "voucher"),
                         (T("Transactions"), "voucher_transaction"),
                         ]
+                if settings.get_fin_voucher_eligibility_types():
+                    tabs.insert(1, (T("Eligibility Types"), "voucher_eligibility_type"))
             rheader_fields = [["organisation_id"],
                               ]
             rheader_title = "name"
@@ -2071,6 +2186,55 @@ class fin_VoucherProgram(object):
         s3db.onaccept(table, transaction, method="create")
 
         return True
+
+# =============================================================================
+def fin_voucher_eligibility_types(program_ids, organisation_ids=None):
+    """
+        Look up permissible eligibility types for programs
+
+        @param program_ids: voucher program IDs
+        @param organisation_ids: issuer organisation IDs
+
+        @returns: dict {program_id: [eligibility_type_ids]}
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    if organisation_ids:
+        # Look up issuer organisation types
+        ltable = s3db.org_organisation_organisation_type
+        query = (ltable.organisation_id.belongs(organisation_ids)) & \
+                (ltable.deleted == False)
+        rows = db(query).select(ltable.organisation_type_id,
+                                groupby = ltable.organisation_type_id,
+                                )
+        issuer_types = [row.organisation_type_id for row in rows]
+
+    ttable = s3db.fin_voucher_eligibility_type
+    query = (ttable.program_id.belongs(program_ids)) & \
+            (ttable.deleted == False)
+    rows = db(query).select(ttable.program_id)
+
+    # Include programs that do not require eligibility types
+    unlimited = set(program_ids) - {row.program_id for row in rows}
+    eligibility_types = {p: None for p in unlimited}
+
+    if issuer_types:
+        # Limit to issuer organisation types
+        query &= (ttable.issuer_types.contains(issuer_types, all=False)) | \
+                 (ttable.issuer_types == None) | \
+                 (ttable.issuer_types == [])
+    rows = db(query).select(ttable.id, ttable.program_id)
+
+    for row in rows:
+        program_id = row.program_id
+        if program_id in eligibility_types:
+            eligibility_types[program_id].append(row.id)
+        else:
+            eligibility_types[program_id] = [row.id]
+
+    return eligibility_types
 
 # =============================================================================
 def fin_voucher_permitted_programs(mode="issuer"):

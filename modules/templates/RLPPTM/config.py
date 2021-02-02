@@ -164,6 +164,7 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     settings.fin.voucher_personalize = "dob"
+    settings.fin.voucher_eligibility_types = True
 
     # -------------------------------------------------------------------------
     # Realm Rules
@@ -580,6 +581,7 @@ def config(settings):
             axes = ["program_id",
                     "balance",
                     ISSUER_ORG_TYPE,
+                    "eligibility_type_id",
                     "pe_id",
                     ]
             report_options = {
@@ -632,6 +634,10 @@ def config(settings):
             resource = r.resource
             table = resource.table
 
+            if program_ids and org_ids:
+                etypes = s3db.fin_voucher_eligibility_types(program_ids, org_ids)
+                program_ids = list(etypes.keys())
+
             if not program_ids or not org_ids:
                 # User is not permitted to issue vouchers for any programs/issuers
                 resource.configure(insertable = False)
@@ -645,11 +651,43 @@ def config(settings):
                                            field.represent,
                                            sort = True,
                                            )
-                # Hide the program selector if only one program can be chosen
-                rows = dbset.select(ptable.id, limitby=(0, 2))
-                if len(rows) == 1:
-                    field.default = rows.first().id
+                # Default the program selector if only one program can be chosen
+                if len(program_ids) == 1:
+                    program_id = program_ids[0]
+                    field.default = program_id
                     field.writable = False
+
+                # Limit the eligibility type selector to applicable types
+                allow_empty = False
+                if len(program_ids) == 1:
+                    etype_ids = etypes[program_ids[0]]
+                else:
+                    etype_ids = []
+                    for item in etypes.values():
+                        if item:
+                            etype_ids += item
+                        else:
+                            allow_empty = True
+                    etype_ids = list(set(etype_ids)) if etype_ids else None
+
+                field = table.eligibility_type_id
+                if etype_ids is None:
+                    # No selectable eligibility types => hide selector
+                    field.readable = field.writable = False
+                elif len(etype_ids) == 1 and not allow_empty:
+                    # Only one type selectable => default
+                    field.default = etype_ids[0]
+                    field.writable = False
+                else:
+                    # Multiple types selectable
+                    ttable = s3db.fin_voucher_eligibility_type
+                    etset = db(ttable.id.belongs(etype_ids))
+                    field.requires = IS_ONE_OF(etset, "fin_voucher_eligibility_type.id",
+                                               field.represent,
+                                               sort = True,
+                                               )
+                    if allow_empty:
+                        field.requires = IS_EMPTY_OR(field.requires)
 
                 # Limit the issuer selector to permitted entities
                 etable = s3db.pr_pentity
@@ -659,9 +697,8 @@ def config(settings):
                                            field.represent,
                                            )
                 # Hide the issuer selector if only one entity can be chosen
-                rows = dbset.select(etable.pe_id, limitby=(0, 2))
-                if len(rows) == 1:
-                    field.default = rows.first().pe_id
+                if len(pe_ids) == 1:
+                    field.default = pe_ids[0]
                     field.readable = field.writable = False
 
             if r.interactive:
@@ -1070,21 +1107,32 @@ def config(settings):
                 if r.interactive:
                     from s3 import S3SQLCustomForm, \
                                    S3SQLInlineComponent, \
-                                   S3SQLInlineLink
+                                   S3SQLInlineLink, \
+                                   S3OptionsFilter, \
+                                   S3TextFilter, \
+                                   s3_get_filter_opts
 
                     # Custom form
-                    crud_fields = ["name",
+                    if is_org_group_admin:
+                        groups = S3SQLInlineLink("group",
+                                                 field = "group_id",
+                                                 label = T("Organization Group"),
+                                                 multiple = False,
+                                                 )
+                        types = S3SQLInlineLink("organisation_type",
+                                                field = "organisation_type_id",
+                                                search = False,
+                                                label = T("Type"),
+                                                multiple = settings.get_org_organisation_types_multiple(),
+                                                widget = "multiselect",
+                                                )
+                    else:
+                        groups = types = None
+
+                    crud_fields = [groups,
+                                   "name",
                                    "acronym",
-                                   # TODO Activate after correct type prepop
-                                   #S3SQLInlineLink(
-                                   #     "organisation_type",
-                                   #     field = "organisation_type_id",
-                                   #     search = False,
-                                   #     label = T("Type"),
-                                   #     multiple = settings.get_org_organisation_types_multiple(),
-                                   #     widget = "multiselect",
-                                   #     ),
-                                   #"country",
+                                   types,
                                    S3SQLInlineComponent(
                                         "contact",
                                         fields = [("", "value")],
@@ -1097,20 +1145,11 @@ def config(settings):
                                         ),
                                    "phone",
                                    "website",
-                                   #"year",
                                    "logo",
                                    "comments",
                                    ]
-                    if is_org_group_admin:
-                        crud_fields.insert(0, S3SQLInlineLink(
-                                                    "group",
-                                                    field = "group_id",
-                                                    label = T("Organization Group"),
-                                                    multiple = False,
-                                                    ))
 
                     # Filters
-                    from s3 import S3OptionsFilter, S3TextFilter, s3_get_filter_opts
                     text_fields = ["name", "acronym", "website", "phone"]
                     if is_org_group_admin:
                         text_fields.append("email.value")
@@ -1119,10 +1158,18 @@ def config(settings):
                                                    ),
                                       ]
                     if is_org_group_admin:
-                        filter_widgets.append(S3OptionsFilter("group__link.group_id",
-                                                              label = T("Group"),
-                                                              options = lambda: s3_get_filter_opts("org_group"),
-                                                              ))
+                        filter_widgets.extend([
+                            S3OptionsFilter(
+                                "group__link.group_id",
+                                label = T("Group"),
+                                options = lambda: s3_get_filter_opts("org_group"),
+                                ),
+                            S3OptionsFilter(
+                                "organisation_type__link.organisation_type_id",
+                                label = T("Type"),
+                                options = lambda: s3_get_filter_opts("org_organisation_type"),
+                                ),
+                            ])
 
                     resource.configure(crud_form = S3SQLCustomForm(*crud_fields),
                                        filter_widgets = filter_widgets,
@@ -1132,13 +1179,13 @@ def config(settings):
                 list_fields = [#"group__link.group_id",
                                "name",
                                "acronym",
-                               # TODO Activate after correct type prepop
                                #"organisation_type__link.organisation_type_id",
                                "website",
                                "phone",
                                #"email.value"
                                ]
                 if is_org_group_admin:
+                    list_fields.insert(2, (T("Type"), "organisation_type__link.organisation_type_id"))
                     list_fields.insert(0, (T("Organization Group"), "group__link.group_id"))
                     list_fields.append((T("Email"), "email.value"))
                 r.resource.configure(list_fields = list_fields,
