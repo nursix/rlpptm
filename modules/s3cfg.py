@@ -513,6 +513,13 @@ class S3Config(Storage):
         return module_name in self.modules
 
     # -------------------------------------------------------------------------
+    def get_facebook_pixel_id(self):
+        """
+            Facebook Pixel ID
+        """
+        return self.base.get("facebook_pixel_id")
+
+    # -------------------------------------------------------------------------
     def get_google_analytics_tracking_id(self):
         """
             Google Analytics Key
@@ -1326,6 +1333,12 @@ class S3Config(Storage):
         """ API key for Bing """
         return self.gis.get("api_bing")
 
+    def get_gis_api_getaddress(self):
+        """
+            API key for GetAddress.io
+        """
+        return self.gis.get("api_getaddress")
+
     def get_gis_api_google(self):
         """
             API key for Google Maps
@@ -1663,6 +1676,14 @@ class S3Config(Storage):
             Display Postcode form field when selecting Locations
         """
         return self.__lazy("gis", "postcode_selector", default=True)
+
+    def get_gis_postcode_to_address(self):
+        """
+            Service to use for Postcode to Address lookups in LocationSelector
+            Supported Options:
+            * getaddress (GetAddress.io)
+        """
+        return self.__lazy("gis", "postcode_to_address", default=None)
 
     def get_gis_print(self):
         """

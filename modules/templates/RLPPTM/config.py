@@ -9,7 +9,7 @@
 
 from collections import OrderedDict
 
-from gluon import current, URL, A, DIV, IS_EMPTY_OR, IS_IN_SET, TAG
+from gluon import current, URL, A, DIV, IS_EMPTY_OR, IS_IN_SET, IS_INT_IN_RANGE, TAG
 from gluon.storage import Storage
 
 from s3 import FS, IS_ONE_OF, S3Represent, s3_str
@@ -165,6 +165,10 @@ def config(settings):
     # -------------------------------------------------------------------------
     settings.fin.voucher_personalize = "dob"
     settings.fin.voucher_eligibility_types = True
+
+    # -------------------------------------------------------------------------
+    # UI Settings
+    settings.ui.calendar_clear_icon = True
 
     # -------------------------------------------------------------------------
     # Realm Rules
@@ -448,8 +452,9 @@ def config(settings):
                           ("INC", T("Inconclusive")),
                           )
         field = table.result
+        field.default = "POS"
         field.requires = IS_IN_SET(result_options,
-                                   zero = "",
+                                   zero = None,
                                    sort = False,
                                    )
         field.represent = S3Represent(options=dict(result_options))
@@ -534,12 +539,41 @@ def config(settings):
     def customise_fin_voucher_resource(r, tablename):
 
         s3db = current.s3db
-
         table = s3db.fin_voucher
+
+        # Determine form mode
+        resource = r.resource
+        group_voucher = resource.tablename == "fin_voucher" and \
+                        r.get_vars.get("g") == "1"
 
         # Customise fields
         field = table.pe_id
         field.label = T("Issuer##fin")
+
+        from s3 import S3WithIntro
+        field = table.bearer_dob
+        if group_voucher:
+            label = T("Group Representative Date of Birth")
+            intro = "GroupDoBIntro"
+        else:
+            label = T("Beneficiary Date of Birth")
+            intro = "BearerDoBIntro"
+        field.label = label
+        field.widget = S3WithIntro(field.widget,
+                                   intro = ("fin",
+                                            "voucher",
+                                            intro,
+                                            ),
+                                   )
+
+        field = table.initial_credit
+        field.label = T("Number of Beneficiaries")
+        if group_voucher:
+            field.default = None
+            field.requires = IS_INT_IN_RANGE(1, 51,
+                                error_message = T("Enter the number of beneficiaries (max %(max)s)"),
+                                )
+            field.readable = field.writable = True
 
         field = table.comments
         field.label = T("Memoranda")
@@ -549,40 +583,43 @@ def config(settings):
                                               ),
                             )
 
-        field = table.balance
-        field.label = T("Status")
-        field.represent = lambda v: T("Issued##fin") if v > 0 else T("Redeemed##fin")
-
         # Custom list fields
         has_role = current.auth.s3_has_role
         if has_role("PROGRAM_MANAGER"):
             list_fields = ["program_id",
                            "signature",
-                           "balance",
+                           (T("Status"), "status"),
                            "pe_id",
                            #(T("Issuer Type"), ISSUER_ORG_TYPE),
                            "eligibility_type_id",
+                           "initial_credit",
+                           "credit_spent",
                            "date",
-                           "valid_until",
+                           #"valid_until",
                            ]
         elif has_role("VOUCHER_ISSUER"):
             list_fields = ["program_id",
                            "signature",
-                           "bearer_dob",
-                           "balance",
+                           (T("Beneficiary/Representative Date of Birth"), "bearer_dob"),
+                           "initial_credit",
+                           "credit_spent",
+                           (T("Status"), "status"),
                            "date",
-                           "valid_until",
+                           #"valid_until",
                            "comments",
                            ]
 
         # Report Options
         if r.method == "report":
-            facts = ((T("Number of Vouchers"), "count(id)"),
-                    )
-            axes = ["program_id",
-                    "balance",
-                    ISSUER_ORG_TYPE,
+            facts = ((T("Credit Redeemed"), "sum(credit_spent)"),
+                     (T("Credit Issued"), "sum(initial_credit)"),
+                     (T("Remaining Credit"), "sum(balance)"),
+                     (T("Number of Vouchers"), "count(id)"),
+                     )
+            axes = [ISSUER_ORG_TYPE,
                     "eligibility_type_id",
+                    "program_id",
+                    "status",
                     "pe_id",
                     ]
             report_options = {
@@ -707,10 +744,18 @@ def config(settings):
 
             if r.interactive:
 
+                if r.get_vars.get("g") == "1":
+                    s3.crud_strings["fin_voucher"]["label_create"] = T("Create Group Voucher")
+
                 # Hide valid_until from create-form (will be set onaccept)
                 field = table.valid_until
                 field.readable = bool(r.record)
                 field.writable = False
+
+                # Always show number of beneficiaries
+                if r.record:
+                    field = table.initial_credit
+                    field.readable = True
 
                 # Filter Widgets
                 from s3 import S3DateFilter, S3TextFilter
@@ -744,10 +789,10 @@ def config(settings):
                 # Configure ID card layout
                 from .vouchers import VoucherCardLayout
                 resource.configure(pdf_card_layout = VoucherCardLayout,
-                                    pdf_card_suffix = lambda record: \
+                                   pdf_card_suffix = lambda record: \
                                         s3_str(record.signature) \
                                         if record and record.signature else None,
-                                    )
+                                   )
             return result
         s3.prep = prep
 
@@ -791,8 +836,12 @@ def config(settings):
     def customise_fin_voucher_debit_resource(r, tablename):
 
         s3db = current.s3db
-
         table = s3db.fin_voucher_debit
+
+        # Determine form mode
+        resource = r.resource
+        group_voucher = resource.tablename == "fin_voucher_debit" and \
+                        r.get_vars.get("g") == "1"
 
         # Customise fields
         field = table.comments
@@ -803,21 +852,38 @@ def config(settings):
                                               ),
                             )
 
+        field = table.bearer_dob
+        if group_voucher:
+            label = T("Group Representative Date of Birth")
+        else:
+            label = T("Beneficiary Date of Birth")
+        field.label = label
+
+        field = table.quantity
+        if group_voucher:
+            field.default = None
+            field.requires = IS_INT_IN_RANGE(1,
+                                error_message = T("Enter the service quantity"),
+                                )
+            field.readable = field.writable = True
+
         field = table.balance
-        field.label = T("Status")
-        field.represent = lambda v: T("Redeemed##fin") if v > 0 else T("Compensated##fin")
+        field.label = T("Remaining Compensation Claims")
 
         # Custom list_fields
         list_fields = [(T("Date"), "date"),
-                        "program_id",
-                        "voucher_id$signature",
-                        "balance",
-                        ]
+                       "program_id",
+                       "voucher_id$signature",
+                       "quantity",
+                       "status",
+                       ]
         if current.auth.s3_has_role("PROGRAM_MANAGER"):
+            # Include issuer and provider
             list_fields[3:3] = ["voucher_id$pe_id",
                                 "pe_id",
                                 ]
         if current.auth.s3_has_role("VOUCHER_PROVIDER"):
+            # Include provider notes
             list_fields.append("comments")
 
         s3db.configure("fin_voucher_debit",
@@ -830,22 +896,24 @@ def config(settings):
             filter_widgets = [S3TextFilter(["program_id$name",
                                             "signature",
                                             ],
-                                        label = T("Search"),
-                                        ),
-                            S3DateFilter("date",
-                                        label = T("Date"),
-                                        ),
-                            ]
+                                           label = T("Search"),
+                                           ),
+                              S3DateFilter("date",
+                                           label = T("Date"),
+                                           ),
+                              ]
             s3db.configure("fin_voucher_debit",
                            filter_widgets = filter_widgets,
                            )
 
         # Report options
         if r.method == "report":
-            facts = ((T("Number of Accepted Vouchers"), "count(id)"),
-                    )
+            facts = ((T("Total Services Rendered"), "sum(quantity)"),
+                     (T("Number of Accepted Vouchers"), "count(id)"),
+                     (T("Remaining Compensation Claims"), "sum(balance)"),
+                     )
             axes = ["program_id",
-                    "balance",
+                    "status",
                     ]
             if current.auth.s3_has_role("PROGRAM_MANAGER"):
                 axes.insert(0, "pe_id")
@@ -854,10 +922,10 @@ def config(settings):
                 "cols": axes,
                 "fact": facts,
                 "defaults": {"rows": axes[0],
-                            "cols": None,
-                            "fact": facts[0],
-                            "totals": True,
-                            },
+                             "cols": None,
+                             "fact": facts[0],
+                             "totals": True,
+                             },
                 }
             s3db.configure("fin_voucher_debit",
                            report_options = report_options,
@@ -920,6 +988,16 @@ def config(settings):
                     field.default = rows.first().pe_id
                     field.readable = field.writable = False
 
+                # Always show quantity
+                if r.record:
+                    field = table.quantity
+                    field.readable = True
+
+            if r.interactive:
+
+                if r.get_vars.get("g") == "1":
+                    s3.crud_strings["fin_voucher_debit"]["label_create"] = T("Accept Group Voucher")
+
             return result
         s3.prep = prep
 
@@ -930,6 +1008,23 @@ def config(settings):
         return attr
 
     settings.customise_fin_voucher_debit_controller = customise_fin_voucher_debit_controller
+
+    # -------------------------------------------------------------------------
+    def customise_fin_voucher_program_resource(r, tablename):
+
+        table = current.s3db.fin_voucher_program
+
+        represent = lambda v, row=None: -v if v else current.messages["NONE"]
+
+        field = table.credit
+        field.label = T("Pending Credits")
+        field.represent = represent
+
+        field = table.compensation
+        field.label = T("Pending Compensation Claims")
+        field.represent = represent
+
+    settings.customise_fin_voucher_program_resource = customise_fin_voucher_program_resource
 
     # -------------------------------------------------------------------------
     def customise_fin_voucher_program_controller(**attr):
