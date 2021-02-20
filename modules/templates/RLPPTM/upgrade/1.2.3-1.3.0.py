@@ -28,6 +28,7 @@ def infoln(msg):
 
 # Load models for tables
 vtable = s3db.fin_voucher
+dtable = s3db.fin_voucher_debit
 ttable = s3db.fin_voucher_transaction
 
 IMPORT_XSLT_FOLDER = os.path.join(request.folder, "static", "formats", "s3csv")
@@ -45,6 +46,26 @@ if not failed:
         updated = db(query).update(initial_credit = 1,
                                    modified_on = vtable.modified_on,
                                    modified_by = vtable.modified_by,
+                                   )
+    except:
+        infoln("...failed")
+        infoln(sys.exc_info()[1])
+        failed = True
+    else:
+        infoln("...done (%s records updated)" % updated)
+
+# -----------------------------------------------------------------------------
+# Set service quantity for existing debits
+#
+if not failed:
+    info("Set service quantity for debits")
+
+    query = (dtable.quantity == None) & \
+            (dtable.deleted == False)
+    try:
+        updated = db(query).update(quantity = dtable.balance,
+                                   modified_on = dtable.modified_on,
+                                   modified_by = dtable.modified_by,
                                    )
     except:
         infoln("...failed")
