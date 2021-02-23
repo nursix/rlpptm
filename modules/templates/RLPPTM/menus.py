@@ -9,6 +9,8 @@ except ImportError:
     pass
 import s3menus as default
 
+from .helpers import get_stats_projects
+
 # =============================================================================
 class S3MainMenu(default.S3MainMenu):
     """ Custom Application Main Menu """
@@ -41,8 +43,10 @@ class S3MainMenu(default.S3MainMenu):
 
         is_org_group_admin = lambda i: not has_role("ADMIN") and \
                                        has_role("ORG_GROUP_ADMIN")
-        is_voucher_provider = lambda i: not has_role("ADMIN") and \
-                                        has_role("VOUCHER_PROVIDER")
+        report_results = lambda i: not has_role("ADMIN") and \
+                                   has_role("VOUCHER_PROVIDER") and \
+                                   len(get_stats_projects()) > 0
+
         menu = [MM("Organizations",
                    c="org", f="organisation", restrict=("ORG_GROUP_ADMIN", "ORG_ADMIN"),
                    vars = {"mine": 1} if not has_role("ORG_GROUP_ADMIN") else None,
@@ -51,7 +55,7 @@ class S3MainMenu(default.S3MainMenu):
                    c="disease", f="case_diagnostics", restrict="DISEASE_TEST_READER",
                    ),
                 MM("Test Results",
-                   c="disease", f="case_diagnostics", check=is_voucher_provider, link=False)(
+                   c="disease", f="case_diagnostics", check=report_results, link=False)(
                     MM("Report Test Result", m="create", vars={"format": "popup"}, modal=True),
                     MM("List Test Results"),
                     ),
@@ -59,9 +63,14 @@ class S3MainMenu(default.S3MainMenu):
                    c = "project", f="project",
                    restrict = "ADMIN",
                    ),
-                MM("Find Test Station",
-                   c = "org", f = "facility", m = "summary",
-                   ),
+                MM("Find Test Station", link=False)(
+                    MM("Test Stations for Everybody",
+                       c = "org", f = "facility", m = "summary", vars={"$$code": "TESTS-PUBLIC"},
+                       ),
+                    MM("Test Stations for School and Child Care Staff",
+                       c = "org", f = "facility", m = "summary", vars={"$$code": "TESTS-SCHOOLS"},
+                       ),
+                    ),
                 MM("Pending Approvals", c="default", f="index", args=["approve"],
                    check = is_org_group_admin,
                    ),
@@ -225,9 +234,13 @@ class S3OptionsMenu(default.S3OptionsMenu):
     @staticmethod
     def disease():
 
+        s3db = current.s3db
+        report_results = lambda i: s3db.get_config("disease_case_diagnostics",
+                                                   "insertable", True)
+
         return M(c="disease")(
                     M("Test Results", f="case_diagnostics")(
-                        M("Registrieren", m="create"),
+                        M("Registrieren", m="create", check=report_results),
                         M("Statistics", m="report"),
                         ),
                     M("Administration", restrict="ADMIN")(
@@ -242,6 +255,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
 
         s3db = current.s3db
         voucher_create = lambda i: s3db.get_config("fin_voucher", "insertable", True)
+        voucher_accept = lambda i: s3db.get_config("fin_voucher_debit", "insertable", True)
 
         return M(c="fin")(
                     M("Voucher Programs", f="voucher_program")(
@@ -258,9 +272,12 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Statistics", m="report", restrict=("PROGRAM_MANAGER")),
                         ),
                     M("Accepted Vouchers", f="voucher_debit")(
-                        M("Accept Voucher", m="create", restrict=("VOUCHER_PROVIDER")),
+                        M("Accept Voucher", m="create", restrict=("VOUCHER_PROVIDER"),
+                          check = voucher_accept,
+                          ),
                         M("Accept Group Voucher", m="create", restrict=("VOUCHER_PROVIDER"),
                           vars = {"g": "1"},
+                          check = voucher_accept,
                           ),
                         M("Statistics", m="report"),
                         ),
@@ -278,7 +295,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
     def org():
         """ ORG / Organization Registry """
 
-        org_menu = M("Organizations", f="organisation", link=False)
+        org_menu = M("Organizations", f="organisation")
 
         auth = current.auth
 
