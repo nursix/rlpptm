@@ -237,7 +237,7 @@ body.rtl {
         max-width: 100%;
     }
 }
-.ui-widget-content {
+.ui-multiselect-menu {
     max-width: 100%;
     width: auto!important;
 }
@@ -355,4 +355,15 @@ body.rtl {
     }
 }
 
+.organizer-alternatives {
+    .action-btn {
+        margin: 0.5rem 0 1rem 0;
+    }
+    .organizer-intro {
+        font-size: 0.8rem;
+        margin: 0.5rem 0 1rem 0;
+        padding: 0.2rem 0.7rem;
+        background: #ffdeb8;
+    }
+}
 // END ========================================================================

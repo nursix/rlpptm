@@ -11,7 +11,7 @@ import datetime
 
 from collections import OrderedDict
 
-from gluon import current, redirect, URL, DIV, TABLE, TAG, TR
+from gluon import current, redirect, URL, A, DIV, TABLE, TAG, TR
 from gluon.storage import Storage
 
 from s3 import FS, IS_LOCATION, S3DateFilter, S3Represent, s3_fieldmethod, s3_fullname, s3_yes_no_represent
@@ -341,6 +341,7 @@ def config(settings):
                                               "date",
                                               "comments",
                                               ],
+                               orderby = "cms_post.name",
                                )
 
     settings.customise_cms_post_resource = customise_cms_post_resource
@@ -957,6 +958,7 @@ def config(settings):
                   #"pr_person.fullname": (HIDDEN, HIDDEN),
                   "pr_person_details.alias": (HIDDEN, HIDDEN),
                   "pr_phone_contact.value": (None, HIDDEN),
+                  "pr_phonenumber_contact.value": (None, HIDDEN),
                   "pr_email_contact.value": (None, HIDDEN),
                   }
         for person_id in person_ids:
@@ -2321,15 +2323,19 @@ def config(settings):
                     organisations = None
 
                 # Append inline-notifications
+                from s3 import S3WithIntro
                 from .notifications import InlineNotifications
                 crud_form.append(
-                    InlineNotifications("notifications",
-                                        label = T("Notifications"),
-                                        person_id = volunteer_id,
-                                        recipients = ("volunteer",),
-                                        organisations = organisations,
-                                        reply_to_org = True,
-                                        ))
+                    S3WithIntro(
+                        InlineNotifications("notifications",
+                                            label = T("Notifications"),
+                                            person_id = volunteer_id,
+                                            organisations = organisations,
+                                            reply_to = "user", #"org",
+                                            sender = "org",
+                                            ),
+                        intro = ("hrm", "delegation", "NotificationIntroOrg"),
+                        ))
             s3db.configure("hrm_delegation", crud_form=crud_form)
 
             # Enable site_id and filter to sites of org
@@ -2392,11 +2398,11 @@ def config(settings):
                            insertable = False,
                            )
 
+        auth = current.auth
+        coordinator = auth.s3_has_role("COORDINATOR")
+
         standard_prep = s3.prep
         def custom_prep(r):
-
-            auth = current.auth
-            coordinator = auth.s3_has_role("COORDINATOR")
 
             if not coordinator:
                 settings.ui.export_formats = ("pdf", "xls")
@@ -2563,6 +2569,46 @@ def config(settings):
                             )
             return result
         s3.prep = custom_prep
+
+        standard_postp = s3.postp
+        def custom_postp(r, output):
+
+            # Call standard postp
+            if callable(standard_postp):
+                output = standard_postp(r, output)
+
+            if r.controller == "vol" and volunteer_id and isinstance(output, dict):
+
+                method = r.method
+                if not method:
+                    # Add switch to organizer
+                    switch = A(T("Switch to organizer"),
+                               _href = r.url(method="organize"),
+                               _class = "action-btn",
+                               )
+                    add_btn = output.get("showadd_btn")
+                    output["showadd_btn"] = TAG[""](add_btn, switch) if add_btn else switch
+
+                elif method == "organize":
+                    # Add hint how to use the organizer
+                    if not coordinator:
+                        from .helpers import get_cms_intro
+                        intro = get_cms_intro("hrm", "delegation",
+                                              "DelegationOrganizerIntro",
+                                              cmsxml = True,
+                                              )
+                        if intro:
+                            output["intro"] = intro
+                    # Add switch to list view
+                    output["switch"] = A(T("Switch to list view"),
+                                         _href = r.url(method=""),
+                                         _class = "action-btn",
+                                         )
+                    # Use custom view
+                    from s3 import S3CustomController
+                    S3CustomController._view("RLP", "organize.html")
+            return output
+        s3.postp = custom_postp
 
         # Custom rheaders
         from .rheaders import rlp_vol_rheader, rlp_delegation_rheader
