@@ -1230,7 +1230,7 @@ class S3InventoryTrackingModel(S3Model):
                                   requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "inv_send.id",
                                                           self.inv_send_represent,
-                                                          orderby = "inv_send_id.date",
+                                                          orderby = "inv_send.date",
                                                           sort = True,
                                                           )),
                                   sortby = "date",
@@ -2852,10 +2852,12 @@ $.filterOptionsS3({
     # -------------------------------------------------------------------------
     @staticmethod
     def qnty_recv_repr(value):
-        if value:
-            return value
+
+        if value is None:
+            reprstr = B(current.T("None"))
         else:
-            return B(value)
+            reprstr = value if value else B(value)
+        return reprstr
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -2874,8 +2876,9 @@ $.filterOptionsS3({
                     return A(value,
                              _href = URL(c = "inv",
                                          f = "send",
-                                         args = [row.id, "form"]
-                                        ),
+                                         args = [row.id, "form"],
+                                         extension = "",
+                                         ),
                             )
                 else:
                     return value
@@ -2901,7 +2904,8 @@ $.filterOptionsS3({
                 return A(value,
                          _href = URL(c = "inv",
                                      f = "recv",
-                                     args = [recv_row.id, "form"]
+                                     args = [recv_row.id, "form"],
+                                     extension = "",
                                      ),
                         )
             else:
@@ -2949,7 +2953,7 @@ $.filterOptionsS3({
                                       limitby=(0, 1)).first()
             form_vars.track_org_id = record.organisation_id
 
-        if not form_vars.recv_quantity:
+        if not form_vars.recv_quantity and "quantity" in form_vars:
             # If we have no send_id and no recv_quantity then
             # copy the quantity sent directly into the received field
             # This is for when there is no related send record

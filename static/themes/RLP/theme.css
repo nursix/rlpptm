@@ -507,6 +507,11 @@ select {
 
 /* Form and Item containers */
 /* line 236, ../scss/theme/_forms.scss */
+.form-info {
+  min-height: 1.2rem;
+}
+
+/* line 239, ../scss/theme/_forms.scss */
 #last_update,
 #markDuplicate {
   float: right;
@@ -514,12 +519,13 @@ select {
   text-align: right;
 }
 
-/* line 242, ../scss/theme/_forms.scss */
+/* line 245, ../scss/theme/_forms.scss */
 #markDuplicate {
-  margin-bottom: 1rem;
+  margin-bottom: 0;
+  margin-top: -0.5rem;
 }
 
-/* line 246, ../scss/theme/_forms.scss */
+/* line 250, ../scss/theme/_forms.scss */
 body.rtl #last_update,
 body.rtl #markDuplicate {
   float: left;
@@ -527,39 +533,39 @@ body.rtl #markDuplicate {
   text-align: left;
 }
 
-/* line 254, ../scss/theme/_forms.scss */
+/* line 258, ../scss/theme/_forms.scss */
 .form-container,
 .item-container {
   width: auto;
   overflow: inherit;
 }
-/* line 256, ../scss/theme/_forms.scss */
+/* line 260, ../scss/theme/_forms.scss */
 .form-container form,
 .item-container form {
   background: #fefefe;
   padding: 5px 10px;
 }
-/* line 259, ../scss/theme/_forms.scss */
+/* line 263, ../scss/theme/_forms.scss */
 .form-container form tr td,
 .item-container form tr td {
   padding: 0.1875rem;
 }
-/* line 262, ../scss/theme/_forms.scss */
+/* line 266, ../scss/theme/_forms.scss */
 .form-container form .embeddedComponent td,
 .item-container form .embeddedComponent td {
   padding-right: 0.5625rem;
 }
-/* line 268, ../scss/theme/_forms.scss */
+/* line 272, ../scss/theme/_forms.scss */
 .form-container .controls,
 .item-container .controls {
   display: inline-block;
 }
-/* line 270, ../scss/theme/_forms.scss */
+/* line 274, ../scss/theme/_forms.scss */
 .form-container .controls:not(.columns),
 .item-container .controls:not(.columns) {
   max-width: 100%;
 }
-/* line 274, ../scss/theme/_forms.scss */
+/* line 278, ../scss/theme/_forms.scss */
 .form-container .no-options-available,
 .item-container .no-options-available {
   color: #aaa;
@@ -567,28 +573,28 @@ body.rtl #markDuplicate {
   padding-left: 0.7rem;
 }
 
-/* line 280, ../scss/theme/_forms.scss */
+/* line 284, ../scss/theme/_forms.scss */
 .form-container {
   margin-top: 0.125rem;
   margin-bottom: 0.875rem;
 }
-/* line 284, ../scss/theme/_forms.scss */
+/* line 288, ../scss/theme/_forms.scss */
 .form-container form select,
 .form-container form input.string:not(.date),
 .form-container form textarea {
   margin: 0;
 }
-/* line 289, ../scss/theme/_forms.scss */
+/* line 293, ../scss/theme/_forms.scss */
 .form-container form .ui-multiselect {
   max-width: 100%;
   display: inline-block !important;
 }
-/* line 294, ../scss/theme/_forms.scss */
+/* line 298, ../scss/theme/_forms.scss */
 .form-container form:not(.filter-form):not(.auth_login):not(.auth_register):not(.rm-form) input[type="text"]:not(.integer):not(.double):not(.datetimepicker):not(.date):not(.hours):not(.dms-input) {
   width: 20rem !important;
 }
 
-/* line 301, ../scss/theme/_forms.scss */
+/* line 305, ../scss/theme/_forms.scss */
 .item-container .controls {
   background: #fafafa;
   padding: 0.35rem;
@@ -596,26 +602,26 @@ body.rtl #markDuplicate {
 }
 
 /* Filter Forms & Report Options */
-/* line 308, ../scss/theme/_forms.scss */
+/* line 312, ../scss/theme/_forms.scss */
 .filter-form,
 .report-options {
   /*    .inline-tooltip {
           padding-top: 0.2rem;
       }*/
 }
-/* line 311, ../scss/theme/_forms.scss */
+/* line 315, ../scss/theme/_forms.scss */
 .filter-form table tr,
 .filter-form .ui-multiselect,
 .report-options table tr,
 .report-options .ui-multiselect {
   max-width: 60%;
 }
-/* line 315, ../scss/theme/_forms.scss */
+/* line 319, ../scss/theme/_forms.scss */
 .filter-form table.s3-groupedopts-widget,
 .report-options table.s3-groupedopts-widget {
   display: inline-block;
 }
-/* line 321, ../scss/theme/_forms.scss */
+/* line 325, ../scss/theme/_forms.scss */
 .filter-form label.inline,
 .report-options label.inline {
   line-height: normal;
@@ -623,7 +629,7 @@ body.rtl #markDuplicate {
 }
 
 /* Login/Registration box */
-/* line 328, ../scss/theme/_forms.scss */
+/* line 332, ../scss/theme/_forms.scss */
 #login_form,
 #register_form,
 #login_box {
@@ -631,20 +637,20 @@ body.rtl #markDuplicate {
 }
 
 /* Help Popup */
-/* line 335, ../scss/theme/_forms.scss */
+/* line 339, ../scss/theme/_forms.scss */
 .inline-tooltip {
   display: inline-block;
   vertical-align: middle;
   padding-left: 0.75rem;
 }
-/* line 339, ../scss/theme/_forms.scss */
+/* line 343, ../scss/theme/_forms.scss */
 .inline-tooltip .s3_add_resource_link {
   display: inline-block;
   margin: -3px 0 -3px 0.7rem;
   padding-right: 0.3rem;
 }
 
-/* line 345, ../scss/theme/_forms.scss */
+/* line 349, ../scss/theme/_forms.scss */
 .tooltip,
 .tooltipbody,
 .stickytip,
@@ -657,7 +663,7 @@ body.rtl #markDuplicate {
   height: 20px;
   background: none;
 }
-/* line 352, ../scss/theme/_forms.scss */
+/* line 356, ../scss/theme/_forms.scss */
 .tooltip.inline-tooltip,
 .tooltipbody.inline-tooltip,
 .stickytip.inline-tooltip,
@@ -665,7 +671,7 @@ body.rtl #markDuplicate {
 .htmltip.inline-tooltip {
   margin-left: 1rem;
 }
-/* line 359, ../scss/theme/_forms.scss */
+/* line 363, ../scss/theme/_forms.scss */
 .tooltip:before,
 .tooltipbody:before,
 .stickytip:before,
@@ -679,7 +685,7 @@ body.rtl #markDuplicate {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-/* line 368, ../scss/theme/_forms.scss */
+/* line 372, ../scss/theme/_forms.scss */
 .tooltip:hover,
 .tooltipbody:hover,
 .stickytip:hover,
@@ -865,7 +871,7 @@ div.tabs span.tab_last a:hover, div.tabs span.tab_other a:hover {
 .selected-action[disabled],
 .selected-action[disabled]:hover {
   color: white;
-  background-color: rgba(192, 192, 192, 0.25);
+  background-color: rgba(112, 112, 112, 0.25);
 }
 
 /* Default action buttons */
@@ -1999,75 +2005,93 @@ form.anonymize-form,
 /* Priority Representation */
 /* line 508, ../scss/theme/_widgets.scss */
 .prio {
-  padding: 0 4px;
-  border: 1px solid black;
+  padding: 0 0.4rem;
+  border: 1px solid #333;
   text-align: center;
   white-space: pre;
   font-weight: normal;
+  font-size: 0.8rem;
 }
 
-/* line 515, ../scss/theme/_widgets.scss */
+/* line 516, ../scss/theme/_widgets.scss */
 .prio-red {
-  color: white;
+  color: #E0E0E0;
   background-color: #d10000;
 }
 
-/* line 519, ../scss/theme/_widgets.scss */
+/* line 520, ../scss/theme/_widgets.scss */
+.prio-amber {
+  background-color: #ffaa00;
+}
+
+/* line 523, ../scss/theme/_widgets.scss */
+.prio-green {
+  color: #E0E0E0;
+  background-color: #006100;
+}
+
+/* line 527, ../scss/theme/_widgets.scss */
 .prio-blue {
   color: white;
   background-color: #10427b;
 }
 
-/* line 523, ../scss/theme/_widgets.scss */
+/* line 531, ../scss/theme/_widgets.scss */
 .prio-lightblue {
   background-color: #b7ddff;
 }
 
-/* line 526, ../scss/theme/_widgets.scss */
+/* line 534, ../scss/theme/_widgets.scss */
 .prio-grey {
   background-color: silver;
 }
 
+/* line 537, ../scss/theme/_widgets.scss */
+.prio-black {
+  color: #E0E0E0;
+  background-color: #1f1f1f;
+}
+
 /* Weekly Hours Widget */
-/* line 531, ../scss/theme/_widgets.scss */
+/* line 543, ../scss/theme/_widgets.scss */
 .wh-raster {
   margin-top: 0.3rem;
 }
-/* line 533, ../scss/theme/_widgets.scss */
+/* line 545, ../scss/theme/_widgets.scss */
 .wh-raster tr {
   border-bottom: 1px solid #ccc;
 }
-/* line 536, ../scss/theme/_widgets.scss */
+/* line 548, ../scss/theme/_widgets.scss */
 .wh-raster td {
   border-left: 1px solid #ccc;
 }
-/* line 538, ../scss/theme/_widgets.scss */
+/* line 550, ../scss/theme/_widgets.scss */
 .wh-raster td.wh-tick {
   border-left-width: 2px;
 }
-/* line 543, ../scss/theme/_widgets.scss */
+/* line 555, ../scss/theme/_widgets.scss */
 .wh-raster thead td {
   min-width: 1.8rem;
   padding-right: 0.6rem !important;
   font-size: 0.6rem;
   font-weight: normal;
 }
-/* line 552, ../scss/theme/_widgets.scss */
+/* line 564, ../scss/theme/_widgets.scss */
 .wh-raster tbody td.wh-hour {
   text-align: center;
   font-weight: normal;
 }
-/* line 555, ../scss/theme/_widgets.scss */
+/* line 567, ../scss/theme/_widgets.scss */
 .wh-raster tbody td.wh-hour.wh-on {
   color: darkgreen;
 }
-/* line 559, ../scss/theme/_widgets.scss */
+/* line 571, ../scss/theme/_widgets.scss */
 .wh-raster tbody td.wh-day {
   text-align: left;
   font-size: 0.7rem;
   padding: 0.2rem 0.4rem;
 }
-/* line 566, ../scss/theme/_widgets.scss */
+/* line 578, ../scss/theme/_widgets.scss */
 .wh-raster .wh-hour {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -2076,73 +2100,73 @@ form.anonymize-form,
   -ms-user-select: none;
   user-select: none;
 }
-/* line 574, ../scss/theme/_widgets.scss */
+/* line 586, ../scss/theme/_widgets.scss */
 .wh-raster .wh-hour.wh-on {
   background-color: lightgreen;
 }
-/* line 577, ../scss/theme/_widgets.scss */
+/* line 589, ../scss/theme/_widgets.scss */
 .wh-raster .wh-hour.wh-off {
   background-color: transparent;
 }
 
 /* Weekly Hours Representation */
-/* line 584, ../scss/theme/_widgets.scss */
+/* line 596, ../scss/theme/_widgets.scss */
 .wh-schedule {
   list-style: none;
   white-space: pre;
   margin: 0;
   font-size: 0.7rem;
 }
-/* line 589, ../scss/theme/_widgets.scss */
+/* line 601, ../scss/theme/_widgets.scss */
 .wh-schedule .wh-dayname {
   width: 1.5rem;
   display: inline-block;
 }
-/* line 593, ../scss/theme/_widgets.scss */
+/* line 605, ../scss/theme/_widgets.scss */
 .wh-schedule .wh-dayname::after {
   content: ":";
 }
 
-/* line 601, ../scss/theme/_widgets.scss */
+/* line 613, ../scss/theme/_widgets.scss */
 body.rtl .ui-multiselect-header .ui-multiselect-filter {
   direction: rtl;
   float: right;
   margin-right: 3px;
   margin-left: 10px;
 }
-/* line 607, ../scss/theme/_widgets.scss */
+/* line 619, ../scss/theme/_widgets.scss */
 body.rtl .ui-multiselect-header ul li {
   float: right;
   padding: 0 3px 0 10px;
 }
-/* line 611, ../scss/theme/_widgets.scss */
+/* line 623, ../scss/theme/_widgets.scss */
 body.rtl .ui-multiselect-header li.ui-multiselect-close {
   float: left;
   text-align: left;
   padding-left: 0;
 }
-/* line 618, ../scss/theme/_widgets.scss */
+/* line 630, ../scss/theme/_widgets.scss */
 body.rtl .range-filter-widget input.date-filter-input {
   margin-right: 0;
   margin-left: 2px;
 }
-/* line 623, ../scss/theme/_widgets.scss */
+/* line 635, ../scss/theme/_widgets.scss */
 body.rtl #list-btn-add {
   float: left;
   margin-right: 0;
   margin-left: 0.35rem;
 }
-/* line 629, ../scss/theme/_widgets.scss */
+/* line 641, ../scss/theme/_widgets.scss */
 body.rtl .rm-form .rm-module-rules .rm-module-header div {
   margin-right: 0;
   margin-left: 0.3rem;
 }
-/* line 635, ../scss/theme/_widgets.scss */
+/* line 647, ../scss/theme/_widgets.scss */
 body.rtl .rm-form .rm-assign .rm-duplicate td:first-child {
   border-left: 0;
   border-right: 1px solid red;
 }
-/* line 639, ../scss/theme/_widgets.scss */
+/* line 651, ../scss/theme/_widgets.scss */
 body.rtl .rm-form .rm-assign .rm-duplicate td:last-child {
   border-right: 0;
   border-left: 1px solid red;
@@ -2575,14 +2599,30 @@ body.rtl .event-type-header {
   color: #333;
 }
 
-/* line 359, ../scss/theme/_misc.scss */
+/* line 358, ../scss/theme/_misc.scss */
+.action-btn.organizer-switch {
+  margin-bottom: -1.2em;
+}
+
+/* line 362, ../scss/theme/_misc.scss */
 .organizer-alternatives .action-btn {
   margin: 0.5rem 0 1rem 0;
 }
-/* line 362, ../scss/theme/_misc.scss */
+/* line 365, ../scss/theme/_misc.scss */
 .organizer-alternatives .organizer-intro {
   font-size: 0.8rem;
   margin: 0.5rem 0 1rem 0;
   padding: 0.2rem 0.7rem;
   background: #ffdeb8;
+}
+
+/* line 373, ../scss/theme/_misc.scss */
+.status-reason {
+  font-size: 0.725rem;
+  padding: 0.3rem;
+  color: #e10000;
+  border: 1px solid #e10000;
+  font-style: italic;
+  white-space: pre-wrap;
+  background: #ffe1e3;
 }

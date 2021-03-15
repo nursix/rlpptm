@@ -6,7 +6,7 @@
     @license: MIT
 """
 
-from gluon import current
+from gluon import current, A, URL
 
 from s3 import S3ResourceHeader, s3_rheader_resource
 
@@ -31,6 +31,7 @@ def rlpptm_fin_rheader(r, tabs=None):
 
     if record:
         T = current.T
+        settings = current.deployment_settings
 
         if tablename == "fin_voucher":
 
@@ -60,6 +61,20 @@ def rlpptm_fin_rheader(r, tabs=None):
                     from s3 import s3_qrcode_represent
                     img = s3_qrcode_represent(signature, show_value=False)
                     img.add_class("rheader-qrcode")
+
+        elif tablename == "fin_voucher_program":
+
+            if not tabs:
+                tabs = [(T("Basic Details"), None),
+                        (T("Vouchers"), "voucher"),
+                        (T("Transactions"), "voucher_transaction"),
+                        #(T("Billing"), "voucher_billing"),
+                        ]
+                if settings.get_fin_voucher_eligibility_types():
+                    tabs.insert(1, (T("Eligibility Types"), "voucher_eligibility_type"))
+            rheader_fields = [["organisation_id"],
+                              ]
+            rheader_title = "name"
 
         rheader = S3ResourceHeader(rheader_fields, tabs, title=rheader_title)
         rheader = rheader(r, table = resource.table, record = record)
@@ -178,6 +193,208 @@ def rlpptm_project_rheader(r, tabs=None):
 
         rheader = S3ResourceHeader(rheader_fields, tabs, title=rheader_title)
         rheader = rheader(r, table = resource.table, record = record)
+
+    return rheader
+
+# =============================================================================
+def rlpptm_req_rheader(r, tabs=None):
+    """ REQ custom resource headers """
+
+    if r.representation != "html":
+        # Resource headers only used in interactive views
+        return None
+
+    tablename, record = s3_rheader_resource(r)
+    if tablename != r.tablename:
+        resource = current.s3db.resource(tablename, id=record.id)
+    else:
+        resource = r.resource
+
+    rheader = None
+    rheader_fields = []
+
+    if record:
+        T = current.T
+
+        if tablename == "req_req":
+
+            if not tabs:
+                tabs = [(T("Basic Details"), None),
+                        (T("Items"), "req_item"),
+                        ]
+
+            rheader_title = "site_id"
+
+            rheader_fields = [["req_ref", "transit_status"],
+                              ["date", "fulfil_status"],
+                              ]
+
+        rheader = S3ResourceHeader(rheader_fields, tabs, title=rheader_title)
+        rheader = rheader(r, table = resource.table, record = record)
+
+    return rheader
+
+# =============================================================================
+def rlpptm_supply_rheader(r, tabs=None):
+    """ SUPPLY custom resource headers """
+
+    if r.representation != "html":
+        # Resource headers only used in interactive views
+        return None
+
+    tablename, record = s3_rheader_resource(r)
+    if tablename != r.tablename:
+        resource = current.s3db.resource(tablename, id=record.id)
+    else:
+        resource = r.resource
+
+    rheader = None
+    rheader_fields = []
+
+    if record:
+        T = current.T
+
+        if tablename == "supply_item":
+
+            if not tabs:
+                tabs = [(T("Basic Details"), None),
+                        (T("Packs"), "item_pack"),
+                        (T("In Requests"), "req_item"),
+                        (T("In Shipments"), "track_item"),
+                        ]
+
+            rheader_title = "name"
+
+            rheader_fields = [["code"],
+                              ["um"],
+                              ]
+
+        rheader = S3ResourceHeader(rheader_fields, tabs, title=rheader_title)
+        rheader = rheader(r, table = resource.table, record = record)
+
+    return rheader
+
+# =============================================================================
+def rlpptm_inv_rheader(r, tabs=None):
+    """ INV custom resource headers """
+
+    if r.representation != "html":
+        # Resource headers only used in interactive views
+        return None
+
+    tablename, record = s3_rheader_resource(r)
+    if tablename != r.tablename:
+        resource = current.s3db.resource(tablename, id=record.id)
+    else:
+        resource = r.resource
+
+    rheader = None
+    rheader_fields = []
+
+    if record:
+        T = current.T
+
+        db = current.db
+        s3 = current.response.s3
+
+        auth = current.auth
+        s3db = current.s3db
+
+        from s3db.inv import SHIP_STATUS_IN_PROCESS, SHIP_STATUS_SENT
+
+        if tablename == "inv_send":
+            if not tabs:
+                tabs = [(T("Basic Details"), None),
+                        (T("Items"), "track_item"),
+                        ]
+
+            rheader_fields = [["req_ref", "send_ref"],
+                              ["status"],
+                              ["date"]
+                              ]
+            rheader_title = "to_site_id"
+
+            rheader = S3ResourceHeader(rheader_fields, tabs, title=rheader_title)
+
+            actions = []
+
+            # If the record has a send_ref and status is SHIP_STATUS_IN_PROCESS
+            # and there is at least one track item linked to it, add the send-button
+            if record.status == SHIP_STATUS_IN_PROCESS and \
+               record.send_ref and \
+               auth.s3_has_permission("update", resource.table, record_id = record.id):
+                titable = s3db.inv_track_item
+                query = (titable.send_id == record.id) & \
+                        (titable.deleted == False)
+                row = db(query).select(titable.id, limitby=(0, 1)).first()
+                if row:
+                    actions.append(A(T("Send Shipment"),
+                                     _href = URL(c = "inv",
+                                                 f = "send_process",
+                                                 args = [record.id]
+                                                 ),
+                                     _id = "send_process",
+                                     _class = "action-btn",
+                                     ))
+
+                    s3.jquery_ready.append('''S3.confirmClick("#send_process","%s")''' \
+                                            % T("Do you want to send this shipment?"))
+
+            rheader = rheader(r, table=resource.table, record=record, actions=actions)
+
+        elif tablename == "inv_recv":
+
+            if not tabs:
+                tabs = [(T("Basic Details"), None),
+                        (T("Items"), "track_item"),
+                        ]
+
+            # Get the number of items linked to this delivery
+            titable = s3db.inv_track_item
+            query = (titable.recv_id == record.id) & \
+                    (titable.deleted == False)
+            cnt = titable.id.count()
+            row = db(query).select(cnt).first()
+            num_items = row[cnt] if row else 0
+
+            # Representation of the number of items
+            def content(row):
+                if num_items == 1:
+                    msg = T("This shipment contains one line item")
+                elif num_items > 1:
+                    msg = T("This shipment contains %s items") % num_items
+                else:
+                    msg = "-"
+                return msg
+
+            rheader_fields = [["send_ref", "site_id"],
+                              ["status", (T("Content"), content)],
+                              ["date"]
+                              ]
+            rheader_title = "req_ref"
+
+            rheader = S3ResourceHeader(rheader_fields, tabs, title=rheader_title)
+
+            actions = []
+
+            # If the record is SHIP_STATUS_IN_PROCESS or SHIP_STATUS_SENT
+            # and there is at least one track item linked to it, add the receive-button
+            if record.status in (SHIP_STATUS_IN_PROCESS, SHIP_STATUS_SENT) and \
+               auth.s3_has_permission("update", resource.table, record_id = record.id) and \
+               num_items:
+
+                actions.append(A(T("Receive Shipment"),
+                                   _href = URL(c = "inv",
+                                               f = "recv_process",
+                                               args = [record.id]
+                                               ),
+                                   _id = "recv_process",
+                                   _class = "action-btn"
+                                   ))
+                s3.jquery_ready.append('''S3.confirmClick("#recv_process","%s")''' \
+                                        % T("Did you receive this shipment?"))
+
+            rheader = rheader(r, table=resource.table, record=record, actions=actions)
 
     return rheader
 

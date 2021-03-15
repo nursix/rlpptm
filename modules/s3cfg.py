@@ -1158,6 +1158,15 @@ class S3Config(Storage):
         """
         return self.base.get("solr_url", False)
 
+    def get_xml_formats(self):
+        """
+            Locations of custom export/import transformation stylesheets
+            - settings.base.xml_formats = {"<ext>": "<TMP>"}
+              => modules/templates/<TMP>/formats/<ext>/<method>.xsl
+        """
+        return self.base.get("xml_formats")
+
+
     def get_import_callback(self, tablename, callback):
         """
             Lookup callback to use for imports in the following order:
@@ -1326,6 +1335,16 @@ class S3Config(Storage):
         """
         return self.fin.get("voucher_eligibility_types")
 
+    def get_fin_voucher_invoice_status_labels(self):
+        """
+            Customise labels for invoice statuses
+            - dict {status: label}
+            - NEW, PAID, REJECTED are mandatory, can only change labels
+            - VERIFIED and APPROVED are optional, can be set to None to
+              disable completely
+        """
+        return self.fin.get("voucher_invoice_status_labels")
+
     # -------------------------------------------------------------------------
     # GIS (Map) Settings
     #
@@ -1344,6 +1363,12 @@ class S3Config(Storage):
             API key for Google Maps
         """
         return self.gis.get("api_google", "")
+
+    def get_gis_api_openweathermap(self):
+        """
+            API key for Open Weather Map
+        """
+        return self.gis.get("api_openweathermap", "")
 
     def get_gis_bbox_min_size(self):
         """
@@ -5922,6 +5947,13 @@ class S3Config(Storage):
             Whether to allow Alternative Items to be defined
         """
         return self.supply.get("use_alt_name", True)
+
+    def get_supply_shipping_code(self):
+        """
+            Custom shipping code generator (REQ, WB, GRN etc)
+            - function(prefix, site_id, field)
+        """
+        return self.supply.get("shipping_code")
 
     # -------------------------------------------------------------------------
     # Vulnerability

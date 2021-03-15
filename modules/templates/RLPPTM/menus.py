@@ -39,18 +39,20 @@ class S3MainMenu(default.S3MainMenu):
         """ Modules Menu """
 
         auth = current.auth
-        has_role = auth.s3_has_role
 
-        is_org_group_admin = lambda i: not has_role("ADMIN") and \
-                                       has_role("ORG_GROUP_ADMIN")
-        report_results = lambda i: not has_role("ADMIN") and \
-                                   has_role("VOUCHER_PROVIDER") and \
+        has_role = auth.s3_has_role
+        has_roles = auth.s3_has_roles
+
+        is_org_group_admin = lambda i: has_role("ORG_GROUP_ADMIN", include_admin=False)
+        report_results = lambda i: has_role("VOUCHER_PROVIDER", include_admin=False) and \
                                    len(get_stats_projects()) > 0
 
-        menu = [MM("Organizations",
-                   c="org", f="organisation", restrict=("ORG_GROUP_ADMIN", "ORG_ADMIN"),
-                   vars = {"mine": 1} if not has_role("ORG_GROUP_ADMIN") else None,
-                   ),
+        menu = [MM("Equipment", c=("req", "inv", "supply"), link=False)(
+                    MM("Orders##delivery", f="req", vars={"type": 1}),
+                    MM("Shipment##process", c="inv", f="send", restrict="SUPPLY_COORDINATOR"),
+                    MM("Deliveries", c="inv", f="recv", restrict="SUPPLY_REQUESTER"),
+                    MM("Items", c="supply", f="item", restrict="SUPPLY_COORDINATOR"),
+                    ),
                 MM("Test Results",
                    c="disease", f="case_diagnostics", restrict="DISEASE_TEST_READER",
                    ),
@@ -59,6 +61,10 @@ class S3MainMenu(default.S3MainMenu):
                     MM("Report Test Result", m="create", vars={"format": "popup"}, modal=True),
                     MM("List Test Results"),
                     ),
+                MM("Organizations",
+                   c="org", f="organisation", restrict=("ORG_GROUP_ADMIN", "ORG_ADMIN"),
+                   vars = {"mine": 1} if not has_role("ORG_GROUP_ADMIN") else None,
+                   ),
                 MM("Projects",
                    c = "project", f="project",
                    restrict = "ADMIN",
@@ -83,9 +89,9 @@ class S3MainMenu(default.S3MainMenu):
         # Link to voucher management
         if auth.s3_logged_in():
             f = None
-            if has_role("PROGRAM_MANAGER"):
+            if has_roles(("PROGRAM_MANAGER", "PROGRAM_ACCOUNTANT")):
                 label, f = "Voucher Programs", "voucher_program"
-            elif has_role("VOUCHER_PROVIDER"):
+            elif has_roles(("VOUCHER_PROVIDER", "PROVIDER_ACCOUNTANT")):
                 label, f = "Voucher Acceptance", "voucher_debit"
             elif has_role("VOUCHER_ISSUER"):
                 label, f = "Voucher Issuance", "voucher"
@@ -162,8 +168,7 @@ class S3MainMenu(default.S3MainMenu):
                               )
         else:
             s3_has_role = auth.s3_has_role
-            is_org_admin = lambda i: not s3_has_role(ADMIN) and \
-                                     s3_has_role("ORG_ADMIN")
+            is_org_admin = lambda i: s3_has_role("ORG_ADMIN", include_admin=False)
             menu_personal = MP()(
                         MP("Administration", c="admin", f="index",
                            restrict = ADMIN,
@@ -281,6 +286,10 @@ class S3OptionsMenu(default.S3OptionsMenu):
                           ),
                         M("Statistics", m="report"),
                         ),
+                    #M("Billing", link=False)(
+                    #   M("Compensation Claims", f="voucher_claim"),
+                    #   M("Invoices", f="voucher_invoice"),
+                    #   ),
                     )
 
     # -------------------------------------------------------------------------
@@ -342,5 +351,36 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         M("Create", m="create")
                         )
                     )
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def req():
+        """ REQ / Request Management """
+
+        return M()(
+                M("Orders##delivery", c="req", f="req", vars={"type": 1})(
+                    M("Create", m="create", vars={"type": 1}),
+                    ),
+                M("Shipment##process", c="inv", f="send", restrict="SUPPLY_COORDINATOR"),
+                M("Deliveries", "inv", "recv", restrict="SUPPLY_REQUESTER"),
+                M("Items", c="supply", f="item")(
+                    M("Create", m="create"),
+                    ),
+                M("Warehouses", c="inv", f="warehouse", restrict="ADMIN"),
+                )
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def supply(cls):
+        """ SUPPLY / Supply Chain Management """
+
+        return cls.req()
+
+    # -------------------------------------------------------------------------
+    @classmethod
+    def inv(cls):
+        """ INV / Inventory Management """
+
+        return cls.req()
 
 # END =========================================================================
