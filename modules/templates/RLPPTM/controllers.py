@@ -501,8 +501,10 @@ class approve(S3CustomController):
                         user.update_record(organisation_id = organisation_id,
                                            registration_key = None,
                                            )
-                        # Grant ORG_ADMIN
+
+                        # Grant ORG_ADMIN and PROVIDER_ACCOUNTANT
                         auth.s3_assign_role(user_id, "ORG_ADMIN", for_pe=org["pe_id"])
+                        auth.s3_assign_role(user_id, "PROVIDER_ACCOUNTANT")
                     else:
                         # Update User
                         user.update_record(registration_key = None)
@@ -667,6 +669,9 @@ class approve(S3CustomController):
                 else:
                     dt_pagination = "false"
 
+                # Disable exports
+                s3.no_formats = True
+
                 # Get the data table
                 dt, totalrows = resource.datatable(fields = list_fields,
                                                    start = start,
@@ -747,6 +752,8 @@ class approve(S3CustomController):
                              '"dataTable_id":"%s",' \
                              '"draw":%s,' \
                              '"data":[]}' % (totalrows, list_id, draw)
+            else:
+                S3Request("auth", "user").error(415, current.ERROR.BAD_FORMAT)
 
         return output
 
