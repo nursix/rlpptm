@@ -809,8 +809,9 @@ class PRPersonModel(S3Model):
             super_link("pe_id", "pr_pentity"),
             super_link("track_id", "sit_trackable"),
             # Base location
-            self.gis_location_id(readable=False,
-                                 writable=False),
+            self.gis_location_id(readable = False,
+                                 writable = False,
+                                 ),
             self.pr_pe_label(
                 comment = DIV(_class="tooltip",
                               _title="%s|%s" % (T("ID Tag Number"),
@@ -826,9 +827,9 @@ class PRPersonModel(S3Model):
             # - remove refs to writing this from this module
             # - update read refs in controllers/dvi.py & controllers/mpr.py
             Field("missing", "boolean",
-                  readable=False,
-                  writable=False,
-                  default=False,
+                  readable = False,
+                  writable = False,
+                  default = False,
                   represent = lambda missing: \
                               (missing and ["missing"] or [""])[0]),
             Field("first_name", notnull=True,
@@ -1055,6 +1056,7 @@ class PRPersonModel(S3Model):
                                                   "multiple": False,
                                                   },
                        cr_shelter_registration_history = "person_id",
+                       org_site_event = "person_id",
                        project_activity_person = "person_id",
                        supply_distribution_person = "person_id",
                        event_incident = {"link": "event_human_resource",
@@ -9771,11 +9773,11 @@ def pr_realm_users(realm, roles=None, role_types=OU):
                 role_types = [role_types]
             query &= (rtable.role_type.belongs(role_types))
         query &= (atable.deleted != True) & \
-                (atable.role_id == rtable.id) & \
-                (atable.pe_id == ltable.pe_id) & \
-                (ltable.deleted != True) & \
-                (ltable.user_id == utable.id) & \
-                (utable.deleted != True)
+                 (atable.role_id == rtable.id) & \
+                 (atable.pe_id == ltable.pe_id) & \
+                 (ltable.deleted != True) & \
+                 (ltable.user_id == utable.id) & \
+                 (utable.deleted != True)
     rows = current.db(query).select(utable.id, utable[userfield])
     if rows:
         return Storage([(row.id, row[userfield]) for row in rows])

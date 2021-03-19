@@ -44,6 +44,7 @@ __all__ = ("S3OrganisationModel",
            "S3OrganisationTypeTagModel",
            "S3SiteModel",
            "S3SiteDetailsModel",
+           "S3SiteEventModel",
            "S3SiteNameModel",
            "S3SiteShiftModel",
            "S3SiteTagModel",
@@ -3274,6 +3275,11 @@ class S3SiteModel(S3Model):
                                           "multiple": False,
                                           },
 
+                       # Events (Check-In/Check-Out)
+                       org_site_event = {"name": "event",
+                                         "joinby": "site_id",
+                                         },
+
                        # Tags
                        org_site_tag = {"name": "tag",
                                        "joinby": "site_id",
@@ -3615,10 +3621,6 @@ class S3SiteDetailsModel(S3Model):
         settings = current.deployment_settings
         last_contacted = settings.get_org_site_last_contacted()
 
-        messages = current.messages
-        NONE = messages["NONE"]
-        UNKNOWN_OPT = messages.UNKNOWN_OPT
-
         facility_status_opts = {
             1: T("Normal"),
             2: T("Compromised"),
@@ -3645,10 +3647,8 @@ class S3SiteDetailsModel(S3Model):
                            requires = IS_EMPTY_OR(
                                       IS_IN_SET(facility_status_opts)),
                            label = T("Facility Status"),
-                           represent = lambda opt: \
-                                       NONE if opt is None else \
-                                       facility_status_opts.get(opt,
-                                                                UNKNOWN_OPT)),
+                           represent = S3Represent(options = facility_status_opts),
+                           ),
                      s3_date("date_reopening",
                              label = T("Estimated Reopening Date"),
                              readable = False,
@@ -3659,10 +3659,8 @@ class S3SiteDetailsModel(S3Model):
                            requires = IS_EMPTY_OR(
                                         IS_IN_SET(power_supply_type_opts,
                                                   zero=None)),
-                           represent = lambda opt: \
-                                       NONE if opt is None else \
-                                       power_supply_type_opts.get(opt,
-                                                                  UNKNOWN_OPT)),
+                           represent = S3Represent(options = power_supply_type_opts),
+                           ),
                      s3_date("last_contacted",
                              label = T("Last Contacted"),
                              readable = last_contacted,
@@ -3695,6 +3693,51 @@ class S3SiteDetailsModel(S3Model):
                                        ondelete = "CASCADE",
                                        ),
                      *s3_meta_fields())
+
+        # Pass names back to global scope (s3.*)
+        return {}
+
+# =============================================================================
+class S3SiteEventModel(S3Model):
+    """
+        Events for Sites
+        - Check-In/Check-Out
+    """
+
+    names = ("org_site_event",
+             )
+
+    def model(self):
+
+        T = current.T
+
+        event_opts = {1: T("Opened"),
+                      2: T("Closed"),
+                      3: T("Check-in"),
+                      4: T("Check-out"),
+                      }
+
+        # ---------------------------------------------------------------------
+        # Site Events
+        #   Opened/Closed
+        #   Check-In/Check-Out
+        #
+        # Possible @ToDo:
+        #    Comments
+        #    Staff Member who checks them in/out
+        #
+        tablename = "org_site_event"
+        self.define_table(tablename,
+                          # Component not instance
+                          self.super_link("site_id", "org_site"),
+                          s3_date(default = "now"),
+                          Field("event", "integer",
+                                label = T("Event"),
+                                requires = IS_IN_SET(event_opts),
+                                represent = S3Represent(options = event_opts),
+                                ),
+                          self.pr_person_id(ondelete = "SET NULL"),
+                          *s3_meta_fields())
 
         # Pass names back to global scope (s3.*)
         return {}
@@ -3748,7 +3791,7 @@ class S3SiteShiftModel(S3Model):
 
     def model(self):
 
-        T = current.T
+        #T = current.T
 
         # ---------------------------------------------------------------------
         # Shifts for a Site
@@ -6151,21 +6194,29 @@ class org_SiteCheckInMethod(S3Method):
             @param person: the person record
         """
 
-        s3db = current.s3db
-        ptable = s3db.pr_person
-
         from s3 import S3Trackable
-        person_id = person.id
+
+        s3db = current.s3db
+
         record = r.record
+        site_id = record.site_id
+        person_id = person.id
+
+        # Add an entry to the Site Event Log
+        s3db.org_site_event.insert(person_id = person_id,
+                                   site_id = site_id,
+                                   event = 3,
+                                   )
 
         # Update tracking location for the person
+        ptable = s3db.pr_person
         tracker = S3Trackable(ptable, record_id=person_id)
         tracker.set_location(record.location_id)
 
         # Callback
         site_check_in = s3db.get_config(r.tablename, "site_check_in")
         if site_check_in:
-            site_check_in(record.site_id, person_id)
+            site_check_in(site_id, person_id)
 
     # -------------------------------------------------------------------------
     def check_out(self, r, person):
@@ -6177,20 +6228,29 @@ class org_SiteCheckInMethod(S3Method):
             @param person: the person record
         """
 
-        s3db = current.s3db
-        ptable = s3db.pr_person
-
         from s3 import S3Trackable
-        person_id = person.id
+
+        s3db = current.s3db
 
         record = r.record
+        site_id = record.site_id
+        person_id = person.id
 
+        # Add an entry to the Site Event Log
+        s3db.org_site_event.insert(person_id = person_id,
+                                   site_id = site_id,
+                                   event = 4,
+                                   )
+
+        # Update tracking location for the person
+        ptable = s3db.pr_person
         tracker = S3Trackable(ptable, record_id=person_id)
         tracker.set_location(person.location_id)
 
+        # Callback
         site_check_out = s3db.get_config(r.tablename, "site_check_out")
         if site_check_out:
-            site_check_out(record.site_id, person_id)
+            site_check_out(site_id, person_id)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -7070,7 +7130,7 @@ def org_office_controller():
             marker_fn = s3db.get_config("org_office", "marker_fn")
             if marker_fn:
                 # Load these models now as they'll be needed when we encode
-                mtable = s3db.gis_marker
+                s3db.table("gis_marker")
 
         elif r.representation == "xls":
             list_fields = r.resource.get_config("list_fields")
@@ -7227,7 +7287,7 @@ def org_facility_controller():
 
         elif r.representation == "geojson":
             # Load these models now as they'll be needed when we encode
-            mtable = s3db.gis_marker
+            s3db.table("gis_marker")
 
         return True
     s3.prep = prep

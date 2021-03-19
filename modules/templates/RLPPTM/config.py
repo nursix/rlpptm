@@ -386,32 +386,63 @@ def config(settings):
     # -------------------------------------------------------------------------
     def customise_cms_post_resource(r, tablename):
 
-        from s3 import S3SQLCustomForm, S3SQLInlineComponent
+        s3db = current.s3db
 
-        crud_form = S3SQLCustomForm("name",
-                                    "body",
-                                    "date",
-                                    S3SQLInlineComponent("document",
-                                                         name = "file",
-                                                         label = T("Attachments"),
-                                                         fields = ["file", "comments"],
-                                                         filterby = {"field": "file",
-                                                                     "options": "",
-                                                                     "invert": True,
-                                                                     },
-                                                         ),
-                                    "comments",
-                                    )
+        from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink
 
-        current.s3db.configure("cms_post",
-                               crud_form = crud_form,
-                               list_fields = ["post_module.module",
-                                              "post_module.resource",
-                                              "name",
-                                              "date",
-                                              "comments",
-                                              ],
-                               )
+        record = r.record
+        if r.tablename == "cms_series" and \
+           record and record.name == "Announcements":
+            table = s3db.cms_post
+            field = table.priority
+            field.readable = field.writable = True
+
+            crud_fields = ["name",
+                           "body",
+                           "priority",
+                           "date",
+                           "expired",
+                           S3SQLInlineLink("roles",
+                                           label = T("Roles"),
+                                           field = "group_id",
+                                           ),
+                           ]
+            list_fields = ["date",
+                           "priority",
+                           "name",
+                           "body",
+                           "post_role.group_id",
+                           "expired",
+                           ]
+            orderby = "cms_post.date desc"
+        else:
+            crud_fields = ["name",
+                           "body",
+                           "date",
+                           S3SQLInlineComponent("document",
+                                                name = "file",
+                                                label = T("Attachments"),
+                                                fields = ["file", "comments"],
+                                                filterby = {"field": "file",
+                                                            "options": "",
+                                                            "invert": True,
+                                                            },
+                                                ),
+                           "comments",
+                           ]
+            list_fields = ["post_module.module",
+                           "post_module.resource",
+                           "name",
+                           "date",
+                           "comments",
+                           ]
+            orderby = "cms_post.name"
+
+        s3db.configure("cms_post",
+                       crud_form = S3SQLCustomForm(*crud_fields),
+                       list_fields = list_fields,
+                       orderby = orderby,
+                       )
 
     settings.customise_cms_post_resource = customise_cms_post_resource
 
@@ -1004,6 +1035,7 @@ def config(settings):
                      (T("Remaining Compensation Claims"), "sum(balance)"),
                      )
             axes = ["program_id",
+                    "pe_id",
                     "status",
                     ]
             if current.auth.s3_has_role("PROGRAM_MANAGER"):
@@ -1043,6 +1075,13 @@ def config(settings):
 
             resource = r.resource
 
+            # Catch inappropriate cancel-attempts
+            record = r.record
+            if record and not r.component and r.method == "cancel":
+                from .helpers import can_cancel_debit
+                if not can_cancel_debit(record):
+                    r.unauthorised()
+
             has_role = current.auth.s3_has_role
             if has_role("PROGRAM_ACCOUNTANT") and not has_role("PROGRAM_MANAGER"):
 
@@ -1053,6 +1092,9 @@ def config(settings):
                 if role_realms is not None:
                     query = FS("billing_id$organisation_id$pe_id").belongs(role_realms)
                     resource.add_filter(query)
+
+                # PROGRAM_ACCOUNTANT does not (need to) see cancelled debits
+                resource.add_filter(FS("cancelled") == False)
 
             # Check which programs and organisations the user can accept vouchers for
             program_ids, org_ids, pe_ids = s3db.fin_voucher_permitted_programs(
@@ -1094,7 +1136,7 @@ def config(settings):
                     field.readable = field.writable = False
 
                 # Always show quantity
-                if r.record:
+                if record:
                     field = table.quantity
                     field.readable = True
 
