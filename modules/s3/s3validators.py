@@ -1221,6 +1221,36 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
             - INPUT(_type="text", _name="name", requires=IS_NOT_ONE_OF(db, db.table))
     """
 
+    def __init__(self,
+                 dbset,
+                 field,
+                 error_message = "Value already in database or empty",
+                 allowed_override = None,
+                 ignore_common_filters = False,
+                 skip_imports = False,
+                 ):
+        """
+            Constructor
+
+            @param dbset: the DB set
+            @param field: the Field
+            @param error_message: the error message
+            @param allowed_override: permit duplicates of these values
+            @param ignore_common_filters: enforce uniqueness beyond global
+                                          table filters
+            @param skip_import: do not validate during imports
+                                (e.g. to let deduplicate take care of duplicates)
+        """
+
+        super(IS_NOT_ONE_OF, self).__init__(dbset,
+                                            field,
+                                            error_message = error_message,
+                                            allowed_override = allowed_override,
+                                            ignore_common_filters = ignore_common_filters,
+                                            )
+        self.skip_imports = skip_imports
+
+    # -------------------------------------------------------------------------
     def validate(self, value, record_id=None):
         """
             Validator
@@ -1236,7 +1266,8 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
             # Empty => error
             raise ValidationError(translate(self.error_message))
 
-        if value in self.allowed_override:
+        allowed_override = self.allowed_override
+        if allowed_override and value in allowed_override:
             # Uniqueness-requirement overridden
             return value
 
@@ -1245,6 +1276,11 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
         dbset = self.dbset
         table = dbset.db[tablename]
         field = table[fieldname]
+
+        if self.skip_imports and current.response.s3.bulk and not field.unique:
+            # Uniqueness-requirement to be enforced by deduplicate
+            # (which can't take effect if we reject the value here)
+            return value
 
         # Does the table allow archiving ("soft-delete")?
         archived = "deleted" in table

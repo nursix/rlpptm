@@ -33,6 +33,7 @@ __all__ = ("FinExpensesModel",
            "FinProductModel",
            "FinSubscriptionModel",
            "fin_VoucherProgram",
+           "fin_VoucherBilling",
            "fin_rheader",
            "fin_voucher_permitted_programs",
            "fin_voucher_eligibility_types",
@@ -425,10 +426,6 @@ class FinVoucherModel(S3Model):
                        ]
 
         # Table configureation
-        # TODO onvalidation to enforce order
-        # - must be later than any active billing for the same program
-        # TODO onaccept to
-        # - schedule task to generate claims
         self.configure(tablename,
                        list_fields = list_fields,
                        deletable = False, # must cancel, not delete
@@ -437,7 +434,12 @@ class FinVoucherModel(S3Model):
                        )
 
         # Reusable Field
-        represent = S3Represent(lookup=tablename, fields=["date"])
+        represent = S3Represent(lookup = tablename,
+                                fields = ["date"],
+                                labels = lambda row: S3DateTime.date_represent(row.date,
+                                                                               utc = True,
+                                                                               ),
+                                )
         billing_id = S3ReusableField("billing_id", "reference %s" % tablename,
                                      label = T("Billing"),
                                      represent = represent,
@@ -520,6 +522,11 @@ class FinVoucherModel(S3Model):
                      Field("refno",
                            label = T("Ref.No."),
                            represent = lambda v, row=None: v if v else "-",
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (T("Ref.No."),
+                                                           T("Internal identifier to track the payment (optional), e.g. payment order number"),
+                                                           ),
+                                         ),
                            ),
                      self.hrm_human_resource_id(
                             label = T("Official in Charge"),
@@ -704,6 +711,11 @@ class FinVoucherModel(S3Model):
                      Field("refno",
                            label = T("Ref.No."),
                            represent = lambda v, row=None: v if v else "-",
+                           comment = DIV(_class="tooltip",
+                                         _title="%s|%s" % (T("Ref.No."),
+                                                           T("A reference number for bookkeeping purposes (optional, for your own use)"),
+                                                           ),
+                                         ),
                            ),
 
                      # Totals
@@ -815,7 +827,6 @@ class FinVoucherModel(S3Model):
         )
 
         # Reusable field
-        # TODO Represent
         represent = S3Represent(lookup=tablename, fields=["refno", "date"])
         claim_id = S3ReusableField("claim_id", "reference %s" % tablename,
                                    label = T("Compensation Claim"),
@@ -4044,6 +4055,11 @@ class fin_VoucherBilling(object):
             bprefix = ""
         invoice_no = "B%s%02dC%04d" % (bprefix, claim.billing_id, claim.id)
 
+        # Customise invoice resource
+        from s3 import S3Request
+        r = S3Request("fin", "voucher_invoice", args=[], get_vars={})
+        r.customise_resource("fin_voucher_invoice")
+
         # Generate invoice
         idata = {"date": datetime.datetime.utcnow().date(),
                  "invoice_no": invoice_no,
@@ -4490,7 +4506,7 @@ class fin_VoucherCancelDebit(S3Method):
 
         # Form fields and mark-required
         formfields = [Field("reason",
-                            label = T("Reason for cancellation"),
+                            label = T("Reason for Cancellation##fin"),
                             requires = IS_NOT_EMPTY(error_message=T("Reason must be specified")),
                             ),
                       Field("do_cancel", "boolean",
@@ -4602,7 +4618,11 @@ def fin_voucher_eligibility_types(program_ids, organisation_ids=None):
     return eligibility_types
 
 # =============================================================================
-def fin_voucher_permitted_programs(mode="issuer", partners_only=False):
+def fin_voucher_permitted_programs(mode = "issuer",
+                                   partners_only = False,
+                                   c = None,
+                                   f = None,
+                                   ):
     """
         Get a list of programs and organisations the current user
         is permitted to issue/accept vouchers for
@@ -4612,6 +4632,10 @@ def fin_voucher_permitted_programs(mode="issuer", partners_only=False):
                               for the project under which a voucher program
                               runs, in order to issue/accept vouchers under
                               that program
+        @param c: override request.controller to look up for a
+                  different controller context
+        @param f: override request.function to look up for a
+                  different controller context
 
         @returns: tuple of lists (program_ids, org_ids, pe_ids)
     """
@@ -4625,10 +4649,18 @@ def fin_voucher_permitted_programs(mode="issuer", partners_only=False):
     permitted_realms = current.auth.permission.permitted_realms
     if mode == "issuer":
         fn = "issuers_id"
-        realms = permitted_realms("fin_voucher", "create")
+        realms = permitted_realms("fin_voucher",
+                                  method = "create",
+                                  c = c,
+                                  f = f,
+                                  )
     else:
         fn = "providers_id"
-        realms = permitted_realms("fin_voucher_debit", "create")
+        realms = permitted_realms("fin_voucher_debit",
+                                  method = "create",
+                                  c = c,
+                                  f = f,
+                                  )
 
     if realms is not None and not realms:
         # No access to any programs for any orgs

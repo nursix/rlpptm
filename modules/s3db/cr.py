@@ -93,10 +93,9 @@ class CRShelterModel(S3Model):
                      Field("name", notnull=True,
                            label = NAME,
                            requires = [IS_NOT_EMPTY(),
-                                       # @todo: add unique-constraint, otherwise
-                                       # IS_NOT_ONE_OF blocks reference imports
                                        IS_NOT_ONE_OF(db,
                                                      "%s.name" % tablename,
+                                                     skip_imports = True,
                                                      ),
                                        ],
                            ),
@@ -190,9 +189,9 @@ class CRShelterModel(S3Model):
                 msg_list_empty = T("No Shelter Services currently registered"))
 
         service_represent = S3Represent(lookup=tablename, translate=True)
-        service_multirepresent = S3Represent(lookup=tablename,
-                                             translate=True,
-                                             multiple=True
+        service_multirepresent = S3Represent(lookup = tablename,
+                                             translate = True,
+                                             multiple = True
                                              )
 
         shelter_service_id = S3ReusableField("shelter_service_id",
@@ -399,8 +398,7 @@ class CRShelterModel(S3Model):
                      Field("status", "integer",
                            label = T("Status"),
                            default = 2, # Open
-                           represent = lambda opt: \
-                               cr_shelter_opts.get(opt, messages.UNKNOWN_OPT),
+                           represent = S3Represent(options = cr_shelter_opts),
                            requires = IS_EMPTY_OR(
                                        IS_IN_SET(cr_shelter_opts)
                                        ),
@@ -644,8 +642,7 @@ class CRShelterModel(S3Model):
                      s3_date(),
                      Field("status", "integer",
                            label = T("Status"),
-                           represent = lambda opt: \
-                               cr_shelter_opts.get(opt, messages.UNKNOWN_OPT),
+                           represent = S3Represent(options = cr_shelter_opts),
                            requires = IS_EMPTY_OR(
                                        IS_IN_SET(cr_shelter_opts)
                                        ),
@@ -948,16 +945,48 @@ class CRShelterModel(S3Model):
             After DB I/O
         """
 
+        s3db = current.s3db
         form_vars = form.vars
+        shelter_id = form_vars.id
 
         # Update Affiliation, record ownership and component ownership
-        current.s3db.org_update_affiliations("cr_shelter", form_vars)
+        s3db.org_update_affiliations("cr_shelter", form_vars)
 
         if current.deployment_settings.get_cr_shelter_population_dynamic():
             # Update population and available capacity
-            cr_update_shelter_population(form_vars.id)
+            cr_update_shelter_population(shelter_id)
 
-        # @ToDo: Update/Create a cr_shelter_status record
+        # @ToDo: Create a cr_shelter_status record
+
+
+        # Create an org_site_event record
+        stable = s3db.cr_shelter
+        shelter = current.db(stable.id == shelter_id).select(stable.site_id,
+                                                             stable.status,
+                                                             stable.obsolete,
+                                                             limitby = (0, 1)
+                                                             ).first()
+        record = form.record
+        if record:
+            # Update form
+            obsolete = shelter.obsolete
+            if obsolete != record.obsolete:
+                s3db.org_site_event.insert(site_id = shelter.site_id,
+                                           event = 4, # Obsolete Change
+                                           comment = obsolete,
+                                           )
+            status = shelter.status
+            if status != record.status:
+                s3db.org_site_event.insert(site_id = shelter.site_id,
+                                           event = 1, # Status Change
+                                           status = status,
+                                           )
+        else:
+            # Create form
+            s3db.org_site_event.insert(site_id = shelter.site_id,
+                                       event = 1, # Status Change
+                                       status = shelter.status,
+                                       )
 
         return
 

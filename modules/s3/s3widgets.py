@@ -398,9 +398,9 @@ $(function () {
 # =============================================================================
 class S3AddPersonWidget(FormWidget):
     """
-        Widget for person_id (future also: human_resource_id) fields that
-        allows to either select an existing person (autocomplete), or to
-        create a new person record inline
+        Widget for person_id or human_resource_id fields that
+        allows to either select an existing person/hrm (autocomplete), or to
+        create a new person/hrm record inline
 
         Features:
         - embedded fields configurable in deployment settings
@@ -452,6 +452,12 @@ class S3AddPersonWidget(FormWidget):
         self.first_name_only = first_name_only
         self.pe_label = pe_label
 
+        self.hrm = False
+
+        self.fields = {}
+        self.labels = {}
+        self.required = {}
+
     # -------------------------------------------------------------------------
     def __call__(self, field, value, **attributes):
         """
@@ -462,8 +468,8 @@ class S3AddPersonWidget(FormWidget):
             @param attributes: additional HTML attributes for the widget
         """
 
-        s3db = current.s3db
         T = current.T
+        s3db = current.s3db
 
         # Attributes for the main input
         default = {"_type": "text",
@@ -481,11 +487,9 @@ class S3AddPersonWidget(FormWidget):
         if reference_type == "pr_person":
             hrm = False
             fn = "person"
-        # Currently not supported + no active use-case
-        # @todo: implement in create_person()
-        #elif reference_type == "hrm_human_resource":
-        #    hrm = True
-        #    fn = "human_resource"
+        elif reference_type == "hrm_human_resource":
+            self.hrm = hrm = True
+            fn = "human_resource"
         else:
             raise TypeError("S3AddPersonWidget: unsupported field type %s" % field.type)
 
@@ -493,17 +497,25 @@ class S3AddPersonWidget(FormWidget):
 
         # Field label overrides
         # (all other labels are looked up from the corresponding Field)
-        self.labels = {
+        labels = {
             "full_name": T(settings.get_pr_label_fullname()),
             "email": T("Email"),
             "mobile_phone": settings.get_ui_label_mobile_phone(),
             "home_phone": T("Home Phone"),
             }
 
+        # Tag labels (...and tags, in order as configured)
+        tags = []
+        for label, tag in settings.get_pr_request_tags():
+            if tag not in labels:
+                labels[tag] = label
+            tags.append(tag)
+
+        self.labels = labels
+
         # Fields which, if enabled, are required
         # (all other fields are assumed to not be required)
-        self.required = {
-            "organisation_id": settings.get_hrm_org_required(),
+        required = {
             "full_name": True,
             "first_name": True,
             "middle_name": settings.get_L10n_mandatory_middlename(),
@@ -532,14 +544,17 @@ class S3AddPersonWidget(FormWidget):
 
         values = {}
 
-        # Organisation ID
         if hrm:
+            # Organisation ID
             htable = s3db.hrm_human_resource
             f = htable.organisation_id
             if f.default:
                 values["organisation_id"] = s3_str(f.default)
             fields["organisation_id"] = f
             fappend("organisation_id")
+            required["organisation_id"] = settings.get_hrm_org_required()
+
+        self.required = required
 
         # ID Label
         pe_label = self.pe_label
@@ -578,9 +593,7 @@ class S3AddPersonWidget(FormWidget):
                     fappend("middle_name")
                 else:
                     formfields.insert(-1, "middle_name")
-
         else:
-
             # Single combined name field
             fields["full_name"] = True
             fappend("full_name")
@@ -646,6 +659,17 @@ class S3AddPersonWidget(FormWidget):
             fields["home_phone"] = True
             fappend("home_phone")
 
+        # Tags
+        for tag in tags:
+            if tag not in fields:
+                fields[tag] = True
+                fappend(tag)
+            elif current.response.s3.debug:
+                # This error would be very hard to diagnose because it only
+                # messes up the data without ever hitting an exception, so
+                # we raise one right here before it can do any harm:
+                raise RuntimeError("AddPersonWidget person field <-> tag name collision")
+
         self.fields = fields
 
         # Extract existing values
@@ -661,7 +685,7 @@ class S3AddPersonWidget(FormWidget):
             else:
                 record_id = value
             if record_id:
-                values = self.extract(record_id, fields, hrm=hrm, details=details)
+                values = self.extract(record_id, fields, details=details, tags=tags, hrm=hrm)
 
         # Generate the embedded rows
         widget_id = str(field).replace(".", "_")
@@ -691,6 +715,10 @@ class S3AddPersonWidget(FormWidget):
             widget_options["separateNameFields"] = True
             if trigger:
                 widget_options["trigger"] = trigger
+
+        # Tags
+        if tags:
+            widget_options["tags"] = tags
 
         # Non default AC controller/function?
         if controller != "pr":
@@ -723,13 +751,14 @@ class S3AddPersonWidget(FormWidget):
         return TAG[""](DIV(INPUT(**attr), _class = "hide"), formrows)
 
     # -------------------------------------------------------------------------
-    def extract(self, record_id, fields, details=False, hrm=False):
+    def extract(self, record_id, fields, details=False, tags=None, hrm=False):
         """
             Extract the data for a record ID
 
             @param record_id: the record ID
             @param fields: the fields to extract, dict {propName: Field}
             @param details: includes person details
+            @param tags: list of Tags
             @param hrm: record ID is a hrm_human_resource ID rather
                         than person ID
 
@@ -737,8 +766,8 @@ class S3AddPersonWidget(FormWidget):
         """
 
         db = current.db
-
         s3db = current.s3db
+
         ptable = s3db.pr_person
         dtable = s3db.pr_person_details
 
@@ -746,6 +775,8 @@ class S3AddPersonWidget(FormWidget):
         qfields.append(ptable.pe_id)
 
         if hrm:
+            if tags:
+                qfields.append(ptable.id)
             htable = s3db.hrm_human_resource
             query = (htable.id == record_id)
             join = ptable.on(ptable.id == htable.person_id)
@@ -768,7 +799,7 @@ class S3AddPersonWidget(FormWidget):
 
 
         person = row.pr_person if join or left else row
-        values = dict((k, person[k]) for k in person)
+        values = {k: person[k] for k in person}
 
         if fields.get("full_name"):
             values["full_name"] = s3_fullname(person)
@@ -782,8 +813,17 @@ class S3AddPersonWidget(FormWidget):
             human_resource = row.hrm_human_resource
             for k in human_resource:
                 values[k] = human_resource[k]
+            person_id = person.id
+        else:
+            person_id = record_id
 
-        values.update(self.get_contact_data(row.pe_id))
+        # Add tags
+        if tags:
+            for k, v in self.get_tag_data(person_id, tags).items():
+                if k not in values:
+                    values[k] = v
+
+        values.update(self.get_contact_data(person.pe_id))
 
         return values
 
@@ -822,7 +862,7 @@ class S3AddPersonWidget(FormWidget):
 
             rows = current.db(query).select(ctable.contact_method,
                                             ctable.value,
-                                            orderby=ctable.priority,
+                                            orderby = ctable.priority,
                                             )
 
             # Extract the values
@@ -835,6 +875,29 @@ class S3AddPersonWidget(FormWidget):
                     break
 
         return values
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def get_tag_data(person_id, tags):
+        """
+            Extract the tag data for a person_id
+
+            @param person_id: the person_id
+            @param tags: list of tags
+
+            @return: a dict {fieldname: value}, where field names
+                     correspond to the tag name (field map)
+        """
+
+        ttable = current.s3db.pr_person_tag
+        query = (ttable.person_id == person_id) & \
+                (ttable.tag.belongs(tags)) & \
+                (ttable.deleted == False)
+
+        rows = current.db(query).select(ttable.tag,
+                                        ttable.value,
+                                        )
+        return {row.tag: row.value for row in rows}
 
     # -------------------------------------------------------------------------
     def embedded_form(self, label, widget_id, formfields, values):
@@ -893,6 +956,8 @@ class S3AddPersonWidget(FormWidget):
         rows.append(row)
 
         # Input rows
+        get_label = self.get_label
+        get_widget = self.get_widget
         for fname in formfields:
 
             field = self.fields.get(fname)
@@ -901,7 +966,7 @@ class S3AddPersonWidget(FormWidget):
 
             field_id = "%s_%s" % (widget_id, fname)
 
-            label = self.get_label(fname)
+            label = get_label(fname)
             required = self.required.get(fname, False)
             if required:
                 label = DIV("%s:" % label, SPAN(" *", _class="req"))
@@ -909,16 +974,9 @@ class S3AddPersonWidget(FormWidget):
                 label = "%s:" % label
             label = LABEL(label, _for=field_id)
 
-            widget = self.get_widget(fname, field)
+            widget = get_widget(fname, field)
             value = values.get(fname, "")
-            if not widget:
-                value = s3_str(value)
-                widget = INPUT(_id = field_id,
-                               _name = fname,
-                               _value = value,
-                               old_value = value,
-                               )
-            else:
+            if widget:
                 widget = widget(field,
                                 value,
                                 requires = None,
@@ -926,8 +984,26 @@ class S3AddPersonWidget(FormWidget):
                                 old_value = value,
                                 )
 
+                if fname == "organisation_id":
+                    comment= None
+                    #comment = S3PopupLink(c = "org",
+                    #                      f = "organisation",
+                    #                      label = ADD_ORGANIZATION,
+                    #                      title = ADD_ORGANIZATION,
+                    #                      tooltip = tooltip,
+                    #                      )
+                else:
+                    comment = None
+            else:
+                value = s3_str(value)
+                widget = INPUT(_id = field_id,
+                               _name = fname,
+                               _value = value,
+                               old_value = value,
+                               )
+                comment = None
 
-            row = formstyle("%s__row" % field_id, label, widget, "")
+            row = formstyle("%s__row" % field_id, label, widget, comment)
             if tuple_rows:
                 row[0].add_class("box_middle")
                 row[1].add_class("box_middle")
@@ -975,7 +1051,8 @@ class S3AddPersonWidget(FormWidget):
         return label
 
     # -------------------------------------------------------------------------
-    def get_widget(self, fieldname, field):
+    @staticmethod
+    def get_widget(fieldname, field):
         """
             Get a widget for an embedded field; only when the field needs
             a specific widget => otherwise return None here, so the form
@@ -990,7 +1067,9 @@ class S3AddPersonWidget(FormWidget):
         # Fields which require a specific widget
         widget = None
 
-        if fieldname in ("organisation_id", "gender"):
+        if fieldname in ("organisation_id",
+                         "gender",
+                         ):
             widget = OptionsWidget.widget
 
         elif fieldname == "date_of_birth":
@@ -1034,14 +1113,15 @@ class S3AddPersonWidget(FormWidget):
         # Widget instantiation
         script = '''$('#%(widget_id)s').addPerson(%(options)s)''' % \
                  {"widget_id": widget_id,
-                  "options": json.dumps(opts),
+                  "options": json.dumps(opts, separators=SEPARATORS),
                   }
         jquery_ready = s3.jquery_ready
         if script not in jquery_ready:
             jquery_ready.append(script)
 
     # -------------------------------------------------------------------------
-    def inject_i18n(self, labels):
+    @staticmethod
+    def inject_i18n(labels):
         """
             Inject translations for screen messages rendered by the
             client-side script
@@ -1073,7 +1153,9 @@ class S3AddPersonWidget(FormWidget):
         if (error):
             return value, error
 
-        person_id = data.get("id")
+        data_get = data.get
+
+        person_id = data_get("id")
         if person_id:
             # Existing record selected => return ID as-is
             return person_id, None
@@ -1087,14 +1169,14 @@ class S3AddPersonWidget(FormWidget):
             data.update(names)
 
         # Validate phone numbers
-        mobile = data.get("mobile_phone")
+        mobile = data_get("mobile_phone")
         if mobile:
             validator = IS_PHONE_NUMBER_SINGLE(international=True)
             mobile, error = validator(mobile)
             if error:
                 return (None, error)
 
-        home_phone = data.get("home_phone")
+        home_phone = data_get("home_phone")
         if home_phone:
             validator = IS_PHONE_NUMBER_MULTI()
             home_phone, error = validator(home_phone)
@@ -1102,14 +1184,14 @@ class S3AddPersonWidget(FormWidget):
                 return (None, error)
 
         # Validate date of birth
-        dob = data.get("date_of_birth")
+        dob = data_get("date_of_birth")
         if not dob and \
            self.fields.get("date_of_birth") and \
            self.required.get("date_of_birth"):
             return (None, current.T("Date of Birth is Required"))
 
         # Validate the email
-        error = self.validate_email(data.get("email"))[1]
+        error = self.validate_email(data_get("email"))[1]
         if error:
             return (None, error)
 
@@ -1117,7 +1199,8 @@ class S3AddPersonWidget(FormWidget):
         return self.create_person(data)
 
     # -------------------------------------------------------------------------
-    def parse(self, value):
+    @staticmethod
+    def parse(value):
         """
             Parse the main input JSON when the form gets submitted
 
@@ -1154,7 +1237,10 @@ class S3AddPersonWidget(FormWidget):
         if separate_name_fields is None:
             separate_name_fields = settings.get_pr_separate_name_fields()
 
-        keys = ["first_name", "middle_name", "last_name"]
+        keys = ["first_name",
+                "middle_name",
+                "last_name",
+                ]
 
         if separate_name_fields:
 
@@ -1259,7 +1345,9 @@ class S3AddPersonWidget(FormWidget):
             ptable = s3db.pr_person
             query &= (ctable.pe_id == ptable.pe_id) & \
                      (ptable.id != person_id)
-        email = current.db(query).select(ctable.id, limitby=(0, 1)).first()
+        email = current.db(query).select(ctable.id,
+                                         limitby = (0, 1)
+                                         ).first()
         if email:
             error_message = T("This email address is already in use")
             return value, error_message
@@ -1299,6 +1387,14 @@ class S3AddPersonWidget(FormWidget):
 
         if not person_id:
             return (None, T("Could not add person record"))
+
+        hrm = self.hrm
+        if hrm:
+            # Create the HRM record
+            htable = s3db.hrm_human_resource
+            human_resource_id = htable.insert(person_id = person_id,
+                                              organisation_id = data.get("organisation_id"),
+                                              )
 
         # Update the super-entities
         record = {"id": person_id}
@@ -1342,7 +1438,19 @@ class S3AddPersonWidget(FormWidget):
             details["person_id"] = person_id
             s3db.pr_person_details.insert(**details)
 
-        return person_id, None
+        # Add tags as provided
+        for _, tag in current.deployment_settings.get_pr_request_tags():
+            value = data.get(tag)
+            if value:
+                s3db.pr_person_tag.insert(person_id = person_id,
+                                          tag = tag,
+                                          value = value,
+                                          )
+
+        if hrm:
+            return human_resource_id, None
+        else:
+            return person_id, None
 
 # =============================================================================
 class S3AgeWidget(FormWidget):
@@ -2106,7 +2214,9 @@ class S3CalendarWidget(FormWidget):
 
         # jQuery-ready script
         script = '''$('#%(selector)s').calendarWidget(%(options)s);''' % \
-                 {"selector": selector, "options": json.dumps(options)}
+                 {"selector": selector,
+                  "options": json.dumps(options, separators=SEPARATORS),
+                  }
         s3.jquery_ready.append(script)
 
 # =============================================================================
@@ -2805,7 +2915,9 @@ class S3WeeklyHoursWidget(FormWidget):
 
         # jQuery-ready script
         script = '''$('#%(selector)s').weeklyHours(%(options)s);''' % \
-                 {"selector": selector, "options": json.dumps(options)}
+                 {"selector": selector,
+                  "options": json.dumps(options, separators=SEPARATORS),
+                  }
         s3.jquery_ready.append(script)
 
     # -------------------------------------------------------------------------
@@ -3023,7 +3135,9 @@ class S3QRInput(FormWidget):
 
         # jQuery-ready script
         script = '''$('#%(selector)s').qrInput(%(options)s);''' % \
-                 {"selector": selector, "options": json.dumps(opts)}
+                 {"selector": selector,
+                  "options": json.dumps(opts, separators=SEPARATORS),
+                  }
         s3.jquery_ready.append(script)
 
 # =============================================================================
@@ -3228,7 +3342,9 @@ class S3EmbeddedComponentWidget(FormWidget):
 
         # Initialize UI Widget
         script = '''$('#%(input)s').embeddedComponent(%(options)s)''' % \
-                 {"input": input_id, "options": json.dumps(options)}
+                 {"input": input_id,
+                  "options": json.dumps(options, separators=SEPARATORS),
+                  }
         s3.jquery_ready.append(script)
 
         # Overall layout of components
@@ -7260,7 +7376,7 @@ class S3CascadeSelectWidget(FormWidget):
         widget = DIV(self.hidden_input(input_id, field, value, **attr),
                      INPUT(_type = "hidden",
                            _class = "s3-cascade",
-                           _value = json.dumps(nodes),
+                           _value = json.dumps(nodes, separators=SEPARATORS),
                            ),
                      selector_rows,
                      _class = "s3-cascade-select",
@@ -7320,7 +7436,7 @@ class S3CascadeSelectWidget(FormWidget):
                              _id = input_id,
                              _class = "s3-cascade-input",
                              requires = requires,
-                             value = json.dumps(selected),
+                             value = json.dumps(selected, separators=SEPARATORS),
                              )
 
         return hidden_input
@@ -7357,7 +7473,7 @@ class S3CascadeSelectWidget(FormWidget):
         # Widget instantiation
         script = '''$('#%(widget_id)s').cascadeSelect(%(options)s)''' % \
                  {"widget_id": widget_id,
-                  "options": json.dumps(opts),
+                  "options": json.dumps(opts, separators=SEPARATORS),
                   }
         jquery_ready = s3.jquery_ready
         if script not in jquery_ready:
@@ -7541,7 +7657,7 @@ class S3HierarchyWidget(FormWidget):
                              _id = selector,
                              _class = "s3-hierarchy-input",
                              requires = requires,
-                             value = json.dumps(selected),
+                             value = json.dumps(selected, separators=SEPARATORS),
                              )
 
         # The widget
@@ -8932,7 +9048,8 @@ class S3XMLContents(object):
         self.contents = contents
 
     # -------------------------------------------------------------------------
-    def link(self, match):
+    @staticmethod
+    def link(match):
         """
             Replace {{}} expressions with local URLs, with the ability to
             override controller, function and URL query variables.Called

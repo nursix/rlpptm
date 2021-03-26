@@ -380,4 +380,17 @@ body.rtl {
     background: #ffe1e3;
 }
 
+.record-integrity-ok {
+    color: #008600;
+    i {
+        padding: 0 0.2rem;
+    }
+}
+.record-integrity-broken {
+    color: #aa0000;
+    animation: blinker 0.7s step-start 4;
+    i {
+        padding: 0 0.2rem;
+    }
+}
 // END ========================================================================

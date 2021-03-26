@@ -70,7 +70,6 @@ def config(settings):
                                       "PROGRAM_MANAGER": "ORG_GROUP_ADMIN",
                                       "PROVIDER_ACCOUNTANT": "PROVIDER_ACCOUNTANT",
                                       "SUPPLY_COORDINATOR": "SUPPLY_COORDINATOR",
-                                      "SUPPLY_REQUESTER": "SUPPLY_REQUESTER",
                                       "VOUCHER_ISSUER": "VOUCHER_ISSUER",
                                       "VOUCHER_PROVIDER": "VOUCHER_PROVIDER",
                                       }
@@ -1261,6 +1260,12 @@ def config(settings):
                                           force_update = True,
                                           )
 
+            # Re-assign pending invoices
+            from .helpers import assign_pending_invoices
+            assign_pending_invoices(billing.id,
+                                    organisation_id = organisation_id,
+                                    )
+
     # -------------------------------------------------------------------------
     def customise_fin_voucher_billing_resource(r, tablename):
 
@@ -1347,8 +1352,8 @@ def config(settings):
                                                     limitby = (0, 1),
                                                     ).first()
 
-        from .helpers import get_role_contacts
-        provider_accountants = get_role_contacts("PROVIDER_ACCOUNTANT", pe_id)
+        from .helpers import get_role_emails
+        provider_accountants = get_role_emails("PROVIDER_ACCOUNTANT", pe_id)
         if not provider_accountants:
             error = "No provider accountant found"
 
@@ -1374,9 +1379,9 @@ def config(settings):
             # Inform the program manager that the provider could not be notified
             msg = T("%(name)s could not be notified of new compensation claim: %(error)s") % \
                   {"name": provider.name, "error": error}
-            program_managers = get_role_contacts("PROGRAM_MANAGER",
-                                                 organisation_id = program.organisation_id,
-                                                 )
+            program_managers = get_role_emails("PROGRAM_MANAGER",
+                                               organisation_id = program.organisation_id,
+                                               )
             if program_managers:
                 current.msg.send_email(to = program_managers,
                                        subject = T("Provider Notification Failed"),
@@ -1460,6 +1465,42 @@ def config(settings):
     settings.customise_fin_voucher_claim_resource = customise_fin_voucher_claim_resource
 
     # -------------------------------------------------------------------------
+    def customise_fin_voucher_claim_controller(**attr):
+
+        s3 = current.response.s3
+
+        s3db = current.s3db
+
+        # Custom prep
+        standard_prep = s3.prep
+        def prep(r):
+
+            # Block all non-interactive update attempts
+            if not r.interactive and r.http != "GET":
+                r.error(403, current.ERROR.NOT_PERMITTED)
+
+            # Call standard prep
+            result = standard_prep(r) if callable(standard_prep) else True
+
+            # Check which programs and organisations the user can accept vouchers for
+            program_ids, org_ids = s3db.fin_voucher_permitted_programs(mode = "provider",
+                                                                       partners_only = True,
+                                                                       c = "fin",
+                                                                       f = "voucher_debit",
+                                                                       )[:2]
+            if not program_ids or not org_ids:
+                s3db.configure("fin_voucher_debit",
+                               insertable = False,
+                               )
+
+            return result
+        s3.prep = prep
+
+        return attr
+
+    settings.customise_fin_voucher_claim_controller = customise_fin_voucher_claim_controller
+
+    # -------------------------------------------------------------------------
     def invoice_onsettled(invoice):
         """
             Callback to notify the provider that an invoice has been settled
@@ -1509,8 +1550,8 @@ def config(settings):
                                                     limitby = (0, 1),
                                                     ).first()
 
-        from .helpers import get_role_contacts
-        provider_accountants = get_role_contacts("PROVIDER_ACCOUNTANT", pe_id)
+        from .helpers import get_role_emails
+        provider_accountants = get_role_emails("PROVIDER_ACCOUNTANT", pe_id)
         if not provider_accountants:
             error = "No provider accountant found"
 
@@ -1541,8 +1582,39 @@ def config(settings):
             current.log.debug(msg % provider.name)
 
     # -------------------------------------------------------------------------
+    def invoice_create_onaccept(form):
+        """
+            Custom create-onaccept to assign a new invoice to an
+            accountant
+        """
+
+        # Get record ID
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        # Look up the billing ID
+        table = current.s3db.fin_voucher_invoice
+        query = (table.id == record_id)
+        invoice = current.db(query).select(table.billing_id,
+                                           limitby = (0, 1),
+                                           ).first()
+
+        if invoice:
+            # Assign the invoice
+            from .helpers import assign_pending_invoices
+            assign_pending_invoices(invoice.billing_id,
+                                    invoice_id = record_id,
+                                    )
+
+    # -------------------------------------------------------------------------
     def customise_fin_voucher_invoice_resource(r, tablename):
 
+        auth = current.auth
         s3db = current.s3db
 
         table = s3db.fin_voucher_invoice
@@ -1562,6 +1634,66 @@ def config(settings):
                                                    "PAID": "green",
                                                    }).represent
 
+        is_accountant = auth.s3_has_role("PROGRAM_ACCOUNTANT")
+
+        # Personal work list?
+        if is_accountant and r.get_vars.get("mine") == "1":
+            title_list = T("My Work List")
+            default_status = ["NEW", "REJECTED"]
+            default_hr = current.auth.s3_logged_in_human_resource()
+        else:
+            title_list = T("All Invoices")
+            default_status = default_hr = None
+        current.response.s3.crud_strings["fin_voucher_invoice"].title_list = title_list
+
+        # Lookup method for HR filter options
+        if is_accountant:
+            def hr_filter_opts():
+                hresource = s3db.resource("hrm_human_resource")
+                rows = hresource.select(["id", "person_id"], represent=True).rows
+                return {row["hrm_human_resource.id"]:
+                        row["hrm_human_resource.person_id"] for row in rows}
+        else:
+            hr_filter_opts = None
+
+        # Filter widgets
+        from s3 import S3DateFilter, S3OptionsFilter, S3TextFilter
+        if r.interactive:
+            filter_widgets = [S3TextFilter(["invoice_no",
+                                            "refno",
+                                            ],
+                                           label = T("Search"),
+                                           ),
+                              S3OptionsFilter("status",
+                                              default = default_status,
+                                              options = OrderedDict(status_opts),
+                                              sort = False,
+                                              ),
+                              S3OptionsFilter("human_resource_id",
+                                              default = default_hr,
+                                              options = hr_filter_opts,
+                                              ),
+                              S3DateFilter("date",
+                                           hidden = True,
+                                           ),
+                              S3OptionsFilter("pe_id",
+                                              hidden = True,
+                                              ),
+                              S3OptionsFilter("pe_id$pe_id:org_organisation.facility.location_id$L2",
+                                              hidden = True,
+                                              ),
+                              ]
+            s3db.configure("fin_voucher_invoice",
+                           filter_widgets = filter_widgets,
+                           )
+
+        # Custom create-onaccept to assign the invoice
+        s3db.add_custom_callback("fin_voucher_invoice",
+                                 "onaccept",
+                                 invoice_create_onaccept,
+                                 method = "create",
+                                 )
+
         # PDF export method
         from .helpers import InvoicePDF
         s3db.set_method("fin", "voucher_invoice",
@@ -1580,6 +1712,9 @@ def config(settings):
     def customise_fin_voucher_invoice_controller(**attr):
 
         s3 = current.response.s3
+
+        # Enable bigtable features
+        settings.base.bigtable = True
 
         standard_postp = s3.postp
         def custom_postp(r, output):
@@ -1777,6 +1912,23 @@ def config(settings):
     settings.customise_org_facility_controller = customise_org_facility_controller
 
     # -------------------------------------------------------------------------
+    def customise_org_organisation_resource(r, tablename):
+
+        s3db = current.s3db
+
+        # Tags as filtered components (for embedding in form)
+        s3db.add_components("org_organisation",
+                            org_organisation_tag = ({"name": "requester",
+                                                     "joinby": "organisation_id",
+                                                     "filterby": {"tag": "REQUESTER"},
+                                                     "multiple": False,
+                                                     },
+                                                    ),
+                            )
+
+    settings.customise_org_organisation_resource = customise_org_organisation_resource
+
+    # -------------------------------------------------------------------------
     def customise_org_organisation_controller(**attr):
 
         s3 = current.response.s3
@@ -1793,7 +1945,21 @@ def config(settings):
             auth = current.auth
             s3db = current.s3db
 
+            resource = r.resource
+
             is_org_group_admin = auth.s3_has_role("ORG_GROUP_ADMIN")
+
+            # Configure binary tags
+            binary_tag_opts = {"Y": T("Yes"), "N": T("No")}
+            for cname in ("requester",):
+                component = resource.components.get(cname)
+                table = component.table
+                field = table.value
+                field.default = "N"
+                field.requires = IS_IN_SET(binary_tag_opts,
+                                           zero = None,
+                                           )
+                field.represent = lambda v, row=None: binary_tag_opts.get(v, "-")
 
             # Add invite-method for ORG_GROUP_ADMIN role
             from .helpers import InviteUserOrg
@@ -1802,7 +1968,6 @@ def config(settings):
                             action = InviteUserOrg,
                             )
 
-            resource = r.resource
             get_vars = r.get_vars
             mine = get_vars.get("mine")
             if mine == "1":
@@ -1863,6 +2028,7 @@ def config(settings):
                                                    label = T("Project Partner for"),
                                                    cols = 1,
                                                    )
+                        requester = (T("Can order equipment"), "requester.value")
                         types = S3SQLInlineLink("organisation_type",
                                                 field = "organisation_type_id",
                                                 search = False,
@@ -1871,10 +2037,11 @@ def config(settings):
                                                 widget = "multiselect",
                                                 )
                     else:
-                        groups = projects = types = None
+                        groups = projects = requester = types = None
 
                     crud_fields = [groups,
                                    projects,
+                                   requester,
                                    "name",
                                    "acronym",
                                    types,
@@ -2031,6 +2198,7 @@ def config(settings):
                 component = resource.components.get(cname)
                 table = component.table
                 field = table.value
+                field.default = "N"
                 field.requires = IS_IN_SET(binary_tag_opts,
                                         zero = None,
                                         )
@@ -2626,6 +2794,19 @@ def config(settings):
         # Custom prep
         standard_prep = s3.prep
         def prep(r):
+
+            is_supply_coordinator = has_role("SUPPLY_COORDINATOR")
+
+            # User must be either SUPPLY_COORDINATOR or ORG_ADMIN of a
+            # requester organisation to access this controller
+            if not is_supply_coordinator:
+                from .helpers import get_managed_requester_orgs
+                requester_orgs = get_managed_requester_orgs(cache=False)
+                if not requester_orgs:
+                    r.unauthorised()
+            else:
+                requester_orgs = None
+
             # Call standard prep
             result = standard_prep(r) if callable(standard_prep) else True
 
@@ -2663,16 +2844,21 @@ def config(settings):
                     field = table.date_recv
                     field.readable = field.writable = False
 
-                    # If only one site selectable, set default and make r/o
-                    field = table.site_id
-                    requires = field.requires
-                    if isinstance(requires, (list, tuple)):
-                        requires = requires[0]
-                    if hasattr(requires, "options"):
-                        options = [opt[0] for opt in requires.options() if opt[0]]
-                        if len(options) == 1:
-                            field.default = int(options[0])
+                    if not is_supply_coordinator:
+                        # Limit to sites of managed requester organisations
+                        stable = s3db.org_site
+                        dbset = db(stable.organisation_id.belongs(requester_orgs))
+                        field = table.site_id
+                        field.requires = IS_ONE_OF(dbset, "org_site.site_id",
+                                                   field.represent,
+                                                   )
+                        # If only one site selectable, set default and make r/o
+                        sites = dbset.select(stable.site_id, limitby=(0, 2))
+                        if len(sites) == 1:
+                            field.default = sites.first().site_id
                             field.writable = False
+                        elif not sites:
+                            resource.configure(insertable = False)
 
                     # Requester is always the current user
                     # => set as default and make r/o

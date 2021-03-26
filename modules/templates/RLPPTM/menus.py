@@ -9,7 +9,7 @@ except ImportError:
     pass
 import s3menus as default
 
-from .helpers import get_stats_projects
+from .helpers import get_stats_projects, get_managed_requester_orgs
 
 # =============================================================================
 class S3MainMenu(default.S3MainMenu):
@@ -47,10 +47,15 @@ class S3MainMenu(default.S3MainMenu):
         report_results = lambda i: has_role("VOUCHER_PROVIDER", include_admin=False) and \
                                    len(get_stats_projects()) > 0
 
-        menu = [MM("Equipment", c=("req", "inv", "supply"), link=False)(
+        is_supply_coordinator = lambda i: has_role("SUPPLY_COORDINATOR")
+        is_supply_requester = lambda i: get_managed_requester_orgs()
+        has_supply_access = lambda i: is_supply_coordinator(i) or \
+                                      is_supply_requester(i)
+
+        menu = [MM("Equipment", c=("req", "inv", "supply"), link=False, check=has_supply_access)(
                     MM("Orders##delivery", f="req", vars={"type": 1}),
                     MM("Shipment##process", c="inv", f="send", restrict="SUPPLY_COORDINATOR"),
-                    MM("Deliveries", c="inv", f="recv", restrict="SUPPLY_REQUESTER"),
+                    MM("Deliveries", c="inv", f="recv", check=is_supply_requester),
                     MM("Items", c="supply", f="item", restrict="SUPPLY_COORDINATOR"),
                     ),
                 MM("Test Results",
@@ -258,9 +263,15 @@ class S3OptionsMenu(default.S3OptionsMenu):
     def fin():
         """ FIN / Finance """
 
+        auth = current.auth
         s3db = current.s3db
+
         voucher_create = lambda i: s3db.get_config("fin_voucher", "insertable", True)
         voucher_accept = lambda i: s3db.get_config("fin_voucher_debit", "insertable", True)
+
+        is_program_accountant = lambda i: auth.s3_has_role("PROGRAM_ACCOUNTANT",
+                                                           include_admin = False,
+                                                           )
 
         return M(c="fin")(
                     M("Voucher Programs", f="voucher_program")(
@@ -289,6 +300,9 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     M("Billing", link=False)(
                        M("Compensation Claims", f="voucher_claim"),
                        M("Invoices", f="voucher_invoice"),
+                       M("My Work List", f="voucher_invoice", vars={"mine": "1"},
+                         check = is_program_accountant,
+                         ),
                        ),
                     )
 
@@ -357,12 +371,14 @@ class S3OptionsMenu(default.S3OptionsMenu):
     def req():
         """ REQ / Request Management """
 
+        is_supply_requester = lambda i: get_managed_requester_orgs()
+
         return M()(
                 M("Orders##delivery", c="req", f="req", vars={"type": 1})(
                     M("Create", m="create", vars={"type": 1}),
                     ),
                 M("Shipment##process", c="inv", f="send", restrict="SUPPLY_COORDINATOR"),
-                M("Deliveries", "inv", "recv", restrict="SUPPLY_REQUESTER"),
+                M("Deliveries", "inv", "recv", check=is_supply_requester),
                 M("Items", c="supply", f="item")(
                     M("Create", m="create"),
                     ),
