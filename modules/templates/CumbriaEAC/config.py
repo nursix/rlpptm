@@ -5,6 +5,8 @@ from collections import OrderedDict
 from gluon import current
 from gluon.storage import Storage
 
+from s3 import S3CRUD
+
 def config(settings):
     """
         Cumbria Emergency Assistance Centres
@@ -275,11 +277,12 @@ def config(settings):
     # Uncomment to use a dynamic population estimation by calculations based on registrations
     settings.cr.shelter_population_dynamic = True
 
-    cr_shelter_status_opts = {1 : T("Closed"),
+    cr_shelter_status_opts = {1 : T("Closed"), # Nominated Centres
                               #2 : T("Open##the_shelter_is"),
                               3 : T("Green"),
                               4 : T("Amber"),
                               5 : T("Red"),
+                              6 : T("Closed"), # Community Centres
                               }
 
     # -------------------------------------------------------------------------
@@ -293,6 +296,9 @@ def config(settings):
     # -------------------------------------------------------------------------
     # Persons
     settings.pr.hide_third_gender = False
+    settings.pr.editable_fields = ["mobile_phone",
+                                   "car",
+                                   ]
 
     # -------------------------------------------------------------------------
     def eac_person_anonymize():
@@ -455,8 +461,6 @@ def config(settings):
                     (T("Event Log"), "site_event"),
                     ]
 
-            rheader_tabs = s3_rheader_tabs(r, tabs)
-
             if r.controller == "hrm":
                 hrtable = current.s3db.hrm_human_resource
                 hr = current.db(hrtable.person_id == record.id).select(hrtable.organisation_id,
@@ -470,6 +474,11 @@ def config(settings):
                     org = ""
             else:
                 org = ""
+                tabs.insert(1, (T("Next of Kin"), "nok"))
+                #tabs.insert(2, (T("Household"), None, {}, "household"))
+                tabs.insert(2, (T("Household"), "household"))
+
+            rheader_tabs = s3_rheader_tabs(r, tabs)
 
             from s3 import s3_fullname
 
@@ -554,21 +563,63 @@ def config(settings):
             onaccept(registration)
 
     # -------------------------------------------------------------------------
+    def cr_shelter_onvalidation(form):
+        """
+            Ensure that the correct closed Status is used for the Shelter Type
+        """
+
+        form_vars = form.vars
+        form_vars_get = form_vars.get
+        status = form_vars_get("status")
+        if status not in ("1", "6"):
+            # We don't need to do anything
+            return
+
+        # Look up the Shelter Type
+        shelter_type_id = form_vars_get("shelter_type_id")
+        ttable = current.s3db.cr_shelter_type
+        shelter_type = current.db(ttable.id == shelter_type_id).select(ttable.name,
+                                                                       limitby = (0, 1)
+                                                                       ).first()
+        type_name = shelter_type.name
+        if type_name == "Nominated":
+            form_vars.status = 1
+        elif type_name == "Community":
+            form_vars.status = 6
+
+    # -------------------------------------------------------------------------
     def customise_cr_shelter_resource(r, tablename):
 
-        from gluon import DIV, IS_IN_SET
+        from gluon import DIV, IS_EMPTY_OR, IS_IN_SET
 
         from s3 import S3Represent, S3SQLCustomForm, S3LocationSelector, \
                        S3TextFilter, S3LocationFilter, S3OptionsFilter, S3RangeFilter
 
         s3db = current.s3db
 
+        # Only have a single Status option visible
+        shelter_status_opts = dict(cr_shelter_status_opts)
+        if r.record and r.record.status == 6:
+            del shelter_status_opts[1]
+        elif r.interactive and not current.auth.override:
+            del shelter_status_opts[6]
+
         table = s3db.cr_shelter
-        table.shelter_type_id.label = T("Type")
+        f = table.shelter_type_id
+        f.label = T("Type")
+        f.comment = None # No inline Create
+        f = s3db.cr_shelter_service_shelter.service_id
+        f.label = T("Service")
+        f.requires = IS_EMPTY_OR(f.requires)
+        f.comment = None # No inline Create
         f = table.status
         f.default = 3 # Green
-        f.requires = IS_IN_SET(cr_shelter_status_opts)
-        f.represent = S3Represent(options = cr_shelter_status_opts)
+        f.requires = IS_IN_SET(shelter_status_opts)
+        if r.extension == "geojson":
+            # GeoJSON should have smaller numbers which are also distinguishable across the 2x closed statuses
+            f.represent = None
+        else:
+            f.represent = S3Represent(options = shelter_status_opts)
         table.population_day.label = T("Occupancy")
         table.obsolete.label = T("Unavailable")
         table.obsolete.comment = DIV(_class="tooltip",
@@ -580,16 +631,64 @@ def config(settings):
                                                       show_address = True,
                                                       )
 
+        # Redefine as multiple=False
+        s3db.add_components("cr_shelter",
+                            cr_shelter_service_shelter = {"joinby": "shelter_id",
+                                                          "multiple": False,
+                                                          }
+                            )
+
+        # Filtered components
+        s3db.add_components("org_site",
+                            org_site_tag = ({"name": "red_bag",
+                                             "joinby": "site_id",
+                                             "filterby": {"tag": "red_bag"},
+                                             "multiple": False,
+                                             },
+                                            {"name": "wifi",
+                                             "joinby": "site_id",
+                                             "filterby": {"tag": "wifi"},
+                                             "multiple": False,
+                                             },
+                                            {"name": "catering",
+                                             "joinby": "site_id",
+                                             "filterby": {"tag": "catering"},
+                                             "multiple": False,
+                                             },
+                                            ),
+                            )
+
+        from s3 import S3TagCheckboxWidget
+
+        # Individual settings for specific tag components
+        components_get = s3db.resource(tablename).components.get
+
+        red_bag = components_get("red_bag")
+        f = red_bag.table.value
+        f.requires = IS_IN_SET(("Yes", "No", "Unknown"))
+        f.default = "Unknown"
+
+        wifi = components_get("wifi")
+        f = wifi.table.value
+        f.requires = IS_IN_SET(("Yes", "No", "Unknown"))
+        f.default = "Unknown"
+
         crud_form = S3SQLCustomForm("name",
                                     "shelter_type_id",
+                                    "shelter_service_shelter.service_id",
                                     "location_id",
                                     "phone",
                                     "capacity_day",
                                     "status",
+                                    (T("Red Bag Lite"), "red_bag.value"),
+                                    (T("WiFi available"), "wifi.value"),
+                                    (T("Catering"), "catering.value"),
                                     "comments",
                                     "obsolete",
                                     )
 
+        cr_shelter_status_opts[1] = T("Closed (Nominated)")
+        cr_shelter_status_opts[6] = T("Closed (Community)")
         filter_widgets = [
                 S3TextFilter(["name",
                               "comments",
@@ -607,6 +706,8 @@ def config(settings):
                                  ),
                 S3OptionsFilter("shelter_type_id",
                                 ),
+                S3OptionsFilter("shelter_service_shelter.service_id",
+                                ),
                 S3OptionsFilter("status",
                                 label = T("Status"),
                                 options = cr_shelter_status_opts,
@@ -621,21 +722,29 @@ def config(settings):
 
         list_fields = ["name",
                        "shelter_type_id",
+                       "shelter_service_shelter.service_id",
                        "status",
                        "capacity_day",
                        "population_day",
                        "location_id$L3",
                        "location_id$L4",
                        "location_id$addr_street",
+                       (T("Red Bag Lite"), "red_bag.value"),
+                       (T("WiFi available"), "wifi.value"),
+                       (T("Catering"), "catering.value"),
                        ]
 
         report_fields = ["name",
                          "shelter_type_id",
+                         "shelter_service_shelter.service_id",
                          "status",
                          "capacity_day",
                          "population_day",
                          "location_id$L3",
                          "location_id$L4",
+                         (T("Red Bag Lite"), "red_bag.value"),
+                         (T("WiFi available"), "wifi.value"),
+                         (T("Catering"), "catering.value"),
                          ]
 
         s3db.configure(tablename,
@@ -643,6 +752,7 @@ def config(settings):
                        crud_form = crud_form,
                        filter_widgets = filter_widgets,
                        list_fields = list_fields,
+                       onvalidation = cr_shelter_onvalidation,
                        report_options = Storage(
                         rows = report_fields,
                         cols = report_fields,
@@ -666,11 +776,63 @@ def config(settings):
         from s3 import s3_set_default_filter
 
         s3db = current.s3db
+        response = current.response
 
         # Exclude Closed Shelters by default
         s3_set_default_filter("~.status", [3, 4, 5], tablename="cr_shelter")
 
+        s3 = response.s3
+
         # Custom Methods
+        def client_checkout(r, **attr):
+
+            from gluon import SQLFORM
+
+            db = current.db
+            session = current.session
+
+            shelter_id = r.id
+            stable = s3db.cr_shelter
+            shelter = db(stable.id == shelter_id).select(stable.site_id,
+                                                         limitby = (0, 1)
+                                                         ).first()
+            person_id = r.component_id
+
+            class REPLACE_TEXT(object):
+                def __call__(self, value):
+                    error = None
+                    value = "Client going to: %s" % value
+                    return (value, None)
+
+            # Add Event Log entry
+            table = s3db.org_site_event
+            f = table.site_id
+            f.readable = f.writable = False
+            f = table.site_id
+            f.readable = f.writable = False
+            f.default = shelter.site_id
+            f = table.person_id
+            f.readable = f.writable = False
+            f.default = person_id
+            f = table.event
+            f.readable = f.writable = False
+            f.default = 3 # Checked-Out
+            table.date.readable = table.date.writable = False
+            table.status.readable = table.status.writable = False
+            table.comments.label = T("Going To")
+            table.comments.requires = REPLACE_TEXT()
+
+            form = SQLFORM(table)
+
+            if form.accepts(r.post_vars, current.session):
+                # Remove Link(s)
+                db(s3db.cr_shelter_registration.person_id == person_id).delete()
+                # response.confirmation triggers the popup close (although not actually seen by user)
+                response.confirmation = T("Client checked-out successfully!")
+
+            response.view = "popup.html"
+            return {"form": form}
+
         def staff_checkout(r, **attr):
             db = current.db
             shelter_id = r.id
@@ -694,10 +856,11 @@ def config(settings):
             # Add Event Log entry
             s3db.org_site_event.insert(site_id = shelter.site_id,
                                        person_id = staff.person_id,
-                                       event = 4, # Checked-Out
+                                       event = 3, # Checked-Out
+                                       comments = "Staff",
                                        )
             # Redirect
-            current.session.confirmation = T("Staff checked-out succesfully!")
+            current.session.confirmation = T("Staff checked-out successfully!")
             from gluon import redirect
             redirect(URL(c="cr", f="shelter",
                          args = [shelter_id,
@@ -730,6 +893,11 @@ def config(settings):
         set_method = s3db.set_method
 
         set_method("cr", "shelter",
+                   component_name = "client",
+                   method = "checkout",
+                   action = client_checkout)
+
+        set_method("cr", "shelter",
                    component_name = "human_resource_site",
                    method = "checkout",
                    action = staff_checkout)
@@ -751,8 +919,6 @@ def config(settings):
                                          "actuate": "replace",
                                          }
                             )
-
-        s3 = current.response.s3
 
         # Custom prep
         standard_prep = s3.prep
@@ -809,7 +975,8 @@ def config(settings):
                     # Add Site Event Log
                     s3db.org_site_event.insert(site_id = site_id,
                                                person_id = staff.person_id,
-                                               event = 3, # Checked-In
+                                               event = 2, # Checked-In
+                                               comments = "Staff",
                                                )
 
                 s3db.add_custom_callback("hrm_human_resource_site",
@@ -843,12 +1010,14 @@ def config(settings):
                                                                   ).first()
                     s3db.org_site_event.insert(site_id = shelter.site_id,
                                                person_id = form.vars.get("person_id"),
-                                               event = 3, # Checked-In
+                                               event = 2, # Checked-In
+                                               comments = "Staff",
                                                )
                 s3db.add_custom_callback("hrm_human_resource",
                                          "create_onaccept",
                                          staff_check_in,
                                          )
+
             elif r.component_name == "client":
                 s3.crud_strings["cr_shelter"].title_display = T("Register Client to %(shelter)s") % \
                                                                             {"shelter": r.record.name}
@@ -875,7 +1044,8 @@ def config(settings):
                     # Add Site Event Log
                     s3db.org_site_event.insert(site_id = site_id,
                                                person_id = person_id,
-                                               event = 3, # Checked-In
+                                               event = 2, # Checked-In
+                                               comments = "Client",
                                                )
 
                 s3db.add_custom_callback("cr_shelter_registration",
@@ -898,17 +1068,17 @@ def config(settings):
             if r.component_name == "human_resource_site":
 
                 #from gluon import URL
-                from s3 import s3_str, S3CRUD
+                from s3 import s3_str#, S3CRUD
 
                 # Normal Action Buttons
                 S3CRUD.action_buttons(r,
                                       read_url = URL(c = "cr",
                                                      f = "shelter",
-                                                       args = [r.id,
-                                                               "human_resource_site",
-                                                               "[id]",
-                                                               "redirect",
-                                                               ],
+                                                     args = [r.id,
+                                                             "human_resource_site",
+                                                             "[id]",
+                                                             "redirect",
+                                                             ],
                                                      ),
                                       update_url = URL(c = "cr",
                                                        f = "shelter",
@@ -931,6 +1101,39 @@ def config(settings):
                                                    ],
                                            ),
                                 "_class": "action-btn",
+                                },
+                               ]
+
+            elif r.component_name == "client":
+
+                #from gluon import URL
+                from s3 import s3_str#, S3CRUD
+
+                # Normal Action Buttons
+                S3CRUD.action_buttons(r,
+                                      read_url = URL(c = "pr",
+                                                     f = "person",
+                                                     args = "[id]",
+                                                     ),
+                                      update_url = URL(c = "pr",
+                                                       f = "person",
+                                                       args = "[id]",
+                                                       ),
+                                      deletable = False)
+
+                # Custom Action Buttons
+                s3.actions += [{"label": s3_str(T("Check-Out")),
+                                "url": URL(c = "cr",
+                                           f = "shelter",
+                                           args = [r.id,
+                                                   "client",
+                                                   "[id]",
+                                                   "checkout.popup",
+                                                   ],
+                                           vars = {"refresh": "datatable",
+                                                   }
+                                           ),
+                                "_class": "action-btn s3_modal",
                                 },
                                ]
 
@@ -1129,9 +1332,30 @@ def config(settings):
     settings.customise_org_site_event_resource = customise_org_site_event_resource
 
     # -------------------------------------------------------------------------
+    def pr_household_postprocess(form, parent_id):
+
+        db = current.db
+        s3db = current.s3db
+
+        # Lookup Parent Address
+        atable = s3db.pr_address
+        ptable = s3db.pr_person
+        query = (ptable.id == parent_id) & \
+                (ptable.pe_id == atable.pe_id)
+        address = db(query).select(atable.location_id,
+                                   limitby = (0, 1)
+                                   ).first()
+
+        # Set this same address for this person
+        atable.insert(pe_id = form.vars.pe_id,
+                      location_id = address.location_id,
+                      )
+
+    # -------------------------------------------------------------------------
     def customise_pr_person_resource(r, tablename):
 
-        if r.controller == "hrm":
+        if r.controller == "hrm" or \
+           r.component_name == "nok":
             # Done in prep
             return
 
@@ -1143,27 +1367,42 @@ def config(settings):
         s3db = current.s3db
         s3 = current.response.s3
 
-        s3.crud_strings["pr_person"] = Storage(
-            label_create = T("Register a Client"),
-            title_display = T("Client Details"),
-            title_list = T("Clients"),
-            title_update = T("Edit Client Details"),
-            label_list_button = T("List Clients"),
-            label_delete_button = T("Delete Client"),
-            msg_record_created = T("Client added"),
-            msg_record_modified = T("Client details updated"),
-            msg_record_deleted = T("Client deleted"),
-            msg_list_empty = T("No Clients currently registered")
-            )
+        household = True if r.method == "household" else False
+
+        if household:
+            s3.crud_strings["pr_person"] = Storage(
+                label_create = T("Register another Household Member"),
+                title_list = T("Household Members"),
+                msg_list_empty = T("No Household Members currently registered")
+                )
+        else:
+            s3.crud_strings["pr_person"] = Storage(
+                label_create = T("Register a Client"),
+                title_display = T("Client Details"),
+                title_list = T("Clients"),
+                title_update = T("Edit Client Details"),
+                label_list_button = T("List Clients"),
+                label_delete_button = T("Delete Client"),
+                msg_record_created = T("Client added"),
+                msg_record_modified = T("Client details updated"),
+                msg_record_deleted = T("Client deleted"),
+                msg_list_empty = T("No Clients currently registered")
+                )
 
         f = s3db.pr_person.pe_label
         f.label = T("Reception Centre Ref")
         f.comment = None
 
-        s3db.pr_address.location_id.widget = S3LocationSelector(levels = ("L3", "L4"),
-                                                                required_levels = ("L3",),
-                                                                show_address = True,
-                                                                )
+        if household:
+            # Address defaulted
+            postprocess = lambda form: pr_household_postprocess(form, r.id)
+        else:
+            # Address asked for interactively
+            postprocess = None
+            s3db.pr_address.location_id.widget = S3LocationSelector(levels = ("L3", "L4"),
+                                                                    required_levels = ("L3",),
+                                                                    show_address = True,
+                                                                    )
 
         # Filtered components
         s3db.add_components("pr_person",
@@ -1210,6 +1449,8 @@ def config(settings):
                                              ),
                             )
 
+        from s3 import S3TagCheckboxWidget, s3_comments_widget
+
         # Individual settings for specific tag components
         components_get = s3db.resource(tablename).components.get
 
@@ -1224,9 +1465,11 @@ def config(settings):
         f = pets.table.value
         f.requires = IS_EMPTY_OR(IS_IN_SET(("Y", "N")))
         f.represent = lambda v: T("yes") if v == "Y" else T("no")
-        from s3 import S3TagCheckboxWidget
         f.widget = S3TagCheckboxWidget(on="Y", off="N")
         f.default = "N"
+
+        medical = components_get("medical")
+        medical.table.value.widget = s3_comments_widget
 
         crud_fields = ["pe_label",
                        "first_name",
@@ -1235,16 +1478,6 @@ def config(settings):
                        "gender",
                        "date_of_birth",
                        "person_details.nationality",
-                       S3SQLInlineComponent(
-                           "address",
-                           name = "address",
-                           label = T("Address"),
-                           multiple = False,
-                           fields = [("", "location_id")],
-                           filterby = {"field": "type",
-                                       "options": 1, # Current Home Address
-                                       },
-                       ),
                        (T("Location at Time of Incident"), "location.value"),
                        # Not a multiple=False component
                        #(T("Phone"), "phone.value"),
@@ -1277,10 +1510,23 @@ def config(settings):
                        "comments",
                        ]
 
+        if not household:
+            crud_fields.insert(7, S3SQLInlineComponent("address",
+                                                       name = "address",
+                                                       label = T("Address"),
+                                                       multiple = False,
+                                                       fields = [("", "location_id")],
+                                                       filterby = {"field": "type",
+                                                                   "options": 1, # Current Home Address
+                                                                   },
+                                                       ))
+
         if r.method in ("read", "update"):
             crud_fields.insert(1, (T("Holmes Ref"), "holmes.value"))
 
-        crud_form = S3SQLCustomForm(*crud_fields)
+        crud_form = S3SQLCustomForm(*crud_fields,
+                                    postprocess = postprocess
+                                    )
 
         import json
 
@@ -1340,9 +1586,16 @@ def config(settings):
                          "location_id$L4",
                          ]
 
+        from gluon import URL
+
         s3db.configure(tablename,
+                       # Open Next of Kin tab after registration
+                       create_next = URL(c="pr", f="person",
+                                         args = ["[id]", "nok"],
+                                         ),
                        crud_form = crud_form,
                        filter_widgets = filter_widgets,
+                       listadd = True, #if household else False,
                        list_fields = list_fields,
                        report_options = Storage(
                         rows = report_fields,
@@ -1370,7 +1623,24 @@ def config(settings):
     # -----------------------------------------------------------------------------
     def customise_pr_person_controller(**attr):
 
+        s3db = current.s3db
         s3 = current.response.s3
+
+        # Redefine as multiple=False
+        s3db.add_components("pr_person",
+                            pr_person = {"name": "nok",
+                                         "link": "pr_person_relation",
+                                         "joinby": "parent_id",
+                                         "key": "person_id",
+                                         "actuate": "replace",
+                                         "multiple": False,
+                                         },
+                            )
+
+        # Custom Method
+        s3db.set_method("pr", "person",
+                        method = "household",
+                        action = pr_Household())
 
         # Custom prep
         standard_prep = s3.prep
@@ -1381,15 +1651,67 @@ def config(settings):
             else:
                 result = True
 
-            s3db = current.s3db
-
             if r.component_name == "site_event":
                 f = s3db.org_site_event.site_id
                 f.label = T("Shelter")
                 f.readable = True
                 f.represent = s3db.org_SiteRepresent(show_type = False)
 
-            if r.controller == "hrm":
+                return result
+
+            elif r.component_name == "nok":
+                # Next of Kin
+                s3.crud_strings["pr_person"].title_update = ""
+                
+                from s3 import S3SQLCustomForm, S3SQLInlineComponent
+
+                # Filtered components
+                s3db.add_components("pr_person",
+                                    pr_person_tag = ({"name": "relationship",
+                                                      "joinby": "person_id",
+                                                      "filterby": {"tag": "relationship"},
+                                                      "multiple": False,
+                                                      },
+                                                     ),
+                                    )
+
+                crud_form = S3SQLCustomForm("first_name",
+                                            #"middle_name",
+                                            "last_name",
+                                            (T("Relationship"), "relationship.value"),
+                                            # Not a multiple=False component
+                                            #(T("Phone"), "phone.value"),
+                                            S3SQLInlineComponent(
+                                                "phone",
+                                                name = "phone",
+                                                label = T("Mobile Phone"),
+                                                multiple = False,
+                                                fields = [("", "value")],
+                                                #filterby = {"field": "contact_method",
+                                                #            "options": "SMS",
+                                                #            },
+                                            ),
+                                            S3SQLInlineComponent(
+                                                "address",
+                                                name = "address",
+                                                label = T("Address"),
+                                                multiple = False,
+                                                fields = [("", "location_id")],
+                                                filterby = {"field": "type",
+                                                            "options": 1, # Current Home Address
+                                                            },
+                                            ),
+                                            "comments",
+                                            )
+
+                s3db.configure("pr_person",
+                               crud_form = crud_form,
+                               deletable = False,
+                               )
+
+                return result
+
+            elif r.controller == "hrm":
                 
                 from s3 import S3SQLCustomForm, S3SQLInlineComponent
 
@@ -1452,13 +1774,139 @@ def config(settings):
             # Filter out Staff
             resource.add_filter(FS("human_resource.id") == None)
 
+            # Filter out Next of Kin
+            s3db.add_components("pr_person",
+                                pr_person_tag = ({"name": "relationship",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "relationship"},
+                                                  "multiple": False,
+                                                  },
+                                                 ),
+                                )
+            resource.add_filter(FS("relationship.id") == None)
+
             return result
         s3.prep = prep
+
+        # Custom postp
+        standard_postp = s3.postp
+        def postp(r, output):
+            # Call standard postp
+            if callable(standard_postp):
+                output = standard_postp(r, output)
+
+            if r.method == "household":
+
+                action_methods = list(s3.action_methods)
+                action_methods.append("household")
+                s3.action_methods = action_methods
+
+                from gluon import URL
+                #from s3 import s3_str#, S3CRUD
+
+                # Normal Action Buttons
+                S3CRUD.action_buttons(r,
+                                      read_url = URL(c = "pr",
+                                                     f = "person",
+                                                     args = ["[id]"],
+                                                     ),
+                                      update_url = URL(c = "pr",
+                                                       f = "person",
+                                                       args = ["[id]"],
+                                                       ),
+                                      deletable = False)
+
+            return output
+        s3.postp = postp
 
         attr["rheader"] = eac_rheader
 
         return attr
 
     settings.customise_pr_person_controller = customise_pr_person_controller
+
+# =============================================================================
+class pr_Household(S3CRUD):
+    """
+        A Household are people who share a common Address
+        - e.g. family or students sharing
+        - handled on-site as a set of forms stapled together
+    """
+
+    # -------------------------------------------------------------------------
+    def __call__(self, r, method=None, widget_id=None, **attr):
+        """
+            Entry point for the REST interface
+
+            @param r: the S3Request
+            @param method: the method established by the REST interface
+            @param widget_id: widget ID
+            @param attr: dict of parameters for the method handler
+
+            @return: output object to send to the view
+        """
+
+        # Environment of the request
+        self.request = r
+
+        # Settings
+        response = current.response
+        self.download_url = response.s3.download_url
+
+        # Init
+        self.next = None
+
+        # Override request method
+        self.method = "list"
+
+        self.record_id = None
+
+        s3db = current.s3db
+        ptable = s3db.pr_person
+        atable = s3db.pr_address
+        query = (ptable.id == r.id) & \
+                (ptable.pe_id == atable.pe_id)
+        address = current.db(query).select(atable.location_id,
+                                           limitby = (0, 1)
+                                           ).first()
+        if not address:
+            from gluon import redirect, URL
+            current.session.warning = current.T("Client has no Address to share with a Household!")
+            redirect(URL(args = r.id))
+
+        address_filter = (ptable.id != r.id) & \
+                         (ptable.pe_id == atable.pe_id) & \
+                         (atable.location_id == address.location_id)
+
+        resource = current.s3db.resource("pr_person", filter=address_filter)
+
+        self.prefix = resource.prefix
+        self.name = resource.name
+        self.tablename = resource.tablename
+        self.table = resource.table
+        self.resource = resource
+
+        if self.method == "_init":
+            return None
+
+        self.hide_filter = True
+
+        # Apply method
+        output = self.apply_method(r, **attr)
+
+        # Redirection
+        if self.next and resource.lastid:
+            self.next = str(self.next)
+            placeholder = "%5Bid%5D"
+            self.next = self.next.replace(placeholder, resource.lastid)
+            placeholder = "[id]"
+            self.next = self.next.replace(placeholder, resource.lastid)
+        if not response.error:
+            r.next = self.next
+
+        # Add additional view variables (e.g. rheader)
+        self._extend_view(output, r, **attr)
+
+        return output
 
 # END =========================================================================

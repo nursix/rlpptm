@@ -30,6 +30,7 @@
 __all__ = (# PR Base Entities
            "PRPersonEntityModel",
            "PRPersonModel",
+           "PRPersonRelationModel",
            "PRGroupModel",
            "PRForumModel",
 
@@ -1154,6 +1155,13 @@ class PRPersonModel(S3Model):
                                              "actuate": "link",
                                              "autodelete": False,
                                              },
+
+                       pr_person_relation = "parent_id",
+                       #pr_person = {"link": "pr_person_relation",
+                       #             "joinby": "parent_id",
+                       #             "key": "person_id",
+                       #             "actuate": "replace",
+                       #             },
 
                        # Group Memberships
                        pr_group_membership = "person_id",
@@ -2377,6 +2385,47 @@ class PRPersonModel(S3Model):
 
         current.response.headers["Content-Type"] = "application/json"
         return output
+
+# =============================================================================
+class PRPersonRelationModel(S3Model):
+    """
+        Link table between Persons & Persons
+        - can be used to provide non-hierarchical relationships
+        e.g. "Next of Kin" (as used by CumbriaEAC)
+    """
+
+    names = ("pr_person_relation",)
+
+    def model(self):
+
+        #T = current.T
+        person_id = self.pr_person_id
+
+        # ---------------------------------------------------------------------
+        # Link table between Persons & Persons
+        #
+        tablename = "pr_person_relation"
+        self.define_table(tablename,
+                          person_id("parent_id",
+                                    empty = False,
+                                    ondelete = "CASCADE",
+                                    ),
+                          person_id(empty = False,
+                                    ondelete = "CASCADE",
+                                    ),
+                          # Add this later if 2 or more usecases need to share this same table within a single template
+                          #role_id(),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary = ("person_id",
+                                                            "parent_id",
+                                                            ),
+                                                 ),
+                       )
+
+        # Pass names back to global scope (s3.*)
+        return {}
 
 # =============================================================================
 class PRGroupModel(S3Model):

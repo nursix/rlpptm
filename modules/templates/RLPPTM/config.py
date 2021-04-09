@@ -1625,14 +1625,14 @@ def config(settings):
         try:
             status_opts = field.requires.options()
         except AttributeError:
-            pass
+            status_opts = []
         else:
             field.represent = S3PriorityRepresent(status_opts,
                                                   {"NEW": "lightblue",
                                                    "APPROVED": "blue",
                                                    "REJECTED": "red",
                                                    "PAID": "green",
-                                                   }).represent
+                                                   })
 
         is_accountant = auth.s3_has_role("PROGRAM_ACCOUNTANT")
 
@@ -1754,29 +1754,74 @@ def config(settings):
     settings.customise_fin_voucher_invoice_controller = customise_fin_voucher_invoice_controller
 
     # -------------------------------------------------------------------------
+    def facility_create_onaccept(form):
+
+        # Get record ID
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        from .helpers import add_facility_default_tags
+        add_facility_default_tags(record_id)
+
+    # -------------------------------------------------------------------------
     def customise_org_facility_resource(r, tablename):
+
+        s3db = current.s3db
+
+        is_org_group_admin = current.auth.s3_has_role("ORG_GROUP_ADMIN")
+
+        # Tags as filtered components (for embedding in form)
+        s3db.add_components("org_site",
+                            org_site_tag = ({"name": "public",
+                                             "joinby": "site_id",
+                                             "filterby": {"tag": "PUBLIC"},
+                                             "multiple": False,
+                                             },
+                                            ),
+
+                            )
+
+        # Custom onaccept to add default tags
+        s3db.add_custom_callback("org_facility",
+                                 "onaccept",
+                                 facility_create_onaccept,
+                                 method = "create",
+                                 )
 
         from s3 import S3SQLCustomForm, S3SQLInlineLink, \
                        S3LocationSelector, S3LocationFilter, S3TextFilter
 
-        s3db = current.s3db
-
+        # Configure location selector incl. Geocoder
         s3db.org_facility.location_id.widget = S3LocationSelector(levels = ("L1", "L2", "L3", "L4"),
                                                                   required_levels = ("L1", "L2", "L3"),
                                                                   show_address = True,
                                                                   show_postcode = True,
                                                                   show_map = True,
                                                                   )
-
-        # Geocoder
         current.response.s3.scripts.append("/%s/static/themes/RLP/js/geocoderPlugin.js" % r.application)
 
+        # Custom list fields
+        list_fields = ["name",
+                       #"organisation_id",
+                       (T("Telephone"), "phone1"),
+                       "email",
+                       (T("Opening Hours"), "opening_times"),
+                       "location_id$addr_street",
+                       "location_id$addr_postcode",
+                       "location_id$L4",
+                       "location_id$L3",
+                       "location_id$L2",
+                       ]
+        if is_org_group_admin and r.get_vars.get("$$pending") == "1":
+            list_fields.insert(1, "organisation_id")
+
+        # Custom filter widgets
         text_fields = ["name",
-                       #"code",
-                       #"comments",
-                       #"organisation_id$name",
-                       #"organisation_id$acronym",
-                       #"location_id$L1",
                        "location_id$L2",
                        "location_id$L3",
                        "location_id$L4",
@@ -1786,15 +1831,18 @@ def config(settings):
         filter_widgets = [
             S3TextFilter(text_fields,
                          label = T("Search"),
-                         #_class = "filter-search",
                          ),
             S3LocationFilter("location_id",
-                             #label = T("Location"),
                              levels = ("L1", "L2", "L3", "L4"),
+                             bigtable = True,
+                             translate = False,
                              ),
             ]
 
-        crud_fields = ["name",
+        # Custom CRUD form
+        crud_fields = [#"organisation_id",
+                       "name",
+                       #"public.value",
                        S3SQLInlineLink(
                               "facility_type",
                               label = T("Facility Type"),
@@ -1802,7 +1850,6 @@ def config(settings):
                               widget = "groupedopts",
                               cols = 3,
                         ),
-                       #"organisation_id",
                        "location_id",
                        (T("Telephone"), "phone1"),
                        "email",
@@ -1811,21 +1858,30 @@ def config(settings):
                        "comments",
                        ]
 
-        list_fields = ["name",
-                       #"site_facility_type.facility_type_id",
-                       (T("Telephone"), "phone1"),
-                       "email",
-                       (T("Opening Hours"), "opening_times"),
-                       "location_id$addr_street",
-                       "location_id$addr_postcode",
-                       "location_id$L4",
-                       "location_id$L3",
-                       "location_id$L2",
-                       #"location_id$L1",
-                       #"organisation_id",
-                       #"obsolete",
-                       #"comments",
-                       ]
+        resource = r.resource
+        if r.tablename == "org_facility":
+            fresource = resource
+        elif r.tablename == "org_organisation":
+            fresource = resource.components.get("facility")
+        else:
+            fresource = None
+
+        if fresource:
+            table = fresource.table
+
+            # No Add-Organisation link
+            field = table.organisation_id
+            field.comment = None
+
+            if is_org_group_admin:
+                crud_fields.insert(0, "organisation_id")
+
+                # Configure binary tag representation
+                from .helpers import configure_binary_tags
+                configure_binary_tags(fresource, ("public",))
+
+                # Add binary tags to form
+                crud_fields.insert(2, (T("In Public Registry"), "public.value"))
 
         s3db.configure(tablename,
                        crud_form = S3SQLCustomForm(*crud_fields),
@@ -1840,10 +1896,11 @@ def config(settings):
 
         s3 = current.response.s3
 
+        auth = current.auth
+        is_org_group_admin = auth.s3_has_role("ORG_GROUP_ADMIN")
+
         # Load model for default CRUD strings
         current.s3db.table("org_facility")
-
-        s3.crud_strings.org_facility.title_list = T("Find Test Station")
 
         # Custom prep
         standard_prep = s3.prep
@@ -1851,32 +1908,58 @@ def config(settings):
             # Call standard prep
             result = standard_prep(r) if callable(standard_prep) else True
 
-            resource = r.resource
+            s3db = current.s3db
 
+            resource = r.resource
             record = r.record
             if not record:
-                # Filter list by project code
-                # - re-use last used $$code filter of this session
-                # - default to original subset for consistency in bookmarks/links
-                session_s3 = current.session.s3
-                default_filter = session_s3.get("rlp_facility_filter", "TESTS-SCHOOLS")
-                code = r.get_vars.get("$$code", default_filter)
-                if code:
-                    session_s3.rlp_facility_filter = code
-                    query = FS("~.organisation_id$project.code") == code
-                    resource.add_filter(query)
-                    if code == "TESTS-SCHOOLS":
-                        s3.crud_strings.org_facility.title_list = T("Test Stations for School and Child Care Staff")
-                    elif code == "TESTS-PUBLIC":
-                        s3.crud_strings.org_facility.title_list = T("Test Stations for Everybody")
-            else:
-                s3db = current.s3db
-                auth = current.auth
-                if not auth.s3_has_role("ORG_GROUP_ADMIN") and \
-                   not auth.s3_has_role("ORG_ADMIN", for_pe=record.pe_id):
-                    s3.hide_last_update = True
+                # Open read-view first, even if permitted to edit
+                settings.ui.open_read_first = True
 
-                    table = resource.table
+                # Filter by public-tag
+                get_vars = r.get_vars
+                pending = get_vars.get("$$pending")
+                if is_org_group_admin and pending == "1":
+                    resource.add_filter(FS("public.value") == "N")
+                    s3.crud_strings.org_facility.title_list = T("Unapproved Test Stations")
+                else:
+                    resource.add_filter(FS("public.value") == "Y")
+                    s3.crud_strings.org_facility.title_list = T("Find Test Station")
+
+                    # No Side Menu
+                    current.menu.options = None
+
+                    # Filter list by project code
+                    # - re-use last used $$code filter of this session
+                    # - default to original subset for consistency in bookmarks/links
+                    session_s3 = current.session.s3
+                    default_filter = session_s3.get("rlp_facility_filter", "TESTS-SCHOOLS")
+                    code = r.get_vars.get("$$code", default_filter)
+                    if code:
+                        session_s3.rlp_facility_filter = code
+                        query = FS("~.organisation_id$project.code") == code
+                        resource.add_filter(query)
+                        if code == "TESTS-SCHOOLS":
+                            s3.crud_strings.org_facility.title_list = T("Test Stations for School and Child Care Staff")
+                        elif code == "TESTS-PUBLIC":
+                            s3.crud_strings.org_facility.title_list = T("Test Stations for Everybody")
+
+            else:
+                table = resource.table
+
+                # No facility details editable here except comments
+                for fn in table.fields:
+                    if fn != "comments":
+                        table[fn].writable = False
+
+                # No side menu except for OrgGroupAdmin
+                if not is_org_group_admin:
+                    current.menu.options = None
+
+                if not is_org_group_admin and \
+                   not auth.s3_has_role("ORG_ADMIN", for_pe=record.pe_id):
+
+                    s3.hide_last_update = True
 
                     field = table.obsolete
                     field.readable = field.writable = False
@@ -1893,23 +1976,34 @@ def config(settings):
                                            "widgets": [{"method": "map", "ajax_init": True}],
                                            },
                                           ),
+                               insertable = False,
+                               deletable = False,
                                )
 
             return result
         s3.prep = prep
 
-        # Custom rheader
-        #from .rheaders import rlpptm_org_rheader
-        #attr = dict(attr)
-        #attr["rheader"] = rlpptm_org_rheader
+        # No rheader
         attr["rheader"] = None
-
-        # No Side Menu
-        current.menu.options = None
 
         return attr
 
     settings.customise_org_facility_controller = customise_org_facility_controller
+
+    # -------------------------------------------------------------------------
+    def organisation_create_onaccept(form):
+
+        # Get record ID
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        from .helpers import add_organisation_default_tags
+        add_organisation_default_tags(record_id)
 
     # -------------------------------------------------------------------------
     def customise_org_organisation_resource(r, tablename):
@@ -1925,6 +2019,13 @@ def config(settings):
                                                      },
                                                     ),
                             )
+
+        # Custom onaccept to create default tags
+        s3db.add_custom_callback("org_organisation",
+                                 "onaccept",
+                                 organisation_create_onaccept,
+                                 method = "create",
+                                 )
 
     settings.customise_org_organisation_resource = customise_org_organisation_resource
 
@@ -1950,16 +2051,8 @@ def config(settings):
             is_org_group_admin = auth.s3_has_role("ORG_GROUP_ADMIN")
 
             # Configure binary tags
-            binary_tag_opts = {"Y": T("Yes"), "N": T("No")}
-            for cname in ("requester",):
-                component = resource.components.get(cname)
-                table = component.table
-                field = table.value
-                field.default = "N"
-                field.requires = IS_IN_SET(binary_tag_opts,
-                                           zero = None,
-                                           )
-                field.represent = lambda v, row=None: binary_tag_opts.get(v, "-")
+            from .helpers import configure_binary_tags
+            configure_binary_tags(resource, ("requester",))
 
             # Add invite-method for ORG_GROUP_ADMIN role
             from .helpers import InviteUserOrg
@@ -2102,7 +2195,6 @@ def config(settings):
                     list_fields.append((T("Email"), "email.value"))
                 r.resource.configure(list_fields = list_fields,
                                      )
-
             return result
         s3.prep = prep
 
@@ -2193,16 +2285,8 @@ def config(settings):
             resource = r.resource
 
             # Configure binary tags
-            binary_tag_opts = {"Y": T("Yes"), "N": T("No")}
-            for cname in ("apply", "stats"):
-                component = resource.components.get(cname)
-                table = component.table
-                field = table.value
-                field.default = "N"
-                field.requires = IS_IN_SET(binary_tag_opts,
-                                        zero = None,
-                                        )
-                field.represent = lambda v, row=None: binary_tag_opts.get(v, "-")
+            from .helpers import configure_binary_tags
+            configure_binary_tags(resource, ("apply", "stats"))
 
             if r.component_name == "organisation":
 
