@@ -11,6 +11,7 @@ from collections import OrderedDict
 
 from gluon import current, URL, A, DIV, TAG, \
                   IS_EMPTY_OR, IS_IN_SET, IS_INT_IN_RANGE, IS_NOT_EMPTY
+
 from gluon.storage import Storage
 
 from s3 import FS, IS_FLOAT_AMOUNT, ICON, IS_ONE_OF, S3Represent, s3_str
@@ -1997,13 +1998,13 @@ def config(settings):
                 r.resource.configure(list_fields = list_fields,
                                      )
 
-            #elif r.component_name == "facility":
-            #    ctable = r.component.table
-            #    if is_org_group_admin or \
-            #       record and auth.s3_has_role("ORG_ADMIN", for_pe=record.pe_id):
-            #        # Expose obsolete-flag
-            #        field = ctable.obsolete
-            #        field.readable = field.writable = True
+            elif r.component_name == "facility":
+                ctable = r.component.table
+                if is_org_group_admin or \
+                   record and auth.s3_has_role("ORG_ADMIN", for_pe=record.pe_id):
+                    # Expose obsolete-flag
+                    field = ctable.obsolete
+                    field.readable = field.writable = True
 
             return result
         s3.prep = prep
@@ -2064,6 +2065,7 @@ def config(settings):
                         S3LocationFilter,
                         S3OptionsFilter,
                         S3TextFilter,
+                        S3WithIntro,
                         s3_get_filter_opts,
                         )
 
@@ -2083,6 +2085,11 @@ def config(settings):
         field = table.obsolete
         field.label = T("Defunct")
         field.represent = lambda v, row=None: ICON("remove") if v else ""
+        field.comment = DIV(_class="tooltip",
+                            _title="%s|%s" % (T("Defunct"),
+                                              T("Please mark this field when the facility is no longer in operation"),
+                                              ),
+                            )
 
         stable = s3db.org_service_site
         field = stable.service_id
@@ -2106,9 +2113,8 @@ def config(settings):
                        ]
         if is_org_group_admin and r.get_vars.get("$$pending") == "1":
             list_fields.insert(1, "organisation_id")
-        #    list_fields.append("obsolete")
-        #elif r.tablename == "org_organisation":
-        #    list_fields.append("obsolete")
+        elif r.tablename == "org_organisation":
+            list_fields.append("obsolete")
 
         # Custom filter widgets
         text_fields = ["name",
@@ -2171,15 +2177,21 @@ def config(settings):
                        (T("Telephone"), "phone1"),
                        "email",
                        (T("Opening Hours"), "opening_times"),
-                       S3SQLInlineLink(
-                           "service",
-                           label = T("Services"),
-                           field = "service_id",
-                           widget = "groupedopts",
-                           cols = 1,
-                           ),
-                       #"obsolete",
+                       S3WithIntro(
+                            S3SQLInlineLink(
+                                "service",
+                                label = T("Services"),
+                                field = "service_id",
+                                widget = "groupedopts",
+                                cols = 1,
+                                ),
+                            intro = ("org",
+                                     "facility",
+                                     "SiteServiceIntro",
+                                     ),
+                       ),
                        "comments",
+                       #"obsolete",
                        ]
 
         resource = r.resource
@@ -2187,6 +2199,7 @@ def config(settings):
             fresource = resource
         elif r.tablename == "org_organisation":
             fresource = resource.components.get("facility")
+            crud_fields.append("obsolete")
         else:
             fresource = None
 
@@ -2263,8 +2276,13 @@ def config(settings):
             s3db = current.s3db
 
             resource = r.resource
+            table = resource.table
             record = r.record
+
             if not record:
+                # Filter out defunct facilities
+                resource.add_filter(FS("obsolete") == False)
+
                 # Open read-view first, even if permitted to edit
                 settings.ui.open_read_first = True
 
@@ -2302,8 +2320,15 @@ def config(settings):
                                 s3.crud_strings.org_facility.title_list = T("Test Stations for School and Child Care Staff")
                             elif code == "TESTS-PUBLIC":
                                 s3.crud_strings.org_facility.title_list = T("Test Stations for Everybody")
+
+            elif r.representation == "plain":
+                # Bypass REST method, return map popup directly
+                from .helpers import facility_map_popup
+                result = {"bypass": True,
+                          "output": facility_map_popup(record),
+                          }
             else:
-                table = resource.table
+                # Read view
 
                 # No facility details editable here except comments
                 for fn in table.fields:
@@ -2340,6 +2365,18 @@ def config(settings):
 
             return result
         s3.prep = prep
+
+        standard_postp = s3.postp
+        def postp(r, output):
+
+            if r.representation == "plain" and r.record:
+                # Prevent standard postp rewriting output
+                pass
+            elif callable(standard_postp):
+                output = standard_postp(r, output)
+
+            return output
+        s3.postp = postp
 
         # No rheader
         attr["rheader"] = None
