@@ -72,6 +72,19 @@ if not failed:
     query = (rtable.deleted == False)
     auth.set_realm_entity(rtable, query, force_update=True)
 
+    from templates.RLPPTM.config import LSJV
+    otable = s3db.org_organisation
+    query = (otable.name == LSJV) & \
+            (otable.deleted == False)
+    lsjv = db(query).select(otable.pe_id,
+                            limitby = (0, 1),
+                            ).first()
+
+    if lsjv:
+        query = (rtable.realm_entity == None) & \
+                (rtable.deleted == False)
+        auth.set_realm_entity(rtable, query, force_update=True, entity=lsjv.pe_id)
+
     infoln("...done")
 
 # -----------------------------------------------------------------------------
