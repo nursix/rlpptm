@@ -144,6 +144,7 @@ def rlpptm_org_rheader(r, tabs=None):
 
                 invite_tab = None
                 sites_tab = None
+                doc_tab = None
 
                 gtable = s3db.org_group
                 mtable = s3db.org_group_membership
@@ -153,18 +154,22 @@ def rlpptm_org_rheader(r, tabs=None):
                                          limitby = (0, 1)
                                          ).first()
                 if group:
-                    from .config import TESTSTATIONS, SCHOOLS
+                    from .config import TESTSTATIONS, SCHOOLS, GOVERNMENT
                     if group.name == TESTSTATIONS:
                         sites_tab = (T("Test Stations"), "facility")
+                        doc_tab = (T("Documents"), "document")
                     elif group.name == SCHOOLS:
                         sites_tab = (T("Administrative Offices"), "office")
                         if is_org_group_admin:
                             invite_tab = (T("Invite"), "invite")
+                    elif group.name == GOVERNMENT:
+                        sites_tab = (T("Warehouses"), "warehouse")
 
                 tabs = [(T("Organisation"), None),
                         invite_tab,
                         sites_tab,
                         (T("Staff"), "human_resource"),
+                        doc_tab,
                         ]
 
             # Look up the OrgID
@@ -356,27 +361,43 @@ def rlpptm_inv_rheader(r, tabs=None):
 
             actions = []
 
-            # If the record has a send_ref and status is SHIP_STATUS_IN_PROCESS
+            # If the record status is SHIP_STATUS_IN_PROCESS, both sites are active
             # and there is at least one track item linked to it, add the send-button
-            if record.status == SHIP_STATUS_IN_PROCESS and \
-               record.send_ref and \
-               auth.s3_has_permission("update", resource.table, record_id = record.id):
-                titable = s3db.inv_track_item
-                query = (titable.send_id == record.id) & \
-                        (titable.deleted == False)
-                row = db(query).select(titable.id, limitby=(0, 1)).first()
-                if row:
-                    actions.append(A(T("Send Shipment"),
-                                     _href = URL(c = "inv",
-                                                 f = "send_process",
-                                                 args = [record.id]
-                                                 ),
-                                     _id = "send_process",
-                                     _class = "action-btn",
-                                     ))
+            from .requests import is_active
+            reason = None
+            if record.status == SHIP_STATUS_IN_PROCESS:
+                if not is_active(record.site_id):
+                    reason = T("Distribution center no longer active")
+                elif not is_active(record.to_site_id):
+                    reason = T("Requesting site no longer active")
+                elif auth.s3_has_permission("update", resource.table, record_id=record.id):
+                    titable = s3db.inv_track_item
+                    query = (titable.send_id == record.id) & \
+                            (titable.deleted == False)
+                    row = db(query).select(titable.id, limitby=(0, 1)).first()
+                    if row:
+                        actions.append(A(T("Send Shipment"),
+                                         _href = URL(c = "inv",
+                                                     f = "send_process",
+                                                     args = [record.id]
+                                                     ),
+                                         _id = "send_process",
+                                         _class = "action-btn",
+                                         ))
+                        s3.jquery_ready.append('''S3.confirmClick("#send_process","%s")''' \
+                                                % T("Do you want to send this shipment?"))
+                    else:
+                        reason = T("Shipment is empty")
+            else:
+                reason = T("Shipment already in process")
 
-                    s3.jquery_ready.append('''S3.confirmClick("#send_process","%s")''' \
-                                            % T("Do you want to send this shipment?"))
+            if reason:
+                actions.append(A(T("Send Shipment"),
+                                 _id = "send_process",
+                                 _disabled = "disabled",
+                                 _class = "action-btn",
+                                 _title = reason,
+                                 ))
 
             rheader = rheader(r, table=resource.table, record=record, actions=actions)
 
@@ -433,6 +454,21 @@ def rlpptm_inv_rheader(r, tabs=None):
                                         % T("Did you receive this shipment?"))
 
             rheader = rheader(r, table=resource.table, record=record, actions=actions)
+
+        elif tablename == "inv_warehouse":
+
+            if not tabs:
+                tabs = [(T("Basic Details"), None),
+                        ]
+
+            rheader_fields = [["code", "email"],
+                              ["organisation_id", "phone1"],
+                              ["location_id", "phone2"],
+                              ]
+            rheader_title = "name"
+
+            rheader = S3ResourceHeader(rheader_fields, tabs, title=rheader_title)
+            rheader = rheader(r, table=resource.table, record=record)
 
     return rheader
 

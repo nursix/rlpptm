@@ -15,14 +15,14 @@ def config(settings):
     T = current.T
 
     settings.base.system_name = T("Cumbria Emergency Assistance Centres")
-    settings.base.system_name_short = T("EAC")
+    settings.base.system_name_short = T("Cumbria EACs")
 
     # PrePopulate data
     settings.base.prepopulate += ("CumbriaEAC",)
     settings.base.prepopulate_demo += ("CumbriaEAC/Demo",)
 
     # Theme (folder to use for views/layout.html)
-    settings.base.theme = "CCC"
+    settings.base.theme = "CumbriaEAC"
     # Custom Logo
     #settings.ui.menu_logo = "/%s/static/themes/CumbriaEAC/img/logo.png" % current.request.application
 
@@ -288,6 +288,15 @@ def config(settings):
     # -------------------------------------------------------------------------
     # Human Resources
     settings.hrm.org_required = False
+    # Minimise Profile (not needed as we override Tabs in eac_rheader)
+    #settings.hrm.staff_experience = False
+    #settings.hrm.use_certificates = False
+    #settings.hrm.use_credentials = False
+    #settings.hrm.use_description = None
+    #settings.hrm.use_id = None
+    #settings.hrm.use_skills = None
+    #settings.hrm.teams = None
+    #settings.hrm.use_trainings = False
 
     # -------------------------------------------------------------------------
     # Messaging
@@ -296,6 +305,7 @@ def config(settings):
     # -------------------------------------------------------------------------
     # Persons
     settings.pr.hide_third_gender = False
+    settings.L10n.mandatory_lastname = True
     settings.pr.editable_fields = ["mobile_phone",
                                    "car",
                                    ]
@@ -461,7 +471,7 @@ def config(settings):
                     (T("Event Log"), "site_event"),
                     ]
 
-            if r.controller == "hrm":
+            if r.controller in ("hrm", "default"):
                 hrtable = current.s3db.hrm_human_resource
                 hr = current.db(hrtable.person_id == record.id).select(hrtable.organisation_id,
                                                                        limitby = (0, 1)
@@ -665,21 +675,19 @@ def config(settings):
 
         red_bag = components_get("red_bag")
         f = red_bag.table.value
-        f.requires = IS_IN_SET(("Yes", "No", "Unknown"))
-        f.default = "Unknown"
+        f.requires = IS_EMPTY_OR(IS_IN_SET(("Yes", "No"), zero= T("Unknown")))
 
         wifi = components_get("wifi")
         f = wifi.table.value
-        f.requires = IS_IN_SET(("Yes", "No", "Unknown"))
-        f.default = "Unknown"
+        f.requires = IS_EMPTY_OR(IS_IN_SET(("Yes", "No"), zero= T("Unknown")))
 
         crud_form = S3SQLCustomForm("name",
-                                    "shelter_type_id",
+                                    "status",
                                     "shelter_service_shelter.service_id",
+                                    "shelter_type_id",
                                     "location_id",
                                     "phone",
                                     "capacity_day",
-                                    "status",
                                     (T("Red Bag Lite"), "red_bag.value"),
                                     (T("WiFi available"), "wifi.value"),
                                     (T("Catering"), "catering.value"),
@@ -1352,6 +1360,152 @@ def config(settings):
                       )
 
     # -------------------------------------------------------------------------
+    def xls_title_row(sheet):
+        """
+            Custom XLS Title Row for clients
+        """
+
+        length = 1
+
+        if sheet is not None:
+
+            import xlwt
+
+            from s3 import s3_unicode
+
+            style = xlwt.XFStyle()
+            style.font.bold = True
+            style.pattern.pattern = style.pattern.SOLID_PATTERN
+            style.alignment.horz = style.alignment.HORZ_CENTER
+            style.pattern.pattern_fore_colour = 0x18 # periwinkle
+            borders = xlwt.Borders()
+            borders.left = 1
+            borders.right = 1
+            borders.top = 1
+            borders.bottom = 1
+            style.borders = borders
+
+            labels = ((0, 7, s3_unicode(T("Client"))),
+                      (8, 10, s3_unicode(T("Shelter"))),
+                      (11, 15, s3_unicode(T("Next of Kin"))),
+                      )
+
+            for start_col, end_col, label in labels:
+
+                # Write the label in merged cells
+                sheet.write_merge(0, 0, start_col, end_col, label, style)
+
+        return length
+
+    
+
+    # -------------------------------------------------------------------------
+    def postprocess_select(records, rfields=None, represent=False, as_rows=False):
+        """
+            Post-process resource.select of pr_person to populate fields which
+            cannot be expressed as components due to conflict between the master
+            pr_person & the nok pr_person
+
+            @param records: list of selected data
+            @param rfields: list of S3ResourceFields in the records
+            @param represent: records contain represented data
+            @param as_rows: records are bare Rows rather than extracted
+                            Storage
+        """
+
+        db = current.db
+        s3db = current.s3db
+        ptable = s3db.pr_person
+
+        person_ids = set(records.keys())
+
+        # Lookup Next of Kin
+        table = s3db.pr_person_relation
+        query = (table.parent_id.belongs(person_ids))
+        rows = db(query).select(table.parent_id,
+                                table.person_id,
+                                )
+        noks = [row.person_id for row in rows]
+        nok_lookup = {row.parent_id: row.person_id for row in rows}
+        nok_lookup_get = nok_lookup.get
+
+        # Lookup NoK Relationships
+        table = s3db.pr_person_tag
+        query = (table.person_id.belongs(noks)) & \
+                (table.tag == "relationship")
+        rows = db(query).select(table.person_id,
+                                table.value,
+                                )
+        relationships = {row.person_id: row.value for row in rows}
+        relationships_get = relationships.get
+
+        # Lookup NoK Phones
+        table = s3db.pr_contact
+        query = (ptable.id.belongs(noks)) & \
+                (ptable.pe_id == table.pe_id) & \
+                (table.contact_method == "SMS")
+        rows = db(query).select(ptable.id,
+                                table.value,
+                                )
+        phones = {row["pr_person.id"]: row["pr_contact.value"] for row in rows}
+        phones_get = phones.get
+
+        # Lookup NoK Addresses
+        table = s3db.pr_address
+        query = (ptable.id.belongs(noks)) & \
+                (ptable.pe_id == table.pe_id)
+        rows = db(query).select(ptable.id,
+                                table.location_id,
+                                )
+        if represent:
+            address_location_ids = {}
+            address_locations = {}
+            address_locations_get = address_locations.get
+            location_ids = [row["pr_address.location_id"] for row in rows]
+            locations = table.location_id.represent.bulk(location_ids, show_link=False)
+            locations_get = locations.get
+            for row in rows:
+                location_id = row["pr_address.location_id"]
+                person_id = row["pr_person.id"]
+                address_location_ids[person_id] = location_id
+                address_locations[person_id] = locations_get(location_id)
+        else:
+            address_location_ids = {row["pr_person.id"]: row["pr_address.location_id"] for row in rows}
+        address_location_ids_get = address_location_ids.get
+
+        NONE = current.messages["NONE"]
+
+        for person_id in person_ids:
+
+            row = records[person_id]
+            
+            nok = nok_lookup_get(person_id)
+
+            colname = "pr_person.nok_relationship"
+            value = relationships_get(nok, NONE)
+            if colname in row:
+                row[colname] = value
+            raw = row.get("_row")
+            if raw:
+                raw[colname] = value
+
+            colname = "pr_person.nok_phone"
+            value = phones_get(nok, NONE)
+            if colname in row:
+                row[colname] = value
+            raw = row.get("_row")
+            if raw:
+                raw[colname] = value
+
+            colname = "pr_person.nok_address"
+            value = address_location_ids_get(nok, NONE)
+            if colname in row:
+                row[colname] = address_locations_get(nok, NONE) if represent else value
+            raw = row.get("_row")
+            if raw:
+                raw[colname] = value
+
+    # -------------------------------------------------------------------------
     def customise_pr_person_resource(r, tablename):
 
         if r.controller == "hrm" or \
@@ -1404,219 +1558,263 @@ def config(settings):
                                                                     show_address = True,
                                                                     )
 
-        # Filtered components
-        s3db.add_components("pr_person",
-                            pr_person_tag = ({"name": "holmes",
-                                              "joinby": "person_id",
-                                              "filterby": {"tag": "holmes"},
-                                              "multiple": False,
-                                              },
-                                             {"name": "location",
-                                              "joinby": "person_id",
-                                              "filterby": {"tag": "location"},
-                                              "multiple": False,
-                                              },
-                                             {"name": "pets",
-                                              "joinby": "person_id",
-                                              "filterby": {"tag": "pets"},
-                                              "multiple": False,
-                                              },
-                                             {"name": "pets_details",
-                                              "joinby": "person_id",
-                                              "filterby": {"tag": "pets_details"},
-                                              "multiple": False,
-                                              },
-                                             {"name": "medical",
-                                              "joinby": "person_id",
-                                              "filterby": {"tag": "medical"},
-                                              "multiple": False,
-                                              },
-                                             {"name": "disability",
-                                              "joinby": "person_id",
-                                              "filterby": {"tag": "disability"},
-                                              "multiple": False,
-                                              },
-                                             {"name": "dietary",
-                                              "joinby": "person_id",
-                                              "filterby": {"tag": "dietary"},
-                                              "multiple": False,
-                                              },
-                                             {"name": "gp",
-                                              "joinby": "person_id",
-                                              "filterby": {"tag": "gp"},
-                                              "multiple": False,
-                                              },
-                                             ),
-                            )
+        if current.auth.permission.format == "xls" and \
+           r.method != "report":
+            # Custom XLS Title Row
+            settings.base.xls_title_row = xls_title_row
 
-        from s3 import S3TagCheckboxWidget, s3_comments_widget
+            # Filtered components
+            s3db.add_components("pr_person",
+                                pr_person_tag = ({"name": "holmes",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "holmes"},
+                                                  "multiple": False,
+                                                  },
+                                                 {"name": "relationship",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "relationship"},
+                                                  "multiple": False,
+                                                  },
+                                                 ),
+                                )
 
-        # Individual settings for specific tag components
-        components_get = s3db.resource(tablename).components.get
+            list_fields = [(T("Holmes Ref"), "holmes.value"),
+                           "last_name",
+                           "first_name",
+                           "gender",
+                           "date_of_birth",
+                           "person_details.nationality",
+                           (T("Phone"), "phone.value"),
+                           (T("Address"), "address.location_id"),
+                           "pe_label",
+                           "shelter_registration.shelter_id",
+                           "shelter_registration.check_in_date",
+                           "nok.last_name",
+                           "nok.first_name",
+                           (T("Relationship"), "nok_relationship"),
+                           (T("Phone"), "nok_phone"),
+                           (T("Address"), "nok_address"),
+                           ]
 
-        #integer_represent = IS_INT_AMOUNT.represent
+            s3db.configure(tablename,
+                           list_fields = list_fields,
+                           postprocess_select = postprocess_select,
+                           )
 
-        #congregations = components_get("congregations")
-        #f = congregations.table.value
-        #f.represent = integer_represent
-        #f.requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None))
+        else:
+            # Filtered components
+            s3db.add_components("pr_person",
+                                pr_person_tag = ({"name": "holmes",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "holmes"},
+                                                  "multiple": False,
+                                                  },
+                                                 {"name": "location",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "location"},
+                                                  "multiple": False,
+                                                  },
+                                                 {"name": "pets",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "pets"},
+                                                  "multiple": False,
+                                                  },
+                                                 {"name": "pets_details",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "pets_details"},
+                                                  "multiple": False,
+                                                  },
+                                                 {"name": "medical",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "medical"},
+                                                  "multiple": False,
+                                                  },
+                                                 {"name": "disability",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "disability"},
+                                                  "multiple": False,
+                                                  },
+                                                 {"name": "dietary",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "dietary"},
+                                                  "multiple": False,
+                                                  },
+                                                 {"name": "gp",
+                                                  "joinby": "person_id",
+                                                  "filterby": {"tag": "gp"},
+                                                  "multiple": False,
+                                                  },
+                                                 ),
+                                )
 
-        pets = components_get("pets")
-        f = pets.table.value
-        f.requires = IS_EMPTY_OR(IS_IN_SET(("Y", "N")))
-        f.represent = lambda v: T("yes") if v == "Y" else T("no")
-        f.widget = S3TagCheckboxWidget(on="Y", off="N")
-        f.default = "N"
+            from s3 import S3TagCheckboxWidget, s3_comments_widget
 
-        medical = components_get("medical")
-        medical.table.value.widget = s3_comments_widget
+            # Individual settings for specific tag components
+            components_get = s3db.resource(tablename).components.get
 
-        crud_fields = ["pe_label",
-                       "first_name",
-                       "middle_name",
-                       "last_name",
-                       "gender",
-                       "date_of_birth",
-                       "person_details.nationality",
-                       (T("Location at Time of Incident"), "location.value"),
-                       # Not a multiple=False component
-                       #(T("Phone"), "phone.value"),
-                       S3SQLInlineComponent(
-                           "phone",
-                           name = "phone",
-                           label = T("Mobile Phone"),
-                           multiple = False,
-                           fields = [("", "value")],
-                           #filterby = {"field": "contact_method",
-                           #            "options": "SMS",
-                           #            },
-                       ),
-                       S3SQLInlineComponent(
-                           "email",
-                           name = "email",
-                           label = T("Email"),
-                           multiple = False,
-                           fields = [("", "value")],
-                           #filterby = {"field": "contact_method",
-                           #            "options": "EMAIL",
-                           #            },
-                       ),
-                       (T("Pets"), "pets.value"),
-                       (T("Details of Pets"), "pets_details.value"),
-                       (T("Medical Details"), "medical.value"),
-                       (T("Disability Details"), "disability.value"),
-                       (T("Dietary Needs"), "dietary.value"),
-                       (T("GP"), "gp.value"),
-                       "comments",
-                       ]
+            #integer_represent = IS_INT_AMOUNT.represent
 
-        if not household:
-            crud_fields.insert(7, S3SQLInlineComponent("address",
-                                                       name = "address",
-                                                       label = T("Address"),
-                                                       multiple = False,
-                                                       fields = [("", "location_id")],
-                                                       filterby = {"field": "type",
-                                                                   "options": 1, # Current Home Address
-                                                                   },
-                                                       ))
+            #congregations = components_get("congregations")
+            #f = congregations.table.value
+            #f.represent = integer_represent
+            #f.requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None))
 
-        if r.method in ("read", "update"):
-            crud_fields.insert(1, (T("Holmes Ref"), "holmes.value"))
+            pets = components_get("pets")
+            f = pets.table.value
+            f.requires = IS_EMPTY_OR(IS_IN_SET(("Y", "N")))
+            f.represent = lambda v: T("yes") if v == "Y" else T("no")
+            f.widget = S3TagCheckboxWidget(on="Y", off="N")
+            f.default = "N"
 
-        crud_form = S3SQLCustomForm(*crud_fields,
-                                    postprocess = postprocess
-                                    )
+            medical = components_get("medical")
+            medical.table.value.widget = s3_comments_widget
 
-        import json
+            crud_fields = ["pe_label",
+                           "first_name",
+                           "middle_name",
+                           "last_name",
+                           "gender",
+                           "date_of_birth",
+                           "person_details.nationality",
+                           (T("Location at Time of Incident"), "location.value"),
+                           # Not a multiple=False component
+                           #(T("Phone"), "phone.value"),
+                           S3SQLInlineComponent(
+                               "phone",
+                               name = "phone",
+                               label = T("Mobile Phone"),
+                               multiple = False,
+                               fields = [("", "value")],
+                               #filterby = {"field": "contact_method",
+                               #            "options": "SMS",
+                               #            },
+                           ),
+                           S3SQLInlineComponent(
+                               "email",
+                               name = "email",
+                               label = T("Email"),
+                               multiple = False,
+                               fields = [("", "value")],
+                               #filterby = {"field": "contact_method",
+                               #            "options": "EMAIL",
+                               #            },
+                           ),
+                           (T("Pets"), "pets.value"),
+                           (T("Details of Pets"), "pets_details.value"),
+                           (T("Medical Details"), "medical.value"),
+                           (T("Disability Details"), "disability.value"),
+                           (T("Dietary Needs"), "dietary.value"),
+                           (T("GP"), "gp.value"),
+                           "comments",
+                           ]
 
-        # Compact JSON encoding
-        SEPARATORS = (",", ":")
+            if not household:
+                crud_fields.insert(7, S3SQLInlineComponent("address",
+                                                           name = "address",
+                                                           label = T("Address"),
+                                                           multiple = False,
+                                                           fields = [("", "location_id")],
+                                                           filterby = {"field": "type",
+                                                                       "options": 1, # Current Home Address
+                                                                       },
+                                                           ))
 
-        current.response.s3.jquery_ready.append('''S3.showHidden('%s',%s,'%s')''' % \
-            ("sub_pets_value", json.dumps(["sub_pets_details_value"], separators=SEPARATORS), "pr_person"))
+            if r.method in ("read", "update"):
+                crud_fields.insert(1, (T("Holmes Ref"), "holmes.value"))
 
-        filter_widgets = [
-                S3TextFilter(["first_name",
-                              "middle_name",
-                              "last_name",
-                              "pe_label",
-                              "holmes.value",
-                              ],
-                             label = T("Search"),
-                             #_class = "filter-search",
-                             ),
-                S3LocationFilter("location_id",
-                                 label = T("Location"),
-                                 levels = ("L3", "L4"),
+            crud_form = S3SQLCustomForm(*crud_fields,
+                                        postprocess = postprocess
+                                        )
+
+            import json
+
+            # Compact JSON encoding
+            SEPARATORS = (",", ":")
+
+            current.response.s3.jquery_ready.append('''S3.showHidden('%s',%s,'%s')''' % \
+                ("sub_pets_value", json.dumps(["sub_pets_details_value"], separators=SEPARATORS), "pr_person"))
+
+            filter_widgets = [
+                    S3TextFilter(["first_name",
+                                  "middle_name",
+                                  "last_name",
+                                  "pe_label",
+                                  "holmes.value",
+                                  ],
+                                 label = T("Search"),
+                                 #_class = "filter-search",
                                  ),
-                S3OptionsFilter("shelter_registration.shelter_id",
-                                ),
-                S3OptionsFilter("age_group",
-                                label = T("Age"),
-                                ),
-                S3OptionsFilter("gender",
-                                ),
-                S3OptionsFilter("person_details.nationality",
-                                ),
-                S3OptionsFilter("pets.value",
-                                label = T("Pets"),
-                                ),
-                S3DateFilter("shelter_registration.check_in_date",
-                             #hide_time = True,
-                             #hidden = True,
-                             )
-                ]
+                    S3LocationFilter("location_id",
+                                     label = T("Location"),
+                                     levels = ("L3", "L4"),
+                                     ),
+                    S3OptionsFilter("shelter_registration.shelter_id",
+                                    ),
+                    S3OptionsFilter("age_group",
+                                    label = T("Age"),
+                                    ),
+                    S3OptionsFilter("gender",
+                                    ),
+                    S3OptionsFilter("person_details.nationality",
+                                    ),
+                    S3OptionsFilter("pets.value",
+                                    label = T("Pets"),
+                                    ),
+                    S3DateFilter("shelter_registration.check_in_date",
+                                 #hide_time = True,
+                                 #hidden = True,
+                                 )
+                    ]
 
-        list_fields = ["last_name",
-                       "first_name",
-                       "shelter_registration.check_in_date",
-                       "pe_label",
-                       "gender",
-                       (T("Age"), "age"),
-                       ]
-        if r.controller == "pr":
-            list_fields.insert(2, "shelter_registration.shelter_id")
+            list_fields = ["last_name",
+                           "first_name",
+                           "shelter_registration.check_in_date",
+                           "pe_label",
+                           "gender",
+                           (T("Age"), "age"),
+                           ]
+            if r.controller == "pr":
+                list_fields.insert(2, "shelter_registration.shelter_id")
 
-        report_fields = ["gender",
-                         "age_group",
-                         "person_details.nationality",
-                         "shelter_registration.shelter_id",
-                         "location_id$L3",
-                         "location_id$L4",
-                         ]
+            report_fields = ["gender",
+                             "age_group",
+                             "person_details.nationality",
+                             "shelter_registration.shelter_id",
+                             "location_id$L3",
+                             "location_id$L4",
+                             ]
 
-        from gluon import URL
+            from gluon import URL
 
-        s3db.configure(tablename,
-                       # Open Next of Kin tab after registration
-                       create_next = URL(c="pr", f="person",
-                                         args = ["[id]", "nok"],
-                                         ),
-                       crud_form = crud_form,
-                       filter_widgets = filter_widgets,
-                       listadd = True, #if household else False,
-                       list_fields = list_fields,
-                       report_options = Storage(
-                        rows = report_fields,
-                        cols = report_fields,
-                        fact = report_fields,
-                        defaults = Storage(rows = "location_id$L4", # Lowest-level of hierarchy
-                                           cols = "age_group",
-                                           fact = "count(id)",
-                                           totals = True,
-                                           )
-                        ),
-                       summary = ({"name": "table",
-                                   "label": "Table",
-                                   "widgets": [{"method": "datatable"}]
-                                   },
-                                  {"name": "report",
-                                   "label": "Report",
-                                   "widgets": [{"method": "report", "ajax_init": True}],
-                                   },
-                                  ),
-                       )
+            s3db.configure(tablename,
+                           # Open Next of Kin tab after registration
+                           create_next = URL(c="pr", f="person",
+                                             args = ["[id]", "nok"],
+                                             ),
+                           crud_form = crud_form,
+                           filter_widgets = filter_widgets,
+                           listadd = True, #if household else False,
+                           list_fields = list_fields,
+                           report_options = Storage(
+                            rows = report_fields,
+                            cols = report_fields,
+                            fact = report_fields,
+                            defaults = Storage(rows = "location_id$L4", # Lowest-level of hierarchy
+                                               cols = "age_group",
+                                               fact = "count(id)",
+                                               totals = True,
+                                               )
+                            ),
+                           summary = ({"name": "table",
+                                       "label": "Table",
+                                       "widgets": [{"method": "datatable"}]
+                                       },
+                                      {"name": "report",
+                                       "label": "Report",
+                                       "widgets": [{"method": "report", "ajax_init": True}],
+                                       },
+                                      ),
+                           )
 
     settings.customise_pr_person_resource = customise_pr_person_resource
 
@@ -1711,7 +1909,7 @@ def config(settings):
 
                 return result
 
-            elif r.controller == "hrm":
+            elif r.controller in ("hrm", "default"):
                 
                 from s3 import S3SQLCustomForm, S3SQLInlineComponent
 
@@ -1763,6 +1961,48 @@ def config(settings):
                                )
 
                 return result
+
+            if r.method == "household" and r.http == "POST":
+                # Is Person checked-in?
+                person_id = r.id
+                db = current.db
+                ltable = s3db.cr_shelter_registration
+                query = (ltable.person_id == person_id) & \
+                        (ltable.deleted != True)
+                registration = db(query).select(ltable.shelter_id,
+                                                limitby = (0, 1)
+                                                ).first()
+                if registration:
+                    # Registering Client Checks them in
+                    def household_check_in(form):
+
+                        shelter_id = registration.shelter_id
+                        person_id = form.vars.id
+
+                        stable = s3db.cr_shelter
+                        shelter = db(stable.id == shelter_id).select(stable.site_id,
+                                                                     limitby = (0, 1)
+                                                                     ).first()
+                        site_id = shelter.site_id
+
+                        # Add cr_shelter_registration record
+                        ltable.insert(person_id = person_id,
+                                      shelter_id = shelter_id,
+                                      check_in_date = current.request.utcnow,
+                                      registration_status = 2,
+                                      )
+
+                        # Add Site Event Log
+                        s3db.org_site_event.insert(site_id = site_id,
+                                                   person_id = person_id,
+                                                   event = 2, # Checked-In
+                                                   comments = "Client",
+                                                   )
+
+                    s3db.add_custom_callback("pr_person",
+                                             "create_onaccept",
+                                             household_check_in,
+                                             )
 
             from s3 import FS
 
@@ -1820,6 +2060,9 @@ def config(settings):
         s3.postp = postp
 
         attr["rheader"] = eac_rheader
+        if current.auth.permission.format == "xls":
+            attr["evenodd"] = True
+            attr["use_colour"] = True
 
         return attr
 

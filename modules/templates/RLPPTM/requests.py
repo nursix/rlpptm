@@ -120,6 +120,9 @@ def send_filter_widgets():
     if current.auth.s3_has_role("SUPPLY_COORDINATOR"):
 
         coordinator_filters = [
+            S3OptionsFilter("site_id",
+                            label = T("Distribution Center"),
+                            ),
             S3OptionsFilter("to_site_id",
                             ),
             S3LocationFilter("to_site_id$location_id",
@@ -229,6 +232,27 @@ def get_managed_requester_orgs(cache=True):
 
     return organisation_ids
 
+# -----------------------------------------------------------------------------
+def is_active(site_id):
+    """
+        Verify whether a site is active (i.e. not marked obsolete)
+
+        @param site_id: the site ID
+
+        @returns: True|False
+    """
+
+    if not site_id:
+        return False
+
+    stable = current.s3db.org_site
+    query = (stable.site_id == site_id) & \
+            ((stable.obsolete == None) |  (stable.obsolete == False))
+    row = current.db(query).select(stable.site_id,
+                                   limitby = (0, 1),
+                                   ).first()
+    return bool(row)
+
 # =============================================================================
 class RegisterShipment(S3Method):
     """
@@ -264,10 +288,12 @@ class RegisterShipment(S3Method):
         return output
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def register_shipment(r, **attr):
+    @classmethod
+    def register_shipment(cls, r, **attr):
 
         req = r.record
+
+        T = current.T
 
         db = current.db
         s3db = current.s3db
@@ -284,15 +310,24 @@ class RegisterShipment(S3Method):
             r.unauthorised()
         user_person_id = auth.s3_logged_in_person
 
+        # Verify that the to_site_id is not obsolete
+        if not is_active(req.site_id):
+            r.error(400, T("Requesting site no longer active"))
+
+        distribution_site_id = cls.distribution_site(req.site_id)
+        if not distribution_site_id:
+            current.session.warning = T("No suitable distribution center found")
+
         # Create the shipment
         shipment = {"sender_id": user_person_id,
-                    "site_id": None,    # TODO need a default site
+                    "site_id": distribution_site_id,
                     "recipient_id": req.requester_id,
                     "to_site_id": req.site_id,
                     "req_ref": req.req_ref,
                     "status": 0,        # In Process
                     }
         shipment["id"] = shipment_id = stable.insert(**shipment)
+        auth.s3_set_record_owner(stable, shipment_id)
 
         # Get the requested items
         ritable = s3db.req_req_item
@@ -312,7 +347,7 @@ class RegisterShipment(S3Method):
         #   so no stock level checks or updates will happen
         for ritem in ritems:
             titem = {"req_item_id": ritem.id,
-                     "track_org_id": None, # TODO default site org
+                     "track_org_id": None,
                      "send_id": shipment_id,
                      "status": 1, # Preparing
                      "item_id": ritem.item_id,
@@ -326,8 +361,62 @@ class RegisterShipment(S3Method):
         s3db.onaccept(stable, shipment, method="create")
 
         # Redirect to the shipment
-        # TODO hint to verify the shipment before actually sending it
         redirect(URL(c="inv", f="send", args = [shipment_id]))
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def distribution_site(req_site_id):
+        """
+            Find a distribution site (warehouse) in the same L2/L3 as
+            the requester site; conducts a path-based search
+
+            @param req_site_id: the requester site ID
+        """
+
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+
+        # Determine the location
+        stable = s3db.org_site
+        ltable = s3db.gis_location
+        join = ltable.on(ltable.id == stable.location_id)
+        query = (stable.site_id == req_site_id) & \
+                (stable.deleted == False)
+        location = db(query).select(ltable.path,
+                                    join = join,
+                                    limitby = (0, 1),
+                                    ).first()
+        if not location or not location.path:
+            return None
+
+        match = None
+
+        path = location.path.split("/")
+        if len(path) > 2:
+            # Find warehouses in the same L2
+            wtable = s3db.inv_warehouse
+            join = ltable.on((ltable.id == wtable.location_id) & \
+                             (ltable.path.like("%s%%" % "/".join(path[:3]))))
+            query = auth.s3_accessible_query("read", wtable) & \
+                    (wtable.deleted == False) & \
+                    (wtable.obsolete == False)
+            rows = db(query).select(wtable.id,
+                                    wtable.site_id,
+                                    ltable.path,
+                                    join = join,
+                                    )
+            if len(rows) == 1:
+                # Single match in L2
+                match = rows.first().inv_warehouse.site_id
+            elif len(path) > 3:
+                subset = [row for row in rows
+                          if row.gis_location.path.startswith("/".join(path[:4]))]
+                if len(subset) == 1:
+                    # Single match in L3
+                    match = subset[0].inv_warehouse.site_id
+
+        return match
 
 # =============================================================================
 class ShipmentCodeRepresent(S3Represent):

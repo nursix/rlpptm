@@ -22,6 +22,7 @@ from .rlpgeonames import rlp_GeoNames
 LSJV = "Landesamt für Soziales, Jugend und Versorgung"
 SCHOOLS = "Schulen"
 TESTSTATIONS = "COVID-19 Teststellen"
+GOVERNMENT = "Regierungsstellen"
 
 ISSUER_ORG_TYPE = "pe_id$pe_id:org_organisation.org_organisation_organisation_type.organisation_type_id"
 
@@ -311,6 +312,18 @@ def config(settings):
             if program:
                 realm_entity = program.realm_entity
 
+        elif tablename in ("inv_send", "inv_recv"):
+            # Shipments inherit realm-entity from the sending/receiving site
+            table = s3db.table(tablename)
+            stable = s3db.org_site
+            query = (table._id == row.id) & \
+                    (stable.site_id == table.site_id)
+            site = db(query).select(stable.realm_entity,
+                                    limitby = (0, 1),
+                                    ).first()
+            if site:
+                realm_entity = site.realm_entity
+
         return realm_entity
 
     settings.auth.realm_entity = rlpptm_realm_entity
@@ -477,6 +490,40 @@ def config(settings):
         return attr
 
     settings.customise_cms_post_controller = customise_cms_post_controller
+
+    # -------------------------------------------------------------------------
+    def customise_doc_document_resource(r, tablename):
+
+        if r.controller == "org" or r.function == "organisation":
+
+            s3db = current.s3db
+            table = s3db.doc_document
+
+            # Hide URL field
+            field = table.url
+            field.readable = field.writable = False
+
+            # Custom label for date-field
+            field = table.date
+            field.label = T("Uploaded on")
+            field.default = r.utcnow.date()
+            field.writable = False
+
+            # Custom label for name-field
+            field = table.name
+            field.label = T("Title")
+
+            # List fields
+            list_fields = ["name",
+                           "file",
+                           "date",
+                           "comments",
+                           ]
+            s3db.configure("doc_document",
+                           list_fields = list_fields,
+                           )
+
+    settings.customise_doc_document_resource = customise_doc_document_resource
 
     # -------------------------------------------------------------------------
     def customise_disease_case_diagnostics_resource(r, tablename):
@@ -1030,16 +1077,22 @@ def config(settings):
 
         # Report options
         if r.method == "report":
+            field = table.created_by
+            field.represent = s3db.auth_UserRepresent(show_name = True,
+                                                      show_email = False,
+                                                      )
             facts = ((T("Total Services Rendered"), "sum(quantity)"),
                      (T("Number of Accepted Vouchers"), "count(id)"),
                      (T("Remaining Compensation Claims"), "sum(balance)"),
                      )
             axes = ["program_id",
-                    "pe_id",
                     "status",
                     ]
-            if current.auth.s3_has_role("PROGRAM_MANAGER"):
+            has_role = auth.s3_has_role
+            if has_role("PROGRAM_MANAGER"):
                 axes.insert(0, "pe_id")
+            if has_role("VOUCHER_PROVIDER"):
+                axes.append((T("User"), "created_by"))
             report_options = {
                 "rows": axes,
                 "cols": axes,
@@ -2540,6 +2593,7 @@ def config(settings):
 
         table = s3db.inv_recv
 
+        # Custom label for req_ref
         from .requests import ShipmentCodeRepresent
         field = table.req_ref
         field.label = T("Order No.")
@@ -2549,12 +2603,41 @@ def config(settings):
         #field = table.send_ref
         #field.represent = lambda v, row=None: B(v if v else "-")
 
+        # Don't show type in site representation
+        field = table.site_id
+        field.represent = s3db.org_SiteRepresent(show_link = True,
+                                                 show_type = False,
+                                                 )
+
+        # Custom label for from_site_id, don't show link or type
+        field = table.from_site_id
+        field.label = T("Distribution Center")
+        field.readable = True
+        field.writable = False
+        field.represent = s3db.org_SiteRepresent(show_link = False,
+                                                 show_type = False,
+                                                 )
+
+        # Color-coded status representation
+        from s3 import S3PriorityRepresent
+        field = table.status
+        status_opts = s3db.inv_ship_status
+        status_labels = s3db.inv_shipment_status_labels
+        field.represent = S3PriorityRepresent(status_labels,
+                                              {status_opts["IN_PROCESS"]: "lightblue",
+                                               status_opts["RECEIVED"]: "green",
+                                               status_opts["SENT"]: "amber",
+                                               status_opts["CANCEL"]: "black",
+                                               status_opts["RETURNING"]: "red",
+                                               }).represent
+
         if r.tablename == "inv_recv" and not r.component:
             if r.interactive:
                 from s3 import S3SQLCustomForm
                 crud_fields = ["req_ref",
                                #"send_ref",
                                "site_id",
+                               "from_site_id",
                                "status",
                                "recipient_id",
                                "date",
@@ -2567,6 +2650,7 @@ def config(settings):
             list_fields = ["req_ref",
                            #"send_ref",
                            "site_id",
+                           "from_site_id",
                            "date",
                            "status",
                            ]
@@ -2603,7 +2687,6 @@ def config(settings):
                 # Hide unused fields
                 unused = ("type",
                           "organisation_id",
-                          "from_site_id",
                           "purchase_ref",
                           "recv_ref",
                           )
@@ -2668,15 +2751,57 @@ def config(settings):
     # -------------------------------------------------------------------------
     def customise_inv_send_resource(r, tablename):
 
+        db = current.db
         s3db = current.s3db
 
         table = s3db.inv_send
 
         from .requests import ShipmentCodeRepresent
 
+        # Custom representation of req_ref
         field = table.req_ref
         field.label = T("Order No.")
-        field.represent = ShipmentCodeRepresent("req_req", "req_ref")
+        if r.representation == "wws":
+            field.represent = lambda v, row=None: v if v else "-"
+        else:
+            field.represent = ShipmentCodeRepresent("req_req", "req_ref")
+
+        # Sending site is required, must not be obsolete, +custom label
+        field = table.site_id
+        field.label = T("Distribution Center")
+        field.requires = IS_ONE_OF(db, "org_site.site_id",
+                                   field.represent,
+                                   instance_types = ("inv_warehouse",),
+                                   not_filterby = "obsolete",
+                                   not_filter_opts = (True,),
+                                   )
+        field.represent = s3db.org_SiteRepresent(show_link = False,
+                                                 show_type = False,
+                                                 )
+
+        # Recipient site is required, must be org_facility
+        field = table.to_site_id
+        field.requires = IS_ONE_OF(db, "org_site.site_id",
+                                   field.represent,
+                                   instance_types = ("org_facility",),
+                                   sort = True,
+                                   )
+        field.represent = s3db.org_SiteRepresent(show_link = True,
+                                                 show_type = False,
+                                                 )
+
+        # Color-coded status representation
+        from s3 import S3PriorityRepresent
+        field = table.status
+        status_opts = s3db.inv_ship_status
+        status_labels = s3db.inv_shipment_status_labels
+        field.represent = S3PriorityRepresent(status_labels,
+                                              {status_opts["IN_PROCESS"]: "lightblue",
+                                               status_opts["RECEIVED"]: "green",
+                                               status_opts["SENT"]: "amber",
+                                               status_opts["CANCEL"]: "black",
+                                               status_opts["RETURNING"]: "red",
+                                               }).represent
 
         # We don't use send_ref
         field = table.send_ref
@@ -2689,6 +2814,7 @@ def config(settings):
                        "req_ref",
                        #"send_ref",
                        "date",
+                       "site_id",
                        "to_site_id",
                        "status",
                        ]
@@ -2706,6 +2832,7 @@ def config(settings):
                     "to_site_id$location_id$L2",
                     "to_site_id$location_id$L1",
                     (T("Shipment Items"), "track_item.item_id"),
+                    (T("Distribution Center"), "site_id"),
                     "status",
                     ]
 
@@ -2748,16 +2875,16 @@ def config(settings):
             resource = r.resource
             table = resource.table
 
+            record = r.record
             component = r.component
 
             if r.method == "report":
                 s3.crud_strings[resource.tablename].title_report = T("Shipments Statistics")
 
             if not component:
-                record = r.record
 
                 # Hide unused fields
-                unused = ("site_id",
+                unused = (#"site_id",
                           "organisation_id",
                           "type",
                           "driver_name",
@@ -2855,9 +2982,37 @@ def config(settings):
                                     list_fields = list_fields,
                                     )
 
+            if r.interactive and not record and auth.s3_has_role("SUPPLY_COORDINATOR"):
+                # Configure WWS export format
+                export_formats = list(settings.get_ui_export_formats())
+                export_formats.append(("wws", "fa fa-shopping-cart", T("CoronaWWS")))
+                s3.formats["wws"] = r.url(method="", vars={"mcomponents": "track_item"})
+                settings.ui.export_formats = export_formats
 
             return result
         s3.prep = prep
+
+        standard_postp = s3.postp
+        def postp(r, output):
+
+            # Call standard postp if on component tab
+            if r.component and callable(standard_postp):
+                output = standard_postp(r, output)
+
+            if r.representation == "wws":
+                # Deliver as attachment rather than as page content
+                from gluon.contenttype import contenttype
+
+                now = current.request.utcnow.strftime("%Y%m%d%H%M%S")
+                filename = "ship%s.wws" % now
+                disposition = "attachment; filename=\"%s\"" % filename
+
+                response = current.response
+                response.headers["Content-Type"] = contenttype(".xml")
+                response.headers["Content-disposition"] = disposition
+
+            return output
+        s3.postp = postp
 
         from .rheaders import rlpptm_inv_rheader
         attr["rheader"] = rlpptm_inv_rheader
@@ -3042,6 +3197,102 @@ def config(settings):
     settings.customise_inv_track_item_resource = customise_inv_track_item_resource
 
     # -------------------------------------------------------------------------
+    def customise_inv_warehouse_resource(r, tablename):
+
+        T = current.T
+
+        s3db = current.s3db
+
+        table = s3db.inv_warehouse
+
+        # Remove Add-links for organisation and warehouse type
+        field = table.organisation_id
+        field.comment = None
+        field = table.warehouse_type_id
+        field.comment = None
+
+        # Custom label, represent and tooltip for obsolete-flag
+        field = table.obsolete
+        field.readable = field.writable = True
+        field.label = T("Defunct")
+        field.represent = lambda v, row=None: ICON("remove") if v else ""
+        field.comment = DIV(_class="tooltip",
+                            _title="%s|%s" % (T("Defunct"),
+                                              T("Please mark this field when the facility is no longer in operation"),
+                                              ),
+                            )
+
+        if r.interactive:
+
+            # Configure location selector and geocoder
+            from s3 import S3LocationSelector
+            field = table.location_id
+            field.widget = S3LocationSelector(levels = ("L1", "L2", "L3", "L4"),
+                                              required_levels = ("L1", "L2", "L3"),
+                                              show_address = True,
+                                              show_postcode = True,
+                                              show_map = True,
+                                              )
+            current.response.s3.scripts.append("/%s/static/themes/RLP/js/geocoderPlugin.js" % r.application)
+
+            # Custom CRUD-Form
+            from s3 import S3SQLCustomForm
+            crud_fields = ["organisation_id",
+                           "name",
+                           "code",
+                           "warehouse_type_id",
+                           "location_id",
+                           "email",
+                           "phone1",
+                           "phone2",
+                           "comments",
+                           "obsolete",
+                           ]
+
+            s3db.configure("inv_warehouse",
+                           crud_form = S3SQLCustomForm(*crud_fields),
+                           )
+
+        # Custom list fields
+        list_fields = ["organisation_id",
+                       "name",
+                       "code",
+                       "warehouse_type_id",
+                       "location_id",
+                       "email",
+                       "phone1",
+                       "obsolete",
+                       ]
+        s3db.configure("inv_warehouse",
+                       list_fields = list_fields,
+                       deletable = False,
+                       )
+
+    settings.customise_inv_warehouse_resource = customise_inv_warehouse_resource
+
+    # -------------------------------------------------------------------------
+    def customise_inv_warehouse_controller(**attr):
+
+        s3 = current.response.s3
+
+        #standard_postp = s3.postp
+        #def postp(r, output):
+        #    if callable(standard_postp):
+        #        output = standard_postp(r, output)
+        #    return output
+        #s3.postp = postp
+
+        # Override standard postp
+        s3.postp = None
+
+        from .rheaders import rlpptm_inv_rheader
+        attr["rheader"] = rlpptm_inv_rheader
+
+        return attr
+
+    settings.customise_inv_warehouse_controller = customise_inv_warehouse_controller
+
+    # -------------------------------------------------------------------------
     def customise_req_req_resource(r, tablename):
 
         db = current.db
@@ -3055,6 +3306,13 @@ def config(settings):
         field.label = T("Order No.")
         #field.represent = lambda v, row=None: v if v else "-"
 
+        # Don't show facility type
+        field = table.site_id
+        field.represent = s3db.org_SiteRepresent(show_link = True,
+                                                 show_type = False,
+                                                 )
+
+        # Custom method to register a shipment
         if auth.s3_has_role("SUPPLY_COORDINATOR"):
             from .requests import RegisterShipment
             s3db.set_method("req", "req",
@@ -3177,7 +3435,8 @@ def config(settings):
                     if not is_supply_coordinator:
                         # Limit to sites of managed requester organisations
                         stable = s3db.org_site
-                        dbset = db(stable.organisation_id.belongs(requester_orgs))
+                        dbset = db((stable.organisation_id.belongs(requester_orgs)) & \
+                                   (stable.obsolete == False))
                         field = table.site_id
                         field.requires = IS_ONE_OF(dbset, "org_site.site_id",
                                                    field.represent,
@@ -3224,19 +3483,11 @@ def config(settings):
                                          req_req_item_create_onaccept,
                                          method = "create",
                                          )
-
-            if r.interactive and not record and has_role("SUPPLY_COORDINATOR"):
-                # Configure WWS export format
-                export_formats = list(settings.get_ui_export_formats())
-                export_formats.append(("wws", "fa fa-shopping-cart", T("CoronaWWS")))
-                s3.formats["wws"] = r.url(method="", vars={"mcomponents": "req_item"})
-                settings.ui.export_formats = export_formats
-
             return result
         s3.prep = prep
 
         standard_postp = s3.postp
-        def custom_postp(r, output):
+        def postp(r, output):
 
             # Call standard postp if on component tab
             if r.component and callable(standard_postp):
@@ -3248,7 +3499,8 @@ def config(settings):
             from s3db.req import REQ_STATUS_COMPLETE, REQ_STATUS_CANCEL
             request_complete = (REQ_STATUS_COMPLETE, REQ_STATUS_CANCEL)
 
-            stable = s3db.inv_send
+            istable = s3db.inv_send
+
             from s3db.inv import SHIP_STATUS_IN_PROCESS, SHIP_STATUS_SENT
             shipment_in_process = (SHIP_STATUS_IN_PROCESS, SHIP_STATUS_SENT)
 
@@ -3263,23 +3515,29 @@ def config(settings):
                     # Single record view
                     if not r.component and has_role("SUPPLY_COORDINATOR"):
                         if record.fulfil_status not in request_complete:
-                            query = (stable.req_ref == record.req_ref) & \
-                                    (stable.status.belongs(shipment_in_process)) & \
-                                    (stable.deleted == False)
-                            shipment = db(query).select(stable.id, limitby=(0, 1)).first()
+                            query = (istable.req_ref == record.req_ref) & \
+                                    (istable.status.belongs(shipment_in_process)) & \
+                                    (istable.deleted == False)
+                            shipment = db(query).select(istable.id, limitby=(0, 1)).first()
                         else:
                             shipment = None
-                        if not shipment:
+                        from .requests import is_active
+                        site_active = is_active(record.site_id)
+                        if not shipment and site_active:
                             ship_btn = A(T("Register Shipment"),
                                          _class = "action-btn ship-btn",
                                          _db_id = str(record.id),
                                          )
                             inject_script = True
                         else:
+                            if not site_active:
+                                reason = T("Requesting site no longer active")
+                            else:
+                                reason = T("Shipment already in process")
                             ship_btn = A(T("Register Shipment"),
                                          _class = "action-btn",
                                          _disabled = "disabled",
-                                         _title = T("Shipment already in process"),
+                                         _title = reason,
                                          )
                         if "buttons" not in output:
                             buttons = output["buttons"] = {}
@@ -3292,6 +3550,7 @@ def config(settings):
 
                 elif not r.component and not r.method:
                     # Datatable
+                    stable = s3db.org_site
 
                     # Default action buttons (except delete)
                     from s3 import S3CRUD
@@ -3299,14 +3558,17 @@ def config(settings):
 
                     if has_role("SUPPLY_COORDINATOR"):
                         # Can only register shipments for unfulfilled requests with
-                        # no shipment currently in process or in transit
-                        left = stable.on((stable.req_ref == table.req_ref) & \
-                                         (stable.status.belongs(shipment_in_process)) & \
-                                         (stable.deleted == False))
+                        # no shipment currently in process or in transit, and the
+                        # requesting site still active
+                        left = istable.on((istable.req_ref == table.req_ref) & \
+                                          (istable.status.belongs(shipment_in_process)) & \
+                                          (istable.deleted == False))
+                        join = stable.on((stable.site_id == table.site_id) & \
+                                         (stable.obsolete == False))
                         query = (table.fulfil_status != REQ_STATUS_COMPLETE) & \
                                 (table.fulfil_status != REQ_STATUS_CANCEL) & \
-                                (stable.id == None)
-                        rows = db(query).select(table.id, groupby=table.id, left = left)
+                                (istable.id == None)
+                        rows = db(query).select(table.id, groupby=table.id, join=join, left=left)
                         restrict = [str(row.id) for row in rows]
 
                         # Register-shipment button
@@ -3332,10 +3594,10 @@ def config(settings):
                     if auth.s3_has_permission("delete", table):
                         # Requests can only be deleted while no shipment for them
                         # has been registered yet:
-                        left = stable.on((stable.req_ref == table.req_ref) & \
-                                         (stable.deleted == False))
+                        left = istable.on((istable.req_ref == table.req_ref) & \
+                                          (istable.deleted == False))
                         query = auth.s3_accessible_query("delete", table) & \
-                                (stable.id == None)
+                                (istable.id == None)
                         rows = db(query).select(table.id, left=left)
 
                         # Delete-button
@@ -3358,20 +3620,8 @@ def config(settings):
                     if script not in s3.scripts:
                         s3.scripts.append(script)
 
-            elif r.representation == "wws":
-                # Deliver as attachment rather than as page content
-                from gluon.contenttype import contenttype
-
-                now = current.request.utcnow.strftime("%Y%m%d%H%M%S")
-                filename = "req%s.wws" % now
-                disposition = "attachment; filename=\"%s\"" % filename
-
-                response = current.response
-                response.headers["Content-Type"] = contenttype(".xml")
-                response.headers["Content-disposition"] = disposition
-
             return output
-        s3.postp = custom_postp
+        s3.postp = postp
 
         from .rheaders import rlpptm_req_rheader
         attr["rheader"] = rlpptm_req_rheader
