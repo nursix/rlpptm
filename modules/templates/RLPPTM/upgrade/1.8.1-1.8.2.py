@@ -2,10 +2,10 @@
 #
 # Database upgrade script
 #
-# RLPPTM Template Version 1.8.0 => 1.8.1
+# RLPPTM Template Version 1.8.1 => 1.8.2
 #
 # Execute in web2py folder after code upgrade like:
-# python web2py.py -S eden -M -R applications/eden/modules/templates/RLPPTM/upgrade/1.8.0-1.8.1.py
+# python web2py.py -S eden -M -R applications/eden/modules/templates/RLPPTM/upgrade/1.8.1-1.8.2.py
 #
 import sys
 
