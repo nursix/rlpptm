@@ -5090,6 +5090,7 @@ class S3LocationSelector(S3Selector):
             - Needs more testing
         * Should support use in an InlineComponent with multiple=True
         * Should support multiple on a page
+        * Option to allow having Lx mandatory *except* when a specific location is defined (e.g. Polygon spanning 2 countries)
     """
 
     keys = ("L0", "L1", "L2", "L3", "L4", "L5",
@@ -5101,6 +5102,7 @@ class S3LocationSelector(S3Selector):
                  hide_lx = True,
                  reverse_lx = False,
                  show_address = False,
+                 address_required = None,
                  show_postcode = None,
                  postcode_required = None,
                  postcode_to_address = None,
@@ -5138,6 +5140,7 @@ class S3LocationSelector(S3Selector):
                                address line
             @param show_address: show a field for street address.
                                  If the parameter is set to a string then this is used as the label.
+            @param address_required: address field is mandatory
             @param show_postcode: show a field for postcode
             @param postcode_required: postcode field is mandatory
             @param postcode_to_address: service to use to lookup a list of addresses from the postcode
@@ -5174,6 +5177,7 @@ class S3LocationSelector(S3Selector):
         self.hide_lx = hide_lx
         self.reverse_lx = reverse_lx
         self.show_address = show_address
+        self.address_required = address_required
         self.show_postcode = show_postcode
         self.postcode_required = postcode_required
         self.postcode_to_address = postcode_to_address or \
@@ -5438,6 +5442,7 @@ class S3LocationSelector(S3Selector):
                                                  address,
                                                  label,
                                                  hidden = not address,
+                                                 required = self.address_required,
                                                  )
 
         # Postcode INPUT
@@ -6148,12 +6153,16 @@ class S3LocationSelector(S3Selector):
             _placeholder = label
         else:
             _placeholder = None
+
         widget = INPUT(_name = name,
                        _id = input_id,
                        _class = _class,
                        _placeholder = _placeholder,
                        value = s3_str(value),
                        )
+        if required:
+            # Enable client-side validation:
+            widget.add_class("required")
 
         return (_label, widget, input_id, hidden)
 
@@ -6791,9 +6800,14 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                 errors[level] = current.T("Location Hierarchy is Required!")
                 break
 
+        # Address Required?
+        address = values_get("address")
+        if self.address_required and not address:
+            errors["address"] = current.T("Address is Required!")
+
         # Postcode Required?
         postcode = values_get("postcode")
-        if not postcode and self.postcode_required:
+        if self.postcode_required and not postcode:
             errors["postcode"] = current.T("Postcode is Required!")
 
         if errors:
@@ -6817,7 +6831,6 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
         else:
             # Read other details
             parent = values_get("parent")
-            address = values_get("address")
 
         if parent or address or postcode or \
            wkt is not None or \
@@ -6982,7 +6995,7 @@ i18n.location_not_found="%s"''' % (T("Address Mapped"),
                 level = location.level
                 if level:
                     # Accept all levels above and including the lowest selectable level
-                    for i in xrange(5,-1,-1):
+                    for i in xrange(5, -1, -1):
                         if "L%s" % i in levels:
                             accepted_levels = set("L%s" % l for l in xrange(i, -1, -1))
                             break

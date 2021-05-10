@@ -10,8 +10,8 @@ from gluon import current, Field, \
                   CRYPT, IS_EMAIL, IS_IN_SET, IS_LOWER, IS_NOT_IN_DB, \
                   SQLFORM, A, DIV, H4, H5, I, INPUT, LI, P, SPAN, TABLE, TD, TH, TR, UL
 
-from s3 import ICON, IS_FLOAT_AMOUNT, S3DateTime, S3Method, S3Represent, \
-               s3_fullname, s3_mark_required, s3_str
+from s3 import ICON, IS_FLOAT_AMOUNT, S3DateTime, S3LocationSelector, \
+               S3Method, S3Represent, s3_fullname, s3_mark_required, s3_str
 
 from s3db.pr import pr_PersonRepresentContact
 # =============================================================================
@@ -538,6 +538,68 @@ def add_facility_default_tags(facility_id, approve=False):
                           tag = "PUBLIC",
                           value = "Y" if approve else "N",
                           )
+
+# -----------------------------------------------------------------------------
+def applicable_org_types(organisation_id, group=None, represent=False):
+    """
+        Look up organisation types by OrgGroup-tag
+
+        @param organisation_id: the record ID of an existing organisation
+        @param group: alternatively, the organisation group name
+        @param represent: include type labels in the result
+
+        @returns: a list of organisation type IDs, for filtering,
+                  or a dict {type_id: label}, for selecting
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    ttable = s3db.org_organisation_type_tag
+
+    if organisation_id:
+        # Look up the org groups of this record
+        gtable = s3db.org_group
+        mtable = s3db.org_group_membership
+        join = gtable.on(gtable.id == mtable.group_id)
+        query = (mtable.organisation_id == organisation_id) & \
+                (mtable.deleted == False)
+        rows = db(query).select(gtable.name, join=join)
+        groups = {row.name for row in rows}
+        q = (ttable.value.belongs(groups))
+
+        # Look up the org types the record is currently linked to
+        ltable = s3db.org_organisation_organisation_type
+        query = (ltable.organisation_id == organisation_id) & \
+                (ltable.deleted == False)
+        rows = db(query).select(ltable.organisation_type_id)
+        current_types = {row.organisation_type_id for row in rows}
+
+    elif group:
+        # Use group name as-is
+        q = (ttable.value == group)
+
+    # Look up all types tagged for this group
+    query = (ttable.tag == "OrgGroup") & q & \
+            (ttable.deleted == False)
+    rows = db(query).select(ttable.organisation_type_id,
+                            cache = s3db.cache,
+                            )
+    type_ids = {row.organisation_type_id for row in rows}
+
+    if organisation_id:
+        # Add the org types the record is currently linked to
+        type_ids |= current_types
+
+    if represent:
+        labels = ttable.organisation_type_id.represent
+        if hasattr(labels, "bulk"):
+            labels.bulk(list(type_ids))
+        output = {str(t): labels(t) for t in type_ids}
+    else:
+        output = list(type_ids)
+
+    return output
 
 # =============================================================================
 def facility_map_popup(record):
@@ -1607,5 +1669,28 @@ class ClaimPDF(S3Method):
             data = {}
 
         return data
+
+# =============================================================================
+class RLPLocationSelector(S3LocationSelector):
+    """
+        Location selector with custom client-side validation
+        - re-implements the original error cascade for missing Lx
+    """
+
+    def __call__(self, field, value, **attributes):
+
+        widget = super(RLPLocationSelector, self).__call__(field,
+                                                           value,
+                                                           **attributes)
+
+        # Inject JS overrides
+        appname = current.request.application
+        script = "/%s/static/themes/RLP/js/rlp.ui.locationselector.js" % appname
+
+        s3 = current.response.s3
+        if script not in s3.scripts:
+            s3.scripts.append(script)
+
+        return widget
 
 # END =========================================================================

@@ -2115,6 +2115,73 @@ def config(settings):
     settings.customise_org_organisation_controller = customise_org_organisation_controller
 
     # -------------------------------------------------------------------------
+    def customise_org_organisation_type_resource(r, tablename):
+
+        db = current.db
+        s3db = current.s3db
+
+        s3db.add_components("org_organisation_type",
+                            org_organisation_type_tag = ({"name": "group",
+                                                          "joinby": "organisation_type_id",
+                                                          "filterby": {"tag": "OrgGroup"},
+                                                          "multiple": False,
+                                                          },
+                                                         {"name": "commercial",
+                                                          "joinby": "organisation_type_id",
+                                                          "filterby": {"tag": "Commercial"},
+                                                          "multiple": False,
+                                                          },
+                                                         ),
+                            )
+
+        if r.tablename == "org_organisation_type":
+
+            T = current.T
+
+            resource = r.resource
+            component = resource.components.get("group")
+            if component:
+
+                # Look up organisation group names
+                gtable = s3db.org_group
+                groups = db(gtable.deleted == False).select(gtable.name,
+                                                            cache = s3db.cache,
+                                                            )
+                options = [group.name for group in groups]
+
+                # Configure them as options for the OrgGroup tag
+                ctable = component.table
+                field = ctable.value
+                field.label = T("Organization Group")
+                field.requires = IS_EMPTY_OR(IS_IN_SET(options))
+
+            # Configure binary tag representation
+            from .helpers import configure_binary_tags
+            configure_binary_tags(r.resource, ("commercial",))
+
+            # Custom form
+            from s3 import S3SQLCustomForm
+            crud_form = S3SQLCustomForm("name",
+                                        "group.value",
+                                        (T("Commercial Providers"), "commercial.value"),
+                                        "comments",
+                                        )
+
+            # Include tags in list view
+            list_fields = ["id",
+                           "name",
+                           "group.value",
+                           (T("Commercial Providers"), "commercial.value"),
+                           "comments",
+                           ]
+
+            resource.configure(crud_form = crud_form,
+                               list_fields = list_fields,
+                               )
+
+    settings.customise_org_organisation_type_resource = customise_org_organisation_type_resource
+
+    # -------------------------------------------------------------------------
     def facility_create_onaccept(form):
 
         # Get record ID
@@ -2157,7 +2224,6 @@ def config(settings):
 
         from s3 import (S3SQLCustomForm,
                         S3SQLInlineLink,
-                        S3LocationSelector,
                         S3LocationFilter,
                         S3OptionsFilter,
                         S3TextFilter,
@@ -2168,13 +2234,20 @@ def config(settings):
         table = s3db.org_facility
 
         # Configure location selector incl. Geocoder
+        from .helpers import RLPLocationSelector
         field = table.location_id
-        field.widget = S3LocationSelector(levels = ("L1", "L2", "L3", "L4"),
-                                          required_levels = ("L1", "L2", "L3"),
-                                          show_address = True,
-                                          show_postcode = True,
-                                          show_map = True,
-                                          )
+        # Address/Postcode are required
+        # - except for OrgGroupAdmin, who need to be able to
+        #   update the record even when this detail is missing
+        address_required = not is_org_group_admin
+        field.widget = RLPLocationSelector(levels = ("L1", "L2", "L3", "L4"),
+                                           required_levels = ("L1", "L2", "L3"),
+                                           show_address = True,
+                                           show_postcode = True,
+                                           address_required = address_required,
+                                           postcode_required = address_required,
+                                           show_map = True,
+                                           )
         current.response.s3.scripts.append("/%s/static/themes/RLP/js/geocoderPlugin.js" % r.application)
 
         # Custom label for obsolete-Flag
@@ -2187,6 +2260,14 @@ def config(settings):
                                               ),
                             )
 
+        # Opening times are mandatory
+        # - except for OrgGroupAdmin, who need to be able to
+        #   update the record even when this detail is missing
+        if not is_org_group_admin:
+            field = table.opening_times
+            field.requires = IS_NOT_EMPTY()
+
+        # Custom representation of service links
         stable = s3db.org_service_site
         field = stable.service_id
         from .helpers import ServiceListRepresent
@@ -3269,14 +3350,14 @@ def config(settings):
         if r.interactive:
 
             # Configure location selector and geocoder
-            from s3 import S3LocationSelector
+            from .helpers import RLPLocationSelector
             field = table.location_id
-            field.widget = S3LocationSelector(levels = ("L1", "L2", "L3", "L4"),
-                                              required_levels = ("L1", "L2", "L3"),
-                                              show_address = True,
-                                              show_postcode = True,
-                                              show_map = True,
-                                              )
+            field.widget = RLPLocationSelector(levels = ("L1", "L2", "L3", "L4"),
+                                               required_levels = ("L1", "L2", "L3"),
+                                               show_address = True,
+                                               show_postcode = True,
+                                               show_map = True,
+                                               )
             current.response.s3.scripts.append("/%s/static/themes/RLP/js/geocoderPlugin.js" % r.application)
 
             # Custom CRUD-Form

@@ -167,12 +167,14 @@
                     option = '<option value="' + locationID + '">' + location.n + '</option>';
                     dropdown.append(option);
                 }
-                // Show the L0 row
-                row.removeClass('hide').show();
-                // Handle separate label row in tuple themes
-                var labelRow = $(selector + '_L0__row1');
-                if (labelRow.length) {
-                    labelRow.removeClass('hide').show();
+                if (!this.postcodeToAddress) {
+                    // Show the L0 row
+                    row.removeClass('hide').show();
+                    // Handle separate label row in tuple themes
+                    var labelRow = $(selector + '_L0__row1');
+                    if (labelRow.length) {
+                        labelRow.removeClass('hide').show();
+                    }
                 }
             }
 
@@ -1676,8 +1678,8 @@
                 data = this.data,
                 featureRequired = this.options.featureRequired;
 
+            // Check mandatory map feature (wkt or lat/lon)
             if (featureRequired) {
-                // Must have latlon or wkt
                 var valid = false;
                 switch (featureRequired) {
                     case 'latlon':
@@ -1692,56 +1694,45 @@
                         break;
                 }
                 if (!valid) {
-                    S3.fieldError(selector + '_map_icon', i18n.map_feature_required);
+                    this._fieldError($(selector + '_map_icon'), i18n.map_feature_required);
                     return false;
                 }
             }
 
-            var current_value = data.id,
-                suffix = ['address', 'L5', 'L4', 'L3', 'L2', 'L1', 'L0'],
-                i,
-                s,
-                f,
-                visible = function(field) {
-                    if (field.hasClass('multiselect')) {
-                        return field.next('button.ui-multiselect').is(':visible');
-                    } else {
-                        return field.is(':visible');
-                    }
-                };
+            var isVisible = function(field) {
+                if (field.hasClass('multiselect')) {
+                    return field.next('button.ui-multiselect').is(':visible');
+                } else {
+                    return field.is(':visible');
+                }
+            };
 
-            if (current_value) {
-                if (!hierarchyLocations[current_value]) {
-                    // Specific location => ok
-                    return true;
+            // Check mandatory Lx
+            var missingInput = false,
+                suffix = ['L5', 'L4', 'L3', 'L2', 'L1', 'L0'],
+                s, f;
+            for (var i=0; i < 6; i++) {
+                var level = suffix[i];
+                s = selector + '_' + level;
+                f = $(s);
+                if (f.length && f.hasClass('required') && isVisible(f) && !data[level]) {
+                    this._fieldError(f, i18n.enter_value);
+                    missingInput = true;
+                    break;
                 }
-                var current_level = hierarchyLocations[current_value].l;
-                // Is a lower level required? If so, then prevent submission
-                for (i = 0; i < 6 - current_level; i++) {
-                    s = selector + '_' + suffix[i];
-                    f = $(s);
-                    if (f.length && f.hasClass('required') && visible(f)) {
-                        S3.fieldError(s, i18n.enter_value);
-                        return false;
-                    }
-                }
-                return true;
-            } else {
-                if (data.lat || data.lon || data.wkt || data.address || data.postcode) {
-                    // Specific location => ok
-                    return true;
-                }
-                // Is any level required? If so, then prevent submission
-                for (i = 0; i < 7; i++) {
-                    s = selector + '_' + suffix[i];
-                    f = $(s);
-                    if (f.length && f.hasClass('required') && visible(f)) {
-                        S3.fieldError(s, i18n.enter_value);
-                        return false;
-                    }
-                }
-                return true;
             }
+
+            // Check mandatory text inputs
+            ['address', 'postcode'].forEach(function(suffix) {
+                s = selector + '_' + suffix;
+                f = $(s);
+                if (f.length && f.hasClass('required') && isVisible(f) && !data[suffix]) {
+                    this._fieldError(f, i18n.enter_value);
+                    missingInput = true;
+                }
+            }, this);
+
+            return !missingInput;
         },
 
         /**
@@ -1817,6 +1808,21 @@
         },
 
         /**
+         * Add an error message
+         *
+         * @param {jQuery} element - the input element
+         * @param {string} error - the error message
+         */
+        _fieldError: function(element, error) {
+
+            element.addClass('invalidinput')
+                   .after('<div class="error" style="display: block;">' + error + '</div>');
+
+            $('.invalidinput').get(0).scrollIntoView();
+        },
+
+
+        /**
          * Remove error messages
          *
          * @param {jQuery} element - the input field (removes all error messages
@@ -1836,7 +1842,7 @@
                           selector + '_postcode,' +
                           selector + '_map_icon';
             }
-            $(element).siblings('.error').remove();
+            $(element).removeClass('invalidinput').siblings('.error').remove();
         },
 
         /**
