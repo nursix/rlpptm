@@ -10,7 +10,7 @@ from gluon import current, Field, \
                   CRYPT, IS_EMAIL, IS_IN_SET, IS_LOWER, IS_NOT_IN_DB, \
                   SQLFORM, A, DIV, H4, H5, I, INPUT, LI, P, SPAN, TABLE, TD, TH, TR, UL
 
-from s3 import ICON, IS_FLOAT_AMOUNT, S3DateTime, S3LocationSelector, \
+from s3 import ICON, IS_FLOAT_AMOUNT, S3DateTime, \
                S3Method, S3Represent, s3_fullname, s3_mark_required, s3_str
 
 from s3db.pr import pr_PersonRepresentContact
@@ -446,6 +446,246 @@ def configure_binary_tags(resource, tag_components):
             field.represent = lambda v, row=None: binary_tag_opts.get(v, "-")
 
 # -----------------------------------------------------------------------------
+def workflow_tag_represent(options):
+    """
+        Color-coded and icon-supported representation of
+        facility approval workflow tags
+
+        @param options: the tag options as dict {value: label}
+    """
+
+    icons = {"REVISE": "fa fa-exclamation-triangle",
+             "REVIEW": "fa fa-hourglass",
+             "APPROVED": "fa fa-check",
+             "N": "fa fa-minus-circle",
+             "Y": "fa fa-check",
+             }
+    css_classes = {"REVISE": "workflow-red",
+                   "REVIEW": "workflow-amber",
+                   "APPROVED": "workflow-green",
+                   "N": "workflow-red",
+                   "Y": "workflow-green",
+                   }
+
+    def represent(value, row=None):
+
+        label = DIV(_class="approve-workflow")
+        color = css_classes.get(value)
+        if color:
+            label.add_class(color)
+        icon = icons.get(value)
+        if icon:
+            label.append(I(_class=icon))
+        label.append(options.get(value, "-"))
+
+        return label
+
+    return represent
+
+# -----------------------------------------------------------------------------
+def configure_workflow_tags(resource, role="applicant", record_id=None):
+    """
+        Configure facility approval workflow tags
+
+        @param resource: the org_facility resource
+        @param role: the user's role in the workflow (applicant|approver)
+        @param record_id: the facility record ID
+
+        @returns: the list of visible workflow tags [(label, selector)]
+    """
+
+    T = current.T
+    components = resource.components
+
+    visible_tags = []
+
+    # Configure STATUS tag
+    status_tag_opts = {"REVISE": T("Completion/Adjustment Required"),
+                       "READY": T("Ready for Review"),
+                       "REVIEW": T("Review Pending"),
+                       "APPROVED": T("Approved##actionable"),
+                       }
+    selectable = None
+    status_visible = False
+    review_tags_visible = False
+
+    if role == "applicant" and record_id:
+        # Check current status
+        db = current.db
+        s3db = current.s3db
+        ftable = s3db.org_facility
+        ttable = s3db.org_site_tag
+        join = ftable.on((ftable.site_id == ttable.site_id) & \
+                         (ftable.id == record_id))
+        query = (ttable.tag == "STATUS") & (ttable.deleted == False)
+        row = db(query).select(ttable.value, join=join, limitby=(0, 1)).first()
+        if row:
+            if row.value == "REVISE":
+                review_tags_visible = True
+                selectable = (row.value, "READY")
+            elif row.value == "REVIEW":
+                review_tags_visible = True
+        status_visible = True
+
+    component = components.get("status")
+    if component:
+        ctable = component.table
+        field = ctable.value
+        field.default = "REVISE"
+        field.readable = status_visible
+        if status_visible:
+            if selectable:
+                selectable_statuses = [(status, status_tag_opts[status])
+                                       for status in selectable]
+                field.requires = IS_IN_SET(selectable_statuses, zero=None)
+                field.writable = True
+            else:
+                field.writable = False
+            visible_tags.append((T("Processing Status"), "status.value"))
+        field.represent = workflow_tag_represent(status_tag_opts)
+
+    # Configure review tags
+    review_tag_opts = (("REVISE", T("Completion/Adjustment Required")),
+                       ("REVIEW", T("Review Pending")),
+                       ("APPROVED", T("Approved##actionable")),
+                       )
+    selectable = review_tag_opts if role == "approver" else None
+
+    review_tags = (("mpav", T("MPAV Qualification")),
+                   ("hygiene", T("Hygiene Plan")),
+                   ("layout", T("Facility Layout Plan")),
+                   )
+    for cname, label in review_tags:
+        component = components.get(cname)
+        if component:
+            ctable = component.table
+            field = ctable.value
+            field.default = "REVISE"
+            if selectable:
+                field.requires = IS_IN_SET(selectable, zero=None, sort=False)
+                field.readable = field.writable = True
+            else:
+                field.readable = review_tags_visible
+                field.writable = False
+            if field.readable:
+                visible_tags.append((label, "%s.value" % cname))
+            field.represent = workflow_tag_represent(dict(review_tag_opts))
+
+    # Configure PUBLIC tag
+    binary_tag_opts = {"Y": T("Yes"),
+                       "N": T("No"),
+                       }
+    selectable = binary_tag_opts if role == "approver" else None
+
+    component = resource.components.get("public")
+    if component:
+        ctable = component.table
+        field = ctable.value
+        field.default = "N"
+        if selectable:
+            field.requires = IS_IN_SET(selectable, zero=None)
+            field.writable = True
+        else:
+            field.requires = IS_IN_SET(binary_tag_opts, zero=None)
+            field.writable = False
+        field.represent = workflow_tag_represent(binary_tag_opts)
+    visible_tags.append((T("In Public Registry"), "public.value"))
+
+    return visible_tags
+
+# -----------------------------------------------------------------------------
+def facility_approval_workflow(site_id):
+    """
+        Update facility approval workflow tags
+
+        @param site_id: the site ID
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    workflow = ("STATUS", "MPAV", "HYGIENE", "LAYOUT", "PUBLIC")
+    review = ("MPAV", "HYGIENE", "LAYOUT")
+
+    # Get all tags for site
+    ttable = s3db.org_site_tag
+    query = (ttable.site_id == site_id) & \
+            (ttable.tag.belongs(workflow)) & \
+            (ttable.deleted == False)
+    rows = db(query).select(ttable.id,
+                            ttable.tag,
+                            ttable.value,
+                            )
+    tags = {row.tag: row.value for row in rows}
+
+    if any(k not in tags for k in workflow):
+        ftable = s3db.org_facility
+        facility = db(ftable.site_id == site_id).select(ftable.id,
+                                                        limitby = (0, 1),
+                                                        ).first()
+        if facility:
+            add_facility_default_tags(facility)
+            facility_approval_workflow(site_id)
+
+    update = {}
+
+    status = tags.get("STATUS")
+    if status == "REVISE":
+        if all(tags[k] == "APPROVED" for k in review):
+            update["PUBLIC"] = "Y"
+            update["STATUS"] = "APPROVED"
+        elif all(tags[k] != "REVISE" for k in review):
+            update["STATUS"] = "REVIEW"
+            update["PUBLIC"] = "N"
+        else:
+            update["PUBLIC"] = "N"
+
+    elif status == "READY":
+        update["PUBLIC"] = "N"
+        if all(tags[k] == "APPROVED" for k in review):
+            for k in review:
+                update[k] = "REVIEW"
+        else:
+            for k in review:
+                if tags[k] == "REVISE":
+                    update[k] = "REVIEW"
+        update["STATUS"] = "REVIEW"
+
+    elif status == "REVIEW":
+        if any(tags[k] == "REVISE" for k in review):
+            update["PUBLIC"] = "N"
+            update["STATUS"] = "REVISE"
+            # TODO Notify OrgAdmin
+        elif all(tags[k] == "APPROVED" for k in review):
+            update["PUBLIC"] = "Y"
+            update["STATUS"] = "APPROVED"
+        else:
+            update["PUBLIC"] = "N"
+
+    elif status == "APPROVED":
+        if any(tags[k] == "REVISE" for k in review):
+            update["PUBLIC"] = "N"
+            update["STATUS"] = "REVISE"
+            # TODO Notify OrgAdmin
+        elif any(tags[k] == "REVIEW" for k in review):
+            update["PUBLIC"] = "N"
+            update["STATUS"] = "REVIEW"
+
+    for row in rows:
+        key = row.tag
+        if key in update:
+            row.update_record(value=update[key])
+
+    public = update.get("PUBLIC")
+    if public and public != tags["PUBLIC"]:
+        T = current.T
+        if public == "Y":
+            msg = T("Facility added to public registry")
+        else:
+            msg = T("Facility removed from public registry pending review")
+        current.response.warning = msg
+
+# -----------------------------------------------------------------------------
 def add_organisation_default_tags(organisation_id):
     """
         Add default tags to a new organisation
@@ -514,30 +754,50 @@ def add_facility_default_tags(facility_id, approve=False):
     db = current.db
     s3db = current.s3db
 
-    # Add default tag
     ftable = s3db.org_facility
     ttable = s3db.org_site_tag
 
-    left = ttable.on((ttable.site_id == ftable.site_id) & \
-                        (ttable.tag == "PUBLIC") & \
-                        (ttable.deleted == False))
-    query = (ftable.id == facility_id)
-    row = db(query).select(ftable.id,
-                           ftable.site_id,
-                           ttable.id,
-                           left = left,
-                           limitby = (0, 1),
-                           ).first()
-    if row:
-        facility = row.org_facility
+    workflow = ("PUBLIC", "MPAV", "HYGIENE", "LAYOUT", "STATUS")
 
-        # Add PUBLIC-tag
-        tag = row.org_site_tag
-        if not tag.id:
-            ttable.insert(site_id = facility.site_id,
-                          tag = "PUBLIC",
-                          value = "Y" if approve else "N",
-                          )
+    left = ttable.on((ttable.site_id == ftable.site_id) & \
+                     (ttable.tag.belongs(workflow)) & \
+                     (ttable.deleted == False))
+    query = (ftable.id == facility_id)
+    rows = db(query).select(ftable.site_id,
+                            ttable.id,
+                            ttable.tag,
+                            ttable.value,
+                            left = left,
+                            )
+    if not rows:
+        return
+    else:
+        site_id = rows.first().org_facility.site_id
+
+    existing = {row.org_site_tag.tag: row.org_site_tag.value
+                    for row in rows if row.org_site_tag.id}
+    public = existing.get("PUBLIC") == "Y" or approve
+
+    review = ("MPAV", "HYGIENE", "LAYOUT")
+    for tag in workflow:
+        if tag in existing:
+            continue
+        elif tag == "PUBLIC":
+            default = "Y" if public else "N"
+        elif tag == "STATUS":
+            if any(existing[t] == "REVISE" for t in review):
+                default = "REVISE"
+            elif any(existing[t] == "REVIEW" for t in review):
+                default = "REVIEW"
+            else:
+                default = "APPROVED" if public else "REVIEW"
+        else:
+            default = "APPROVED" if public else "REVISE"
+        ttable.insert(site_id = site_id,
+                      tag = tag,
+                      value = default,
+                      )
+        existing[tag] = default
 
 # -----------------------------------------------------------------------------
 def applicable_org_types(organisation_id, group=None, represent=False):
@@ -713,6 +973,111 @@ class ServiceListRepresent(S3Represent):
             html.append(LI(label))
 
         return html
+
+# =============================================================================
+class OrganisationRepresent(S3Represent):
+    """
+        Custom representation of organisations showing the organisation type
+        - relevant for facility approval
+    """
+
+    def __init__(self, show_type=True, show_link=True):
+
+        super(OrganisationRepresent, self).__init__(lookup = "org_organisation",
+                                                    fields = ["name",],
+                                                    show_link = show_link,
+                                                    )
+        self.show_type = show_type
+        self.org_types = {}
+        self.type_names = {}
+
+    # -------------------------------------------------------------------------
+    def lookup_rows(self, key, values, fields=None):
+        """
+            Custom lookup method for organisation rows, does a
+            left join with the parent organisation. Parameters
+            key and fields are not used, but are kept for API
+            compatibility reasons.
+
+            @param values: the organisation IDs
+        """
+
+        db = current.db
+        s3db = current.s3db
+
+        otable = s3db.org_organisation
+
+        count = len(values)
+        if count == 1:
+            query = (otable.id == values[0])
+        else:
+            query = (otable.id.belongs(values))
+
+        rows = db(query).select(otable.id,
+                                otable.name,
+                                limitby = (0, count),
+                                )
+
+        if self.show_type:
+            ltable = s3db.org_organisation_organisation_type
+            if count == 1:
+                query = (ltable.organisation_id == values[0])
+            else:
+                query = (ltable.organisation_id.belongs(values))
+            query &= (ltable.deleted == False)
+            types = db(query).select(ltable.organisation_id,
+                                     ltable.organisation_type_id,
+                                     )
+
+            all_types = set()
+            org_types = self.org_types = {}
+
+            for t in types:
+
+                type_id = t.organisation_type_id
+                all_types.add(type_id)
+
+                organisation_id = t.organisation_id
+                if organisation_id not in org_types:
+                    org_types[organisation_id] = {type_id}
+                else:
+                    org_types[organisation_id].add(type_id)
+
+            if all_types:
+                ttable = s3db.org_organisation_type
+                query = ttable.id.belongs(all_types)
+                types = db(query).select(ttable.id,
+                                         ttable.name,
+                                         limitby = (0, len(all_types)),
+                                         )
+                self.type_names = {t.id: t.name for t in types}
+
+        return rows
+
+    # -------------------------------------------------------------------------
+    def represent_row(self, row, prefix=None):
+        """
+            Represent a single Row
+
+            @param row: the org_organisation Row
+            @param prefix: the hierarchy prefix (unused here)
+        """
+
+        name = s3_str(row.name)
+
+        if self.show_type:
+
+            T = current.T
+
+            type_ids = self.org_types.get(row.id)
+            if type_ids:
+                type_names = self.type_names
+                types = [s3_str(T(type_names[t]))
+                         for t in type_ids if t in type_names
+                         ]
+                name = "%s (%s)" % (name, ", ".join(types))
+
+        return name
 
 # =============================================================================
 class ContactRepresent(pr_PersonRepresentContact):
@@ -1669,28 +2034,5 @@ class ClaimPDF(S3Method):
             data = {}
 
         return data
-
-# =============================================================================
-class RLPLocationSelector(S3LocationSelector):
-    """
-        Location selector with custom client-side validation
-        - re-implements the original error cascade for missing Lx
-    """
-
-    def __call__(self, field, value, **attributes):
-
-        widget = super(RLPLocationSelector, self).__call__(field,
-                                                           value,
-                                                           **attributes)
-
-        # Inject JS overrides
-        appname = current.request.application
-        script = "/%s/static/themes/RLP/js/rlp.ui.locationselector.js" % appname
-
-        s3 = current.response.s3
-        if script not in s3.scripts:
-            s3.scripts.append(script)
-
-        return widget
 
 # END =========================================================================

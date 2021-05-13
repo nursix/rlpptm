@@ -2197,22 +2197,69 @@ def config(settings):
         add_facility_default_tags(record_id)
 
     # -------------------------------------------------------------------------
+    def facility_postprocess(form):
+
+        # Get record ID
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        # Lookup site_id
+        table = current.s3db.org_facility
+        row = current.db(table.id == record_id).select(table.site_id,
+                                                       limitby = (0, 1),
+                                                       ).first()
+        if row and row.site_id:
+            # Update approval workflow
+            from .helpers import facility_approval_workflow
+            facility_approval_workflow(row.site_id)
+
+    # -------------------------------------------------------------------------
     def customise_org_facility_resource(r, tablename):
 
+        auth = current.auth
         s3db = current.s3db
 
         is_org_group_admin = current.auth.s3_has_role("ORG_GROUP_ADMIN")
 
-        # Tags as filtered components (for embedding in form)
+        # Approval workflow tags as filtered components (for embedding in form)
         add_org_tags()
         s3db.add_components("org_site",
-                            org_site_tag = ({"name": "public",
+                            org_site_tag = (# Approval workflow status
+                                            {"name": "status",
+                                             "joinby": "site_id",
+                                             "filterby": {"tag": "STATUS"},
+                                             "multiple": False,
+                                             },
+                                            # MPAV qualification
+                                            {"name": "mpav",
+                                             "joinby": "site_id",
+                                             "filterby": {"tag": "MPAV"},
+                                             "multiple": False,
+                                             },
+                                            # Hygiene concept
+                                            {"name": "hygiene",
+                                             "joinby": "site_id",
+                                             "filterby": {"tag": "HYGIENE"},
+                                             "multiple": False,
+                                             },
+                                            # Facility layout
+                                            {"name": "layout",
+                                             "joinby": "site_id",
+                                             "filterby": {"tag": "LAYOUT"},
+                                             "multiple": False,
+                                             },
+                                            # In public registry
+                                            {"name": "public",
                                              "joinby": "site_id",
                                              "filterby": {"tag": "PUBLIC"},
                                              "multiple": False,
                                              },
                                             ),
-
                             )
 
         # Custom onaccept to add default tags
@@ -2224,7 +2271,9 @@ def config(settings):
 
         from s3 import (S3SQLCustomForm,
                         S3SQLInlineLink,
+                        S3SQLInlineComponent,
                         S3LocationFilter,
+                        S3LocationSelector,
                         S3OptionsFilter,
                         S3TextFilter,
                         S3WithIntro,
@@ -2233,21 +2282,25 @@ def config(settings):
 
         table = s3db.org_facility
 
+        field = table.organisation_id
+        from .helpers import OrganisationRepresent
+        field.represent = OrganisationRepresent()
+        field.comment = None
+
         # Configure location selector incl. Geocoder
-        from .helpers import RLPLocationSelector
         field = table.location_id
         # Address/Postcode are required
         # - except for OrgGroupAdmin, who need to be able to
         #   update the record even when this detail is missing
         address_required = not is_org_group_admin
-        field.widget = RLPLocationSelector(levels = ("L1", "L2", "L3", "L4"),
-                                           required_levels = ("L1", "L2", "L3"),
-                                           show_address = True,
-                                           show_postcode = True,
-                                           address_required = address_required,
-                                           postcode_required = address_required,
-                                           show_map = True,
-                                           )
+        field.widget = S3LocationSelector(levels = ("L1", "L2", "L3", "L4"),
+                                          required_levels = ("L1", "L2", "L3"),
+                                          show_address = True,
+                                          show_postcode = True,
+                                          address_required = address_required,
+                                          postcode_required = address_required,
+                                          show_map = True,
+                                          )
         current.response.s3.scripts.append("/%s/static/themes/RLP/js/geocoderPlugin.js" % r.application)
 
         # Custom label for obsolete-Flag
@@ -2325,6 +2378,12 @@ def config(settings):
                                 options = binary_tag_opts,
                                 hidden = True,
                                 ),
+                S3OptionsFilter("organisation_id$organisation_type__link.organisation_type_id",
+                                hidden = True,
+                                options = lambda: s3_get_filter_opts("org_organisation_type",
+                                                                     translate = True,
+                                                                     ),
+                                ),
                 ])
             if r.method == "report":
                 filter_widgets.extend([
@@ -2340,69 +2399,146 @@ def config(settings):
                     ])
 
         # Custom CRUD form
-        crud_fields = [#"organisation_id",
-                       "name",
-                       #"public.value",
-                       S3SQLInlineLink(
-                              "facility_type",
-                              label = T("Facility Type"),
-                              field = "facility_type_id",
-                              widget = "groupedopts",
-                              cols = 3,
-                        ),
-                       "location_id",
-                       (T("Telephone"), "phone1"),
-                       "email",
-                       (T("Opening Hours"), "opening_times"),
-                       S3WithIntro(
-                            S3SQLInlineLink(
+        visible_tags = subheadings = postprocess = None
+        record = r.record
+        public_view = r.tablename == "org_facility" and \
+                        (not record or
+                         not auth.s3_has_permission("update", r.table, record_id=record.id))
+        if public_view:
+            crud_fields = ["name",
+                           S3SQLInlineLink(
+                                "facility_type",
+                                label = T("Facility Type"),
+                                field = "facility_type_id",
+                                widget = "groupedopts",
+                                cols = 3,
+                                ),
+                           "location_id",
+                           (T("Telephone"), "phone1"),
+                           "email",
+                           (T("Opening Hours"), "opening_times"),
+                           S3SQLInlineLink(
                                 "service",
                                 label = T("Services"),
                                 field = "service_id",
                                 widget = "groupedopts",
                                 cols = 1,
                                 ),
-                            intro = ("org",
-                                     "facility",
-                                     "SiteServiceIntro",
-                                     ),
-                            ),
-                       "comments",
-                       #"obsolete",
-                       ]
-
-        resource = r.resource
-        if r.tablename == "org_facility":
-            fresource = resource
-        elif r.tablename == "org_organisation":
-            fresource = resource.components.get("facility")
-            crud_fields.append("obsolete")
+                           "comments",
+                           ]
         else:
-            fresource = None
+            organisation = obsolete = services = documents = None
 
-        if fresource:
-            table = fresource.table
+            resource = r.resource
+            if r.tablename == "org_facility":
+                # Primary controller
+                fresource = resource
+                record_id = r.id
+                obsolete = None
+            elif r.tablename == "org_organisation" and \
+                 r.component_name == "facility":
+                # Facility tab of organisation
+                fresource = resource.components.get("facility")
+                record_id = r.component_id
+                obsolete = "obsolete"
+            else:
+                # Other view
+                fresource = record_id = None
+                obsolete = None
 
-            # No Add-Organisation link
-            field = table.organisation_id
-            field.comment = None
+            if fresource:
+                table = fresource.table
 
-            if is_org_group_admin:
-                crud_fields.insert(0, "organisation_id")
+                # Inline service selector and documents
+                services = S3SQLInlineLink(
+                                "service",
+                                label = T("Services"),
+                                field = "service_id",
+                                widget = "groupedopts",
+                                cols = 1,
+                                )
+                documents = S3SQLInlineComponent(
+                                "document",
+                                name = "file",
+                                label = T("Documents"),
+                                fields = ["name", "file", "comments"],
+                                filterby = {"field": "file",
+                                            "options": "",
+                                            "invert": True,
+                                            },
+                                )
 
-                # Configure binary tag representation
-                from .helpers import configure_binary_tags
-                configure_binary_tags(fresource, ("public",))
+                from .helpers import configure_workflow_tags
+                if is_org_group_admin:
+                    # Show organisation
+                    organisation = "organisation_id"
 
-                # Add binary tags to form
-                crud_fields.insert(2, (T("In Public Registry"), "public.value"))
+                    # Workflow tags
+                    if record_id:
+                        visible_tags = configure_workflow_tags(fresource,
+                                                               role = "approver",
+                                                               record_id = record_id,
+                                                               )
+                else:
+                    # Add Intros for services and documents
+                    services = S3WithIntro(services,
+                                           intro = ("org",
+                                                    "facility",
+                                                    "SiteServiceIntro",
+                                                    ),
+                                           )
+                    documents = S3WithIntro(documents,
+                                            intro = ("org",
+                                                     "facility",
+                                                     "SiteDocumentsIntro",
+                                                     ),
+                                            )
+                    # Workflow tags
+                    if record_id:
+                        visible_tags = configure_workflow_tags(fresource,
+                                                               role = "applicant",
+                                                               record_id = record_id,
+                                                               )
+
+            crud_fields = [organisation,
+                           "name",
+                           #public,
+                           S3SQLInlineLink(
+                                "facility_type",
+                                label = T("Facility Type"),
+                                field = "facility_type_id",
+                                widget = "groupedopts",
+                                cols = 3,
+                                ),
+                           "location_id",
+                           (T("Telephone"), "phone1"),
+                           "email",
+                           (T("Opening Hours"), "opening_times"),
+                           services,
+                           documents,
+                           "comments",
+                           obsolete,
+                           ]
+
+            if visible_tags:
+                # Append workflow tags in separate section
+                crud_fields.extend(visible_tags)
+                fname = visible_tags[0][1].replace(".", "_")
+                subheadings = {fname: T("Approval and Publication")}
+
+                # Add postprocess to update workflow statuses
+                postprocess = facility_postprocess
 
         s3db.configure(tablename,
-                       crud_form = S3SQLCustomForm(*crud_fields),
+                       crud_form = S3SQLCustomForm(*crud_fields,
+                                                   postprocess = postprocess,
+                                                   ),
+                       subheadings = subheadings,
                        filter_widgets = filter_widgets,
                        list_fields = list_fields,
                        )
 
+        # Report options
         if r.method == "report":
             axes = ["organisation_id",
                     "location_id$L3",
@@ -3350,14 +3486,14 @@ def config(settings):
         if r.interactive:
 
             # Configure location selector and geocoder
-            from .helpers import RLPLocationSelector
+            from s3 import S3LocationSelector
             field = table.location_id
-            field.widget = RLPLocationSelector(levels = ("L1", "L2", "L3", "L4"),
-                                               required_levels = ("L1", "L2", "L3"),
-                                               show_address = True,
-                                               show_postcode = True,
-                                               show_map = True,
-                                               )
+            field.widget = S3LocationSelector(levels = ("L1", "L2", "L3", "L4"),
+                                              required_levels = ("L1", "L2", "L3"),
+                                              show_address = True,
+                                              show_postcode = True,
+                                              show_map = True,
+                                              )
             current.response.s3.scripts.append("/%s/static/themes/RLP/js/geocoderPlugin.js" % r.application)
 
             # Custom CRUD-Form
