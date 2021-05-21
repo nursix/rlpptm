@@ -89,6 +89,9 @@ def config(settings):
 
     settings.security.policy = 5 # Controller, Function & Table ACLs
 
+    settings.ui.auth_user_represent = "name"
+    settings.ui.export_formats = ("xls",)
+
     # -------------------------------------------------------------------------
     # Comment/uncomment modules here to disable/enable them
     # Modules menu is defined in modules/eden/menu.py
@@ -311,25 +314,24 @@ def config(settings):
                                    "car",
                                    ]
 
+    ANONYMOUS = "-"
+
     # -------------------------------------------------------------------------
     def eac_person_anonymize():
         """ Rules to anonymise a person """
 
         #auth = current.auth
+        s3db = current.s3db
 
-        ANONYMOUS = "-"
         #anonymous_email = uuid4().hex
 
-        title = "Name, Contacts, Address, Additional Information"
-
         rules = [{"name": "default",
-                  "title": title,
+                  "title": "Name, Contacts, Address, Additional Information",
                   "fields": {"first_name": ("set", ANONYMOUS),
                              "middle_name": ("set", ANONYMOUS),
                              "last_name": ("set", ANONYMOUS),
                              "pe_label": "remove",
-                             #"date_of_birth": current.s3db.pr_person_obscure_dob,
-                             "date_of_birth": "remove",
+                             "date_of_birth": s3db.pr_person_obscure_dob,
                              "comments": "remove",
                              },
                   "cascade": [("pr_contact", {"key": "pe_id",
@@ -340,45 +342,31 @@ def config(settings):
                                                          },
                                               "delete": True,
                                               }),
-                              ("pr_contact_emergency", {"key": "pe_id",
-                                                        "match": "pe_id",
-                                                        "fields": {"name": ("set", ANONYMOUS),
-                                                                   "relationship": "remove",
-                                                                   "phone": "remove",
-                                                                   "comments": "remove",
-                                                                   },
-                                                        "delete": True,
-                                                        }),
                               ("pr_address", {"key": "pe_id",
                                               "match": "pe_id",
-                                              "fields": {"location_id": current.s3db.pr_address_anonymise,
+                                              "fields": {"location_id": s3db.pr_address_anonymise,
                                                          "comments": "remove",
                                                          },
+                                              #"delete": True,
                                               }),
                               #("pr_person_details", {"key": "person_id",
                               #                       "match": "id",
-                              #                       "fields": {"education": "remove",
-                              #                                  "occupation": "remove",
+                              #                       "fields": {"nationality": "remove",
+                              #                                  "religion": "remove",
                               #                                  },
                               #                       }),
+                              ("pr_physical_description", {"key": "person_id",
+                                                           "match": "id",
+                                                           "fields": {#"ethnicity": "remove",
+                                                                      "medical_conditions": "remove",
+                                                                      },
+                                                           }),
                               ("pr_person_tag", {"key": "person_id",
                                                  "match": "id",
                                                  "fields": {"value": ("set", ANONYMOUS),
                                                             },
                                                  "delete": True,
                                                  }),
-                              #("br_case", {"key": "person_id",
-                              #             "match": "id",
-                              #             "fields": {"comments": "remove",
-                              #                        },
-                              #             "cascade": [("br_note", {"key": "id",
-                              #                                      "match": "case_id",
-                              #                                      "fields": {"note": "remove",
-                              #                                                 },
-                              #                                      "delete": True,
-                              #                                      }),
-                              #                         ],
-                              #             }),
                               ("hrm_human_resource", {"key": "person_id",
                                                       "match": "id",
                                                       "fields": {"status": ("set", 2),
@@ -386,30 +374,42 @@ def config(settings):
                                                                  "comments": "remove",
                                                                  },
                                                       "delete": True,
-                                                      "cascade": [("hrm_human_resource_tag", {"key": "human_resource_id",
-                                                                                              "match": "id",
-                                                                                              "fields": {"value": ("set", ANONYMOUS),
-                                                                                                         },
-                                                                                              "delete": True,
-                                                                                              }),
+                                                      }),
+                              ("pr_person_relation", {"key": "parent_id",
+                                                      "match": "id",
+                                                      "delete": True,
+                                                      "cascade": [("pr_person", {"key": "id",
+                                                                                 "match": "person_id",
+                                                                                 "fields": {"first_name": ("set", ANONYMOUS),
+                                                                                            "last_name": ("set", ANONYMOUS),
+                                                                                            "comments": "remove",
+                                                                                            },
+                                                                                 "delete": True,
+                                                                                 "cascade": [("pr_contact", {"key": "pe_id",
+                                                                                                             "match": "pe_id",
+                                                                                                             "fields": {"contact_description": "remove",
+                                                                                                                        "value": ("set", ""),
+                                                                                                                        "comments": "remove",
+                                                                                                                        },
+                                                                                                             "delete": True,
+                                                                                                             }),
+                                                                                             ("pr_address", {"key": "pe_id",
+                                                                                                             "match": "pe_id",
+                                                                                                             "fields": {"location_id": s3db.pr_address_anonymise,
+                                                                                                                        "comments": "remove",
+                                                                                                                        },
+                                                                                                             "delete": True,
+                                                                                                             }),
+                                                                                             ("pr_person_tag", {"key": "person_id",
+                                                                                                                "match": "id",
+                                                                                                                "fields": {"value": ("set", ANONYMOUS),
+                                                                                                                           },
+                                                                                                                "delete": True,
+                                                                                                                }),
+                                                                                             ],
+                                                                                 }),
                                                                   ],
                                                       }),
-                              #("pr_person_user", {"key": "pe_id",
-                              #                    "match": "pe_id",
-                              #                    "cascade": [("auth_user", {"key": "id",
-                              #                                               "match": "user_id",
-                              #                                               "fields": {"id": auth.s3_anonymise_roles,
-                              #                                                          "first_name": ("set", "-"),
-                              #                                                          "last_name": "remove",
-                              #                                                          "email": ("set", anonymous_email),
-                              #                                                          "organisation_id": "remove",
-                              #                                                          "password": auth.s3_anonymise_password,
-                              #                                                          "deleted": ("set", True),
-                              #                                                          },
-                              #                                               }),
-                              #                                ],
-                              #                    "delete": True,
-                              #                    }),
                               ],
                   "delete": True,
                   },
@@ -442,18 +442,20 @@ def config(settings):
 
         if tablename == "cr_shelter":
 
-            if r.method== "create":
+            if r.method == "create":
                 # The dedicated check-in pages shouldn't have an rheader to clutter things up
                 return None
 
             status = record.status
-            if record.status in (1, 6):
+            if status in (1, 6):
                 # Closed...cannot register Staff/Clients
+                closed = True
                 tabs = [(T("Shelter Details"), None),
                         (T("Event Log"), "event"),
                         ]
             else:
                 # Open
+                closed = False
                 tabs = [(T("Shelter Details"), None),
                         (T("Staff"), "human_resource_site"),
                         (T("Clients"), "client"),
@@ -465,15 +467,46 @@ def config(settings):
             table = r.table
             location_id = table.location_id
             status_field = table.status
-            rheader = DIV(TABLE(TR(TH("%s: " % table.name.label),
-                                   record.name,
-                                   ),
+            button = ""
+            if closed:
+                occupancy = ""
+                # What is the Data Status of the Site?
+                ttable = current.s3db.org_site_tag
+                query = (ttable.site_id == record.site_id) & \
+                        (ttable.tag == "status")
+                tag = current.db(query).select(ttable.id,
+                                               ttable.value,
+                                               limitby = (0, 1)
+                                               ).first()
+                if tag:
+                    # Add Button
+                    from gluon import A, URL
+                    if tag.value == "CLOSED":
+                        button = A(T("Export"),
+                                   _href = URL(args = [r.id, "export.xls"]),
+                                   _class = "action-btn",
+                                   )
+                    #elif tag.value = "EXPORTED":
+                    else:
+                        button = A(T("Anonymize"),
+                                   _href = URL(args = [r.id, "anonymise"]),
+                                   _class = "action-btn",
+                                   )
+            else:
+                occupancy = TR(TH("%s: " % table.population_day.label),
+                               "%s / %s" % (record.population_day, record.capacity_day),
+                               )
+            rheader = DIV(TABLE(#TR(TH("%s: " % table.name.label),
+                                #   record.name,
+                                #   ),
                                 TR(TH("%s: " % location_id.label),
                                    location_id.represent(record.location_id),
                                    ),
                                 TR(TH("%s: " % status_field.label),
                                    status_field.represent(status),
                                    ),
+                                occupancy,
+                                button,
                                 ),
                           rheader_tabs)
 
@@ -496,7 +529,16 @@ def config(settings):
                     org = ""
             else:
                 org = ""
-                tabs.insert(1, (T("Next of Kin"), "nok"))
+                if current.auth.s3_has_role("POLICE", include_admin=False):
+                    # Only show NoK tab if it already has data (this role cannot create)
+                    table = current.s3db.pr_person_relation
+                    nok = current.db(table.parent_id == record.id).select(table.id,
+                                                                          limitby = (0, 1)
+                                                                          ).first()
+                    if nok:
+                        tabs.insert(1, (T("Next of Kin"), "nok"))
+                else:
+                    tabs.insert(1, (T("Next of Kin"), "nok"))
                 #tabs.insert(2, (T("Household"), None, {}, "household"))
                 tabs.insert(2, (T("Household"), "household"))
 
@@ -514,77 +556,6 @@ def config(settings):
         return rheader
 
     # -------------------------------------------------------------------------
-    def site_check_in(site_id, person_id):
-        """
-            When a person is checked-in to a Shelter then update the
-            Shelter Registration
-
-            @param site_id: the site_id of the shelter
-            @param person_id: the person_id to check-in
-        """
-
-        db = current.db
-        s3db = current.s3db
-
-        # Find the Registration
-        stable = s3db.cr_shelter
-        rtable = s3db.cr_shelter_registration
-
-        query = (stable.site_id == site_id) & \
-                (stable.id == rtable.shelter_id) & \
-                (rtable.person_id == person_id) & \
-                (rtable.deleted != True)
-        registration = db(query).select(rtable.id,
-                                        rtable.registration_status,
-                                        limitby = (0, 1)
-                                        ).first()
-        if not registration:
-            return
-
-        # Update the Shelter Registration
-        registration.update_record(check_in_date = current.request.utcnow,
-                                   registration_status = 2,
-                                   )
-        onaccept = s3db.get_config("cr_shelter_registration", "onaccept")
-        if onaccept:
-            onaccept(registration)
-
-    # -------------------------------------------------------------------------
-    def site_check_out(site_id, person_id):
-        """
-            When a person is checked-out from a Shelter then update the
-            Shelter Registration
-
-            @param site_id: the site_id of the shelter
-            @param person_id: the person_id to check-in
-        """
-
-        db = current.db
-        s3db = current.s3db
-
-        # Find the Registration
-        stable = s3db.cr_shelter
-        rtable = s3db.cr_shelter_registration
-        query = (stable.site_id == site_id) & \
-                (stable.id == rtable.shelter_id) & \
-                (rtable.person_id == person_id) & \
-                (rtable.deleted != True)
-        registration = db(query).select(rtable.id,
-                                        rtable.registration_status,
-                                        limitby = (0, 1)
-                                        ).first()
-        if not registration:
-            return
-
-        # Update the Shelter Registration
-        registration.update_record(check_out_date = current.request.utcnow,
-                                   registration_status = 3,
-                                   )
-        onaccept = s3db.get_config("cr_shelter_registration", "onaccept")
-        if onaccept:
-            onaccept(registration)
-
-    # -------------------------------------------------------------------------
     def cr_shelter_onvalidation(form):
         """
             Ensure that the correct closed Status is used for the Shelter Type
@@ -594,7 +565,7 @@ def config(settings):
         form_vars_get = form_vars.get
 
         status = form_vars_get("status")
-        if status not in ("1", "6"):
+        if str(status) not in ("1", "6"):
             # Shelter is Open
             obsolete = form_vars_get("obsolete")
             if obsolete:
@@ -617,9 +588,554 @@ def config(settings):
             form_vars.status = 6
 
     # -------------------------------------------------------------------------
+    def cr_shelter_onaccept(form):
+        """
+            When a Shelter is Opened/Closed
+                - Control Flag to track Data Exporting/Anonymising
+            When a Shelter is Closed
+                - Check-out all Clients 
+        """
+
+        record = form.record
+        if not record:
+            # Create form
+            # (NB We don't hook into update_onaccept as this would mean that the default onaccept wouldn't run)
+            return
+
+        form_vars = form.vars
+        form_vars_get = form_vars.get
+
+        status = form_vars_get("status")
+
+        if status == record.status:
+            # Status hasn't changed
+            return
+
+        # Control Flag to track Data Exporting/Anonymising
+        db = current.db
+        s3db = current.s3db
+
+        site_id = form_vars_get("site_id")
+        table = s3db.org_site_tag
+        query = (table.site_id == site_id) & \
+                (table.tag == "status")
+
+        if status not in (1, 6):
+            # Shelter has been Opened
+            # Clear Flag
+            db(query).delete()
+            return
+
+        tag = db(query).select(table.id,
+                               limitby = (0 ,1)
+                               ).first()
+        if not tag:
+            # No tag, so create one
+            table.insert(site_id = site_id,
+                         tag = "status",
+                         value = "CLOSED",
+                         )
+
+        # Check-out all clients
+        shelter_id = form_vars_get("id")
+        table = s3db.cr_shelter_registration
+        query = (table.shelter_id == shelter_id) & \
+                (table.registration_status == 2) # Checked-in
+        db(query).update(registration_status = 3, # Checked-out
+                         #check_out_date = current.request.now,
+                         )
+
+    # -------------------------------------------------------------------------
+    def cr_shelter_anonymise(r, **attr):
+        """
+            Anonymise all Client data for a Shelter
+            Archive Logs
+        """
+
+        site_id = r.record.site_id
+        shelter_name = r.record.name
+
+        db = current.db
+        s3db = current.s3db
+
+        # Check Flag
+        ttable = s3db.org_site_tag
+        query = (ttable.site_id == site_id) & \
+                (ttable.tag == "status")
+        tag = db(query).select(ttable.id,
+                               ttable.value,
+                               limitby = (0, 1)
+                               ).first()
+        if not tag or tag.value != "EXPORTED":
+            current.session.error = T("Cannot Anonymize Data for a Shelter unless the data has been Exported!")
+            # Redirect to Normal page
+            from gluon import redirect, URL
+            redirect(URL(args = [r.id]))
+
+        # Remove Flag
+        db(ttable.id == tag.id).delete()
+
+        # Log
+        settings.security.audit_write = True
+        from s3 import S3Audit
+        S3Audit().__init__()
+        s3db.s3_audit.insert(timestmp = r.now,
+                             user_id = current.auth.user.id,
+                             method = "Data Anonymise",
+                             representation = shelter_name,
+                             )
+
+        # Read Site Logs
+        etable = s3db.org_site_event
+        equery = (etable.site_id == site_id) & \
+                 (etable.archived == False)
+        log_rows = db(equery).select(etable.event,
+                                     etable.comments,
+                                     etable.person_id,
+                                     )
+        client_ids = []
+        cappend = client_ids.append
+        for row in log_rows:
+            if row.event != 2:
+                # Only interested in check-ins
+                continue
+            if row.comments == "Client":
+                cappend(row.person_id)
+
+        # Anonymise Clients
+        from s3 import S3Anonymize
+        rules = eac_person_anonymize()[0]
+        S3Anonymize.cascade(s3db.pr_person, client_ids, rules)
+
+        # Archive Logs
+        db(equery).update(archived = True)
+
+        current.session.confirmation = T("Data Anoynmized succesfully!")
+        from gluon import redirect, URL
+        redirect(URL(args = [r.id]))
+
+    # -------------------------------------------------------------------------
+    def cr_shelter_export(r, **attr):
+        """
+            Export Logs and all Client data for a Shelter to XLS
+        """
+
+        shelter_id = r.id
+        record = r.record
+        if record.status not in (1, 6):
+            current.session.error = T("Cannot Export Data for a Shelter unless it is Closed")
+            # Redirect to Normal page
+            from gluon import redirect, URL
+            redirect(URL(args = [shelter_id]))
+
+        # Export all the data for the Shelter
+        from s3.codecs.xls import S3XLS
+        try:
+            import xlwt
+        except ImportError:
+            error = S3XLS.ERROR.XLWT_ERROR
+            current.log.error(error)
+            raise HTTP(503, body=error)
+        try:
+            from xlrd.xldate import xldate_from_date_tuple, \
+                                    xldate_from_datetime_tuple
+        except ImportError:
+            error = S3XLS.ERROR.XLRD_ERROR
+            current.log.error(error)
+            raise HTTP(503, body=error)
+
+        from s3 import s3_format_fullname, s3_fullname, s3_unicode
+
+        date_format = settings.get_L10n_date_format()
+        date_format_str = str(date_format)
+
+        dt_format_translate = S3XLS.dt_format_translate
+        date_format = dt_format_translate(date_format)
+        datetime_format = dt_format_translate(settings.get_L10n_datetime_format())
+
+        db = current.db
+        s3db = current.s3db
+        shelter_name = record.name
+
+        #####
+        # Log
+        #####
+
+        # Site Log
+        site_id = record.site_id
+        etable = s3db.org_site_event
+        etable.insert(site_id = site_id,
+                      event = 5, # Data Export
+                      comments = "Shelter",
+                      )
+
+        # Global Log
+        settings.security.audit_write = True
+        from s3 import S3Audit
+        S3Audit().__init__()
+        s3db.s3_audit.insert(timestmp = r.now,
+                             user_id = current.auth.user.id,
+                             method = "Data Export",
+                             representation = shelter_name,
+                             )
+
+        ######
+        # Flag
+        ######
+        ttable = s3db.org_site_tag
+        query = (ttable.site_id == site_id) & \
+                (ttable.tag == "status")
+        tag = db(query).select(ttable.id,
+                               limitby = (0, 1)
+                               ).first()
+        if tag:
+            tag.update_record(value = "EXPORTED")
+
+        ##############
+        # Extract Data
+        ##############
+
+        # Event Log
+        event_represent = etable.event.represent
+        status_represent = lambda opt: \
+                            cr_shelter_status_opts.get(opt, current.messages.UNKNOWN_OPT)
+
+        query = (etable.site_id == site_id) & \
+                (etable.archived == False)
+        log_rows = db(query).select(etable.date,
+                                    etable.created_by,
+                                    etable.event,
+                                    etable.comments,
+                                    etable.person_id,
+                                    etable.status,
+                                    )
+        client_ids = []
+        cappend = client_ids.append
+        staff_ids = []
+        sappend = staff_ids.append
+        user_ids = []
+        uappend = user_ids.append
+        for row in log_rows:
+            uappend(row.created_by)
+            if row.event != 2:
+                # Only interested in check-ins
+                continue
+            if row.comments == "Staff":
+                sappend(row.person_id)
+            else:
+                cappend(row.person_id)
+
+        # Users
+        utable = db.auth_user
+        user_rows = db(utable.id.belongs(set(user_ids))).select(utable.id,
+                                                                utable.first_name,
+                                                                utable.last_name,
+                                                                )
+        users = {row.id: s3_format_fullname(row.first_name.strip(), "", row.last_name.strip(), False) for row in user_rows}
+
+        # Clients
+        ptable = s3db.pr_person
+        client_rows = db(ptable.id.belongs(client_ids)).select(ptable.id,
+                                                               ptable.pe_label,
+                                                               ptable.first_name,
+                                                               ptable.middle_name,
+                                                               ptable.last_name,
+                                                               ptable.date_of_birth,
+                                                               ptable.gender,
+                                                               )
+        clients = {row.id: s3_fullname(row) for row in client_rows}
+        gender_represent = ptable.gender.represent
+
+        # Staff
+        htable = s3db.hrm_human_resource
+        query = (ptable.id.belongs(set(staff_ids))) & \
+                (ptable.id == htable.person_id)
+        staff_rows = db(query).select(ptable.id,
+                                      ptable.first_name,
+                                      ptable.last_name,
+                                      htable.organisation_id,
+                                      )
+        organisation_ids = set([row["hrm_human_resource.organisation_id"] for row in staff_rows])
+        otable = s3db.org_organisation
+        organisations = db(otable.id.belongs(organisation_ids)).select(otable.id,
+                                                                       otable.name,
+                                                                       ).as_dict()
+        staff = {}
+        for row in staff_rows:
+            organisation_id = row["hrm_human_resource.organisation_id"]
+            represent = s3_fullname(row["pr_person"])
+            if organisation_id:
+                represent = "%s (%s)" % (represent, organisations.get(organisation_id)["name"])
+            staff[row["pr_person.id"]] = represent
+
+        #session = current.session
+        #session.confirmation = T("Data Exported")
+        #session.information = T("Data Anonymization Scheduled")
+
+        ##############
+        # Write Data
+        ##############
+
+        # Create the workbook
+        book = xlwt.Workbook(encoding="utf-8")
+        COL_WIDTH_MULTIPLIER = S3XLS.COL_WIDTH_MULTIPLIER
+        styles = S3XLS._styles(use_colour = True,
+                               evenodd = True)
+        header_style = styles["header"]
+        odd_style = styles["odd"]
+        even_style = styles["even"]
+
+        # Clients Sheet
+        sheet = book.add_sheet("Clients")
+        column_widths = []
+        header_row = sheet.row(0)
+        for col_index, label in ((0, "Reception Centre Ref"),
+                                 (1, "Last Name"),
+                                 (2, "Middle Name"),
+                                 (3, "First Name"),
+                                 (4, "Sex"),
+                                 (5, "Date of Birth"),
+                                 ):
+            header_row.write(col_index, label, header_style)
+            width = max(len(label) * COL_WIDTH_MULTIPLIER, 2000)
+            width = min(width, 65535) # USHRT_MAX
+            column_widths.append(width)
+            sheet.col(col_index).width = width
+
+        row_index = 1
+        for row in client_rows:
+            current_row = sheet.row(row_index)
+            style = even_style if row_index % 2 == 0 else odd_style
+            col_index = 0
+            for field in ("pe_label",
+                          "last_name",
+                          "middle_name",
+                          "first_name",
+                          ):
+                represent = row[field]
+                if represent:
+                    current_row.write(col_index, represent, style)
+                    width = len(represent) * COL_WIDTH_MULTIPLIER
+                    if width > column_widths[col_index]:
+                        column_widths[col_index] = width
+                        sheet.col(col_index).width = width
+                else:
+                    # Just add the row style
+                    current_row.write(col_index, "", style)
+                col_index += 1
+
+            gender = row["gender"]
+            if gender:
+                represent = s3_unicode(gender_represent(gender))
+                current_row.write(col_index, represent, style)
+                width = len(represent) * COL_WIDTH_MULTIPLIER
+                if width > column_widths[col_index]:
+                    column_widths[col_index] = width
+                    sheet.col(col_index).width = width
+            else:
+                # Just add the row style
+                current_row.write(col_index, "", style)
+            col_index += 1
+
+            date_of_birth = row["date_of_birth"]
+            if date_of_birth:
+                represent = s3_unicode(date_of_birth)
+                date_tuple = (date_of_birth.year,
+                              date_of_birth.month,
+                              date_of_birth.day)
+                date_of_birth = xldate_from_date_tuple(date_tuple, 0)
+                style.num_format_str = date_format
+                current_row.write(col_index, date_of_birth, style)
+                width = len(represent) * COL_WIDTH_MULTIPLIER
+                if width > column_widths[col_index]:
+                    column_widths[col_index] = width
+                    sheet.col(col_index).width = width
+                style.num_format_str = "General"
+            else:
+                # Just add the row style
+                current_row.write(col_index, "", style)
+            col_index += 1
+
+            row_index += 1
+
+        # Staff Sheet
+        sheet = book.add_sheet("Staff")
+        column_widths = []
+        header_row = sheet.row(0)
+        for col_index, label in ((0, "Organisation"),
+                                 (1, "Last Name"),
+                                 (2, "First Name"),
+                                 ):
+            header_row.write(col_index, label, header_style)
+            width = max(len(label) * COL_WIDTH_MULTIPLIER, 2000)
+            width = min(width, 65535) # USHRT_MAX
+            column_widths.append(width)
+            sheet.col(col_index).width = width
+
+        row_index = 1
+        for row in staff_rows:
+            current_row = sheet.row(row_index)
+            style = even_style if row_index % 2 == 0 else odd_style
+            col_index = 0
+
+            organisation_id = row["hrm_human_resource.organisation_id"]
+            if organisation_id:
+                represent = organisations.get(organisation_id)["name"]
+                current_row.write(col_index, represent, style)
+                width = len(represent) * COL_WIDTH_MULTIPLIER
+                if width > column_widths[col_index]:
+                    column_widths[col_index] = width
+                    sheet.col(col_index).width = width
+            else:
+                # Just add the row style
+                current_row.write(col_index, "", style)
+            col_index += 1
+
+            row = row["pr_person"]
+            for field in ("last_name",
+                          "first_name",
+                          ):
+                represent = row[field]
+                current_row.write(col_index, represent, style)
+                width = len(represent) * COL_WIDTH_MULTIPLIER
+                if width > column_widths[col_index]:
+                    column_widths[col_index] = width
+                    sheet.col(col_index).width = width
+                col_index += 1
+
+            row_index += 1
+
+        # Log Sheet
+        sheet = book.add_sheet("Log")
+        column_widths = []
+        header_row = sheet.row(0)
+        for col_index, label in ((0, "Date"),
+                                 (1, "User"),
+                                 (2, "Event"),
+                                 (3, "Comments"),
+                                 (4, "Person"),
+                                 (5, "Status"),
+                                 ):
+            header_row.write(col_index, label, header_style)
+            width = max(len(label) * COL_WIDTH_MULTIPLIER, 2000)
+            width = min(width, 65535) # USHRT_MAX
+            column_widths.append(width)
+            sheet.col(col_index).width = width
+
+        row_index = 1
+        for row in log_rows:
+            current_row = sheet.row(row_index)
+            style = even_style if row_index % 2 == 0 else odd_style
+            col_index = 0
+
+            date = row["date"]
+            represent = s3_unicode(date)
+            date_tuple = (date.year,
+                          date.month,
+                          date.day,
+                          date.hour,
+                          date.minute,
+                          date.second)
+            date = xldate_from_datetime_tuple(date_tuple, 0)
+            style.num_format_str = datetime_format
+            current_row.write(col_index, date, style)
+            width = len(represent) * COL_WIDTH_MULTIPLIER
+            if width > column_widths[col_index]:
+                column_widths[col_index] = width
+                sheet.col(col_index).width = width
+            style.num_format_str = "General"
+            col_index += 1
+
+            user_id = row["created_by"]
+            if user_id:
+                represent = users.get(user_id)
+                current_row.write(col_index, represent, style)
+                width = len(represent) * COL_WIDTH_MULTIPLIER
+                if width > column_widths[col_index]:
+                    column_widths[col_index] = width
+                    sheet.col(col_index).width = width
+            else:
+                # Just add the row style
+                current_row.write(col_index, "", style)
+            col_index += 1
+
+            event = row["event"]
+            if event:
+                represent = s3_unicode(event_represent(event))
+                current_row.write(col_index, represent, style)
+                width = len(represent) * COL_WIDTH_MULTIPLIER
+                if width > column_widths[col_index]:
+                    column_widths[col_index] = width
+                    sheet.col(col_index).width = width
+            else:
+                # Just add the row style
+                current_row.write(col_index, "", style)
+            col_index += 1
+
+            comments = row["comments"]
+            if comments:
+                represent = comments
+                current_row.write(col_index, represent, style)
+                width = len(represent) * COL_WIDTH_MULTIPLIER
+                if width > column_widths[col_index]:
+                    column_widths[col_index] = width
+                    sheet.col(col_index).width = width
+            else:
+                # Just add the row style
+                current_row.write(col_index, "", style)
+            col_index += 1
+
+            person_id = row["person_id"]
+            if person_id:
+                if comments == "Staff":
+                    represent = staff.get(person_id)
+                else:
+                    represent = clients.get(person_id) or staff.get(person_id)
+                current_row.write(col_index, represent, style)
+                width = len(represent) * COL_WIDTH_MULTIPLIER
+                if width > column_widths[col_index]:
+                    column_widths[col_index] = width
+                    sheet.col(col_index).width = width
+            else:
+                # Just add the row style
+                current_row.write(col_index, "", style)
+            col_index += 1
+
+            status = row["status"]
+            if status:
+                represent = s3_unicode(status_represent(status))
+                current_row.write(col_index, represent, style)
+                width = len(represent) * COL_WIDTH_MULTIPLIER
+                if width > column_widths[col_index]:
+                    column_widths[col_index] = width
+                    sheet.col(col_index).width = width
+            else:
+                # Just add the row style
+                current_row.write(col_index, "", style)
+            col_index += 1
+
+            row_index += 1
+
+        # Write output
+        from s3compat import BytesIO
+        output = BytesIO()
+        book.save(output)
+        output.seek(0)
+
+        # Response headers
+        from gluon.contenttype import contenttype
+        filename = "%s.xls" % shelter_name
+        disposition = "attachment; filename=\"%s\"" % filename
+        response = current.response
+        response.headers["Content-Type"] = contenttype(".xls")
+        response.headers["Content-disposition"] = disposition
+
+        return output.read()
+
+    # -------------------------------------------------------------------------
     def customise_cr_shelter_resource(r, tablename):
 
-        from gluon import DIV, IS_EMPTY_OR, IS_IN_SET
+        from gluon import DIV, IS_EMPTY_OR, IS_IN_SET, IS_LENGTH, IS_NOT_EMPTY, IS_NOT_IN_DB
 
         from s3 import S3Represent, S3SQLCustomForm, S3LocationSelector, \
                        S3TextFilter, S3LocationFilter, S3OptionsFilter, S3RangeFilter
@@ -636,6 +1152,10 @@ def config(settings):
             del shelter_status_opts[6]
 
         table = s3db.cr_shelter
+        table.name.requires = [IS_NOT_EMPTY(),
+                               IS_LENGTH(64),
+                               IS_NOT_IN_DB(current.db, "cr_shelter.name"),
+                               ]
         f = table.shelter_type_id
         f.label = T("Type")
         f.comment = None # No inline Create
@@ -776,6 +1296,11 @@ def config(settings):
                          (T("Catering"), "catering.value"),
                          ]
 
+        s3db.add_custom_callback("cr_shelter",
+                                 "onaccept",
+                                 cr_shelter_onaccept,
+                                 )
+
         s3db.configure(tablename,
                        create_next = None, # Don't redirect to People Registration after creation
                        crud_form = crud_form,
@@ -786,14 +1311,12 @@ def config(settings):
                         rows = report_fields,
                         cols = report_fields,
                         fact = report_fields,
-                        defaults = Storage(rows = "location_id$L4", # Lowest-level of hierarchy
+                        defaults = Storage(rows = "location_id$L3",
                                            cols = "status",
                                            fact = "count(name)",
                                            totals = True,
                                            )
                         ),
-                       site_check_in = site_check_in,
-                       site_check_out = site_check_out,
                        )
 
     settings.customise_cr_shelter_resource = customise_cr_shelter_resource
@@ -810,6 +1333,9 @@ def config(settings):
         # Exclude Closed Shelters by default
         s3_set_default_filter("~.status", [3, 4, 5], tablename="cr_shelter")
 
+        # Exclude Checked-out Clients by default
+        s3_set_default_filter("client.shelter_registration.registration_status", [2], tablename="pr_person")
+
         s3 = response.s3
 
         # Custom Methods
@@ -817,14 +1343,6 @@ def config(settings):
 
             from gluon import SQLFORM
 
-            db = current.db
-            session = current.session
-
-            shelter_id = r.id
-            stable = s3db.cr_shelter
-            shelter = db(stable.id == shelter_id).select(stable.site_id,
-                                                         limitby = (0, 1)
-                                                         ).first()
             person_id = r.component_id
 
             class REPLACE_TEXT(object):
@@ -839,7 +1357,7 @@ def config(settings):
             f.readable = f.writable = False
             f = table.site_id
             f.readable = f.writable = False
-            f.default = shelter.site_id
+            f.default = r.record.site_id
             f = table.person_id
             f.readable = f.writable = False
             f.default = person_id
@@ -854,8 +1372,12 @@ def config(settings):
             form = SQLFORM(table)
 
             if form.accepts(r.post_vars, current.session):
-                # Remove Link(s)
-                db(s3db.cr_shelter_registration.person_id == person_id).delete()
+                # Update Shelter Registration
+                current.db(s3db.cr_shelter_registration.person_id == person_id).update(registration_status = 3,# Checked-Out
+                                                                                       check_out_date = r.now,
+                                                                                       )
+                # Update Shelter Population
+                s3db.cr_update_shelter_population(r.id)
                 # response.confirmation triggers the popup close (although not actually seen by user)
                 response.confirmation = T("Client checked-out successfully!")
 
@@ -864,11 +1386,6 @@ def config(settings):
 
         def staff_checkout(r, **attr):
             db = current.db
-            shelter_id = r.id
-            stable = s3db.cr_shelter
-            shelter = db(stable.id == shelter_id).select(stable.site_id,
-                                                         limitby = (0, 1)
-                                                         ).first()
             component_id = r.component_id
             ltable = s3db.hrm_human_resource_site
             htable = s3db.hrm_human_resource
@@ -883,7 +1400,7 @@ def config(settings):
             # Clear site_id
             staff.update_record(site_id = None)
             # Add Event Log entry
-            s3db.org_site_event.insert(site_id = shelter.site_id,
+            s3db.org_site_event.insert(site_id = r.record.site_id,
                                        person_id = staff.person_id,
                                        event = 3, # Checked-Out
                                        comments = "Staff",
@@ -892,10 +1409,18 @@ def config(settings):
             current.session.confirmation = T("Staff checked-out successfully!")
             from gluon import redirect
             redirect(URL(c="cr", f="shelter",
-                         args = [shelter_id,
+                         args = [r.id,
                                  "human_resource_site",
                                  ],
                          ))
+
+        def shelter_manage(r, **attr):
+            shelter_id = r.id
+            # Set this shelter into the session
+            current.session.s3.shelter_id = shelter_id
+            # Redirect to Normal page
+            from gluon import redirect
+            redirect(URL(args = [shelter_id]))
 
         def staff_redirect(r, **attr):
             # Redirect to Staff record
@@ -911,15 +1436,11 @@ def config(settings):
                          args = [staff.person_id],
                          ))
 
-        def shelter_manage(r, **attr):
-            shelter_id = r.id
-            # Set this shelter into the session
-            current.session.s3.shelter_id = shelter_id
-            # Redirect to Normal page
-            from gluon import redirect
-            redirect(URL(args = [shelter_id]))
-
         set_method = s3db.set_method
+
+        set_method("cr", "shelter",
+                   method = "anonymise",
+                   action = cr_shelter_anonymise)
 
         set_method("cr", "shelter",
                    component_name = "client",
@@ -930,6 +1451,10 @@ def config(settings):
                    component_name = "human_resource_site",
                    method = "checkout",
                    action = staff_checkout)
+
+        set_method("cr", "shelter",
+                   method = "export",
+                   action = cr_shelter_export)
 
         set_method("cr", "shelter",
                    method = "manage",
@@ -958,11 +1483,43 @@ def config(settings):
             else:
                 result = True
 
-            if r.component_name == "human_resource_site":
+            if r.id:
+                shelter_name = r.record.name
+            else:
+                shelter_name = None
+
+            #if current.auth.s3_has_role("SHELTER_ADMIN"):
+            #    # Consistent Header across tabs
+            #    s3.crud_strings["cr_shelter"].title_display = T("Manage Shelter")
+            s3.crud_strings["cr_shelter"].title_display = shelter_name
+
+            cname = r.component_name
+            if cname == "human_resource_site":
+                if not r.interactive:
+                    auth = current.auth
+                    output_format = auth.permission.format
+                    if output_format not in ("aadata", "json", "xls"):
+                        # Block Exports
+                        return False
+                    if output_format == "xls":
+                        # Add Site Event Log
+                        s3db.org_site_event.insert(site_id = r.record.site_id,
+                                                   event = 5, # Data Export
+                                                   comments = "Staff",
+                                                   )
+                        # Log in Global Log
+                        settings.security.audit_write = True
+                        from s3 import S3Audit
+                        S3Audit().__init__()
+                        s3db.s3_audit.insert(timestmp = r.now,
+                                             user_id = auth.user.id,
+                                             method = "Data Export",
+                                             representation = "Staff",
+                                             )
 
                 if r.method == "create":
                     s3.crud_strings["cr_shelter"].title_display = T("Check-in Staff to %(shelter)s") % \
-                                                                            {"shelter": r.record.name}
+                                                                            {"shelter": shelter_name}
 
                 # Filtered components
                 s3db.add_components("pr_person",
@@ -977,15 +1534,10 @@ def config(settings):
                 # Assigning Staff Checks them in
                 def staff_check_in(form):
 
+                    db = current.db
                     form_vars_get = form.vars.get
                     human_resource_id = form_vars_get("human_resource_id")
 
-                    db = current.db
-                    stable = s3db.cr_shelter
-                    shelter = db(stable.id == r.id).select(stable.site_id,
-                                                           limitby = (0, 1)
-                                                           ).first()
-                    site_id = shelter.site_id
                     htable = s3db.hrm_human_resource
                     staff = db(htable.id == human_resource_id).select(htable.id,
                                                                       htable.person_id,
@@ -993,6 +1545,7 @@ def config(settings):
                                                                       ).first()
 
                     # Set the site_id in the Staff record
+                    site_id = r.record.site_id
                     staff.update_record(site_id = site_id)
 
                     # Delete old hrm_human_resource_site records
@@ -1013,8 +1566,134 @@ def config(settings):
                                          staff_check_in,
                                          )
 
-            elif r.component_name == "human_resource":
+            elif cname == "client":
+                # Filter out Anonymised People
+                from s3 import FS
+                r.resource.add_component_filter(cname, (FS("client.first_name") != ANONYMOUS))
+
+                if not r.interactive:
+                    output_format = current.auth.permission.format
+                    if output_format not in ("aadata", "json", "xls"):
+                        # Block Exports
+                        return False
+                    if output_format == "xls":
+                        # Add Site Event Log
+                        s3db.org_site_event.insert(site_id = r.record.site_id,
+                                                   event = 5, # Data Export
+                                                   comments = "Clients",
+                                                   )
+                        # Log in Global Log
+                        settings.security.audit_write = True
+                        from s3 import S3Audit
+                        S3Audit().__init__()
+                        s3db.s3_audit.insert(timestmp = r.now,
+                                             user_id = auth.user.id,
+                                             method = "Data Export",
+                                             representation = "Clients",
+                                             )
+
+                if r.method == "create":
+                    s3.crud_strings["cr_shelter"].title_display = T("Register Client to %(shelter)s") % \
+                                                                            {"shelter": shelter_name}
+
+                from s3 import S3TextFilter, S3OptionsFilter, S3DateFilter
+
+                filter_widgets = [S3TextFilter(["first_name",
+                                                "middle_name",
+                                                "first_name",
+                                                "pe_label",
+                                                "holmes.value",
+                                                ],
+                                               label = T("Search"),
+                                               #_class = "filter-search",
+                                               ),
+                                  S3OptionsFilter("shelter_registration.registration_status",
+                                                  label = T("Status"),
+                                                  options = {#1: T("Planned"),
+                                                             2: T("Checked-in"),
+                                                             3: T("Checked-out"),
+                                                             },
+                                                  ),
+                                  S3OptionsFilter("age_group",
+                                                  label = T("Age"),
+                                                  hidden = True,
+                                                  ),
+                                  S3OptionsFilter("gender",
+                                                  hidden = True,
+                                                  ),
+                                  S3OptionsFilter("person_details.nationality",
+                                                  hidden = True,
+                                                  ),
+                                  S3OptionsFilter("pets.value",
+                                                  label = T("Pets"),
+                                                  hidden = True,
+                                                  ),
+                                  S3DateFilter("shelter_registration.check_in_date",
+                                               #hide_time = True,
+                                               hidden = True,
+                                               ),
+                                  S3DateFilter("shelter_registration.check_out_date",
+                                               #hide_time = True,
+                                               hidden = True,
+                                               ),
+                                  ]
+                s3db.configure("pr_person",
+                               filter_widgets = filter_widgets,
+                               )
+
+                # Registering Client Checks them in
+                def client_check_in(form):
+                    form_vars_get = form.vars.get
+                    person_id = form_vars_get("person_id")
+                    site_id = r.record.site_id
+
+                    # Delete old cr_shelter_registration records
+                    ltable = s3db.cr_shelter_registration
+                    query = (ltable.person_id == person_id) & \
+                            (ltable.id != form_vars_get("id"))
+                    current.db(query).delete()
+
+                    # Update Shelter Population
+                    s3db.cr_update_shelter_population(r.id)
+
+                    # Add Site Event Log
+                    s3db.org_site_event.insert(site_id = site_id,
+                                               person_id = person_id,
+                                               event = 2, # Checked-In
+                                               comments = "Client",
+                                               )
+
+                s3db.add_custom_callback("cr_shelter_registration",
+                                         "create_onaccept",
+                                         client_check_in,
+                                         )
+
+            elif cname == "event":
+                from s3 import FS
+                r.resource.add_component_filter(cname, (FS("archived") == False))
+
+            elif cname == "human_resource":
                 # UNUSED
+                if not r.interactive:
+                    output_format = current.auth.permission.format
+                    if output_format not in ("aadata", "json", "xls"):
+                        # Block Exports
+                        return False
+                    if output_format == "xls":
+                        # Add Site Event Log
+                        s3db.org_site_event.insert(site_id = r.record.site_id,
+                                                   event = 5, # Data Export
+                                                   comments = "Staff",
+                                                   )
+                        # Log in Global Log
+                        settings.security.audit_write = True
+                        from s3 import S3Audit
+                        S3Audit().__init__()
+                        s3db.s3_audit.insert(timestmp = r.now,
+                                             user_id = auth.user.id,
+                                             method = "Data Export",
+                                             representation = "Staff",
+                                             )
 
                 # Filtered components
                 s3db.add_components("pr_person",
@@ -1033,11 +1712,7 @@ def config(settings):
 
                 # Adding Staff here Checks them in
                 def staff_check_in(form):
-                    table = s3db.cr_shelter
-                    shelter = current.db(table.id == r.id).select(table.site_id,
-                                                                  limitby = (0, 1)
-                                                                  ).first()
-                    s3db.org_site_event.insert(site_id = shelter.site_id,
+                    s3db.org_site_event.insert(site_id = r.record.site_id,
                                                person_id = form.vars.get("person_id"),
                                                event = 2, # Checked-In
                                                comments = "Staff",
@@ -1046,43 +1721,9 @@ def config(settings):
                                          "create_onaccept",
                                          staff_check_in,
                                          )
-
-            elif r.component_name == "client":
-                s3.crud_strings["cr_shelter"].title_display = T("Register Client to %(shelter)s") % \
-                                                                            {"shelter": r.record.name}
-
-                # Registering Client Checks them in
-                def client_check_in(form):
-
-                    form_vars_get = form.vars.get
-                    person_id = form_vars_get("person_id")
-
-                    db = current.db
-                    stable = s3db.cr_shelter
-                    shelter = db(stable.id == r.id).select(stable.site_id,
-                                                           limitby = (0, 1)
-                                                           ).first()
-                    site_id = shelter.site_id
-
-                    # Delete old cr_shelter_registration records
-                    ltable = s3db.cr_shelter_registration
-                    query = (ltable.person_id == person_id) & \
-                            (ltable.id != form_vars_get("id"))
-                    db(query).delete()
-
-                    # Add Site Event Log
-                    s3db.org_site_event.insert(site_id = site_id,
-                                               person_id = person_id,
-                                               event = 2, # Checked-In
-                                               comments = "Client",
-                                               )
-
-                s3db.add_custom_callback("cr_shelter_registration",
-                                         "create_onaccept",
-                                         client_check_in,
-                                         )
             else:
                 s3.crud_strings["cr_shelter"].title_update = T("Manage Shelter")
+                s3.crud_strings["cr_shelter"].title_update = shelter_name
 
             return result
         s3.prep = prep
@@ -1171,6 +1812,9 @@ def config(settings):
 
         attr["rheader"] = eac_rheader
 
+        if "client" in current.request.args:
+            attr["hide_filter"] = False
+
         return attr
 
     settings.customise_cr_shelter_controller = customise_cr_shelter_controller
@@ -1196,6 +1840,7 @@ def config(settings):
                 form_vars_get = form.vars.get
                 person_id = form_vars_get("person_id")
                 shelter_id = form_vars_get("shelter_id")
+                check_in_date = form_vars_get("check_in_date", r.now)
 
                 stable = s3db.cr_shelter
                 shelter = current.db(stable.id == shelter_id).select(stable.site_id,
@@ -1207,6 +1852,7 @@ def config(settings):
                 s3db.org_site_event.insert(site_id = site_id,
                                            person_id = person_id,
                                            event = 2, # Checked-In
+                                           date = check_in_date,
                                            comments = "Client",
                                            )
 
@@ -1304,7 +1950,7 @@ def config(settings):
                         rows = report_fields,
                         cols = report_fields,
                         fact = report_fields,
-                        defaults = Storage(rows = "location_id$L4", # Lowest-level of hierarchy
+                        defaults = Storage(rows = "location_id$L3",
                                            cols = "organisation_id",
                                            fact = "count(person_id)",
                                            totals = True,
@@ -1317,6 +1963,8 @@ def config(settings):
     # -----------------------------------------------------------------------------
     def customise_hrm_human_resource_controller(**attr):
 
+        s3 = current.response.s3
+
         # Filtered components
         current.s3db.add_components("pr_person",
                                     pr_person_tag = ({"name": "car",
@@ -1327,10 +1975,36 @@ def config(settings):
                                                      ),
                                     )
 
+        # Custom prep
+        standard_prep = s3.prep
+        def prep(r):
+            if not r.interactive:
+                output_format = current.auth.permission.format
+                if output_format not in ("aadata", "json", "xls"):
+                    # Block Exports
+                    return False
+                if output_format == "xls":
+                    # Log
+                    settings.security.audit_write = True
+                    from s3 import S3Audit
+                    S3Audit().__init__()
+                    s3db.s3_audit.insert(timestmp = r.now,
+                                         user_id = auth.user.id,
+                                         method = "Data Export",
+                                         representation = "Staff",
+                                         )
+
+            # Call standard prep
+            if callable(standard_prep):
+                result = standard_prep(r)
+            else:
+                result = True
+            return result
+        s3.prep = prep
+
         return attr
 
     settings.customise_hrm_human_resource_controller = customise_hrm_human_resource_controller
-
 
     # -------------------------------------------------------------------------
     def customise_hrm_human_resource_site_resource(r, tablename):
@@ -1391,9 +2065,36 @@ def config(settings):
 
         from s3 import S3Represent
 
-        current.s3db.org_site_event.status.represent = S3Represent(options = cr_shelter_status_opts)
+        s3db = current.s3db
+
+        table = s3db.org_site_event
+        table.status.represent = S3Represent(options = cr_shelter_status_opts)
+        table.created_by.readable = True
+
+        s3db.configure(tablename,
+                       list_fields = ["date",
+                                      (T("User"), "created_by"),
+                                      "event",
+                                      "comments",
+                                      "person_id",
+                                      "status",
+                                      ],
+                       )
 
     settings.customise_org_site_event_resource = customise_org_site_event_resource
+
+    # -------------------------------------------------------------------------
+    def customise_s3_audit_resource(r, tablename):
+
+        current.s3db.configure(tablename,
+                               list_fields = [(T("Date"), "timestmp"),
+                                              (T("User"), "user_id"),
+                                              (T("Event"), "method"),
+                                              (T("Comments"), "representation"),
+                                              ],
+                               )
+
+    settings.customise_s3_audit_resource = customise_s3_audit_resource
 
     # -------------------------------------------------------------------------
     def pr_household_postprocess(form, parent_id):
@@ -1442,8 +2143,8 @@ def config(settings):
             style.borders = borders
 
             labels = ((0, 8, s3_unicode(T("Client"))),
-                      (9, 11, s3_unicode(T("Shelter"))),
-                      (12, 16, s3_unicode(T("Next of Kin"))),
+                      (9, 12, s3_unicode(T("Shelter"))),
+                      (13, 17, s3_unicode(T("Next of Kin"))),
                       )
 
             for start_col, end_col, label in labels:
@@ -1617,8 +2318,65 @@ def config(settings):
                                                                     show_map = False,
                                                                     )
 
-        if current.auth.permission.format == "xls" and \
-           r.method != "report":
+        if r.method == "report":
+
+            s3.crud_strings["pr_person"].title_report = T("Clients Report")
+
+            filter_widgets = [
+                    S3OptionsFilter("shelter_registration.registration_status",
+                                    label = T("Status"),
+                                    options = {#1: T("Planned"),
+                                               2: T("Checked-in"),
+                                               3: T("Checked-out"),
+                                               },
+                                    ),
+                    S3LocationFilter("shelter_registration.shelter_id$location_id",
+                        label = T("Location"),
+                        levels = ("L3", "L4"),
+                        ),
+                    S3OptionsFilter("shelter_registration.shelter_id",
+                                    ),
+                    S3OptionsFilter("age_group",
+                                    label = T("Age"),
+                                    #hidden = True,
+                                    ),
+                    S3OptionsFilter("gender",
+                                    #hidden = True,
+                                    ),
+                    S3DateFilter("shelter_registration.check_in_date",
+                                 #hide_time = True,
+                                 hidden = True,
+                                 ),
+                    S3DateFilter("shelter_registration.check_out_date",
+                                 #hide_time = True,
+                                 hidden = True,
+                                 ),
+                    ]
+
+            report_fields = ["gender",
+                             "age_group",
+                             "person_details.nationality",
+                             "physical_description.ethnicity",
+                             "shelter_registration.shelter_id",
+                             "shelter_registration.shelter_id$location_id$L3",
+                             "shelter_registration.shelter_id$location_id$L4",
+                             ]
+
+            s3db.configure(tablename,
+                           filter_widgets = filter_widgets,
+                           report_options = Storage(
+                            rows = report_fields,
+                            cols = report_fields,
+                            fact = report_fields,
+                            defaults = Storage(rows = "shelter_registration.shelter_id$location_id$L3",
+                                               cols = "age_group",
+                                               fact = "count(id)",
+                                               totals = True,
+                                               )
+                            ),
+                           )
+            
+        elif current.auth.permission.format == "xls":
             # Custom XLS Title Row
             settings.base.xls_title_row = xls_title_row
 
@@ -1662,6 +2420,7 @@ def config(settings):
                            "pe_label",
                            "shelter_registration.shelter_id",
                            "shelter_registration.check_in_date",
+                           "shelter_registration.check_out_date",
                            "nok.last_name",
                            "nok.first_name",
                            (T("Relationship"), "nok_relationship"), # Fake Selector - to be populated in postprocess_select
@@ -1729,13 +2488,6 @@ def config(settings):
 
             # Individual settings for specific tag components
             components_get = s3db.resource(tablename).components.get
-
-            #integer_represent = IS_INT_AMOUNT.represent
-
-            #congregations = components_get("congregations")
-            #f = congregations.table.value
-            #f.represent = integer_represent
-            #f.requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None))
 
             pets = components_get("pets")
             f = pets.table.value
@@ -1860,7 +2612,14 @@ def config(settings):
                                  label = T("Search"),
                                  #_class = "filter-search",
                                  ),
-                    S3LocationFilter("location_id",
+                    S3OptionsFilter("shelter_registration.registration_status",
+                                    label = T("Status"),
+                                    options = {#1: T("Planned"),
+                                               2: T("Checked-in"),
+                                               3: T("Checked-out"),
+                                               },
+                                    ),
+                    S3LocationFilter("shelter_registration.shelter_id$location_id",
                                      label = T("Location"),
                                      levels = ("L3", "L4"),
                                      ),
@@ -1868,38 +2627,38 @@ def config(settings):
                                     ),
                     S3OptionsFilter("age_group",
                                     label = T("Age"),
+                                    hidden = True,
                                     ),
                     S3OptionsFilter("gender",
+                                    hidden = True,
                                     ),
                     S3OptionsFilter("person_details.nationality",
+                                    hidden = True,
                                     ),
                     S3OptionsFilter("pets.value",
                                     label = T("Pets"),
+                                    hidden = True,
                                     ),
                     S3DateFilter("shelter_registration.check_in_date",
                                  #hide_time = True,
-                                 #hidden = True,
-                                 )
+                                 hidden = True,
+                                 ),
+                    S3DateFilter("shelter_registration.check_out_date",
+                                 #hide_time = True,
+                                 hidden = True,
+                                 ),
                     ]
 
             list_fields = ["last_name",
                            "first_name",
                            "shelter_registration.check_in_date",
+                           "shelter_registration.check_out_date",
                            "pe_label",
                            "gender",
                            (T("Age"), "age"),
                            ]
             if r.controller == "pr":
                 list_fields.insert(2, "shelter_registration.shelter_id")
-
-            report_fields = ["gender",
-                             "age_group",
-                             "person_details.nationality",
-                             "physical_description.ethnicity",
-                             "shelter_registration.shelter_id",
-                             "location_id$L3",
-                             "location_id$L4",
-                             ]
 
             from gluon import URL
 
@@ -1912,25 +2671,25 @@ def config(settings):
                            filter_widgets = filter_widgets,
                            listadd = True, #if household else False,
                            list_fields = list_fields,
-                           report_options = Storage(
-                            rows = report_fields,
-                            cols = report_fields,
-                            fact = report_fields,
-                            defaults = Storage(rows = "location_id$L4", # Lowest-level of hierarchy
-                                               cols = "age_group",
-                                               fact = "count(id)",
-                                               totals = True,
-                                               )
-                            ),
-                           summary = ({"name": "table",
-                                       "label": "Table",
-                                       "widgets": [{"method": "datatable"}]
-                                       },
-                                      {"name": "report",
-                                       "label": "Report",
-                                       "widgets": [{"method": "report", "ajax_init": True}],
-                                       },
-                                      ),
+                           #report_options = Storage(
+                           # rows = report_fields,
+                           # cols = report_fields,
+                           # fact = report_fields,
+                           # defaults = Storage(rows = "shelter_registration.shelter_id$location_id$L3",
+                           #                    cols = "age_group",
+                           #                    fact = "count(id)",
+                           #                    totals = True,
+                           #                    )
+                           # ),
+                           #summary = ({"name": "table",
+                           #            "label": "Table",
+                           #            "widgets": [{"method": "datatable"}]
+                           #            },
+                           #           {"name": "report",
+                           #            "label": "Report",
+                           #            "widgets": [{"method": "report", "ajax_init": True}],
+                           #            },
+                           #           ),
                            )
 
     settings.customise_pr_person_resource = customise_pr_person_resource
@@ -1938,8 +2697,16 @@ def config(settings):
     # -----------------------------------------------------------------------------
     def customise_pr_person_controller(**attr):
 
+        from s3 import s3_set_default_filter
+
+        auth = current.auth
         s3db = current.s3db
         s3 = current.response.s3
+
+        output_format = auth.permission.format
+
+        # Exclude Checked-out Clients by default
+        s3_set_default_filter("shelter_registration.registration_status", [2], tablename="pr_person")
 
         # Redefine as multiple=False
         s3db.add_components("pr_person",
@@ -1960,6 +2727,30 @@ def config(settings):
         # Custom prep
         standard_prep = s3.prep
         def prep(r):
+
+            from s3 import FS
+
+            resource = r.resource
+
+            if r.method != "report":
+                # Filter out Anonymised People
+                resource.add_filter(FS("first_name") != ANONYMOUS)
+
+            if not r.interactive:
+                if output_format not in ("aadata", "json", "xls"):
+                    # Block Exports
+                    return False
+                if output_format == "xls":
+                    # Log
+                    settings.security.audit_write = True
+                    from s3 import S3Audit
+                    S3Audit().__init__()
+                    s3db.s3_audit.insert(timestmp = r.now,
+                                         user_id = auth.user.id,
+                                         method = "Data Export",
+                                         representation = "Clients",
+                                         )
+
             # Call standard prep
             if callable(standard_prep):
                 result = standard_prep(r)
@@ -1978,7 +2769,17 @@ def config(settings):
                 # Next of Kin
                 s3.crud_strings["pr_person"].title_update = ""
                 
-                from s3 import S3SQLCustomForm, S3SQLInlineComponent
+                from gluon import IS_NOT_EMPTY
+                from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3LocationSelector
+
+                s3db.pr_address.location_id.widget = S3LocationSelector(levels = ("L0", "L1", "L2", "L3", "L4"),
+                                                                        required_levels = ("L0",),
+                                                                        show_address = True,
+                                                                        #address_required = True,
+                                                                        #show_postcode = True,
+                                                                        #postcode_required = True,
+                                                                        show_map = False,
+                                                                        )
 
                 # Filtered components
                 s3db.add_components("pr_person",
@@ -1989,6 +2790,11 @@ def config(settings):
                                                       },
                                                      ),
                                     )
+                # Individual settings for specific tag components
+                components_get = s3db.resource("pr_person").components.get
+
+                relationship = components_get("relationship")
+                relationship.table.value.requires = IS_NOT_EMPTY() # Mandatory as used in filters
 
                 crud_form = S3SQLCustomForm("first_name",
                                             #"middle_name",
@@ -2109,6 +2915,9 @@ def config(settings):
                                       registration_status = 2,
                                       )
 
+                        # Update Shelter Population
+                        s3db.cr_update_shelter_population(shelter_id)
+
                         # Add Site Event Log
                         s3db.org_site_event.insert(site_id = site_id,
                                                    person_id = person_id,
@@ -2120,10 +2929,6 @@ def config(settings):
                                              "create_onaccept",
                                              household_check_in,
                                              )
-
-            from s3 import FS
-
-            resource = r.resource
 
             # Filter out Users
             resource.add_filter(FS("user.id") == None)
@@ -2177,7 +2982,7 @@ def config(settings):
         s3.postp = postp
 
         attr["rheader"] = eac_rheader
-        if current.auth.permission.format == "xls":
+        if output_format == "xls":
             attr["evenodd"] = True
             attr["use_colour"] = True
 

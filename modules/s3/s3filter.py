@@ -3516,8 +3516,8 @@ class S3FilterForm(object):
     @staticmethod
     def apply_filter_defaults(request, resource):
         """
-            Add default filters to resource, to be called a multi-record
-            view with a filter form is rendered the first time and before
+            Add default filters to resource, to be called on a multi-record
+            view when a filter form is rendered the first time and before
             the view elements get processed; can be overridden in request
             URL with ?default_filters=0
 
@@ -3559,6 +3559,9 @@ class S3FilterForm(object):
                 has_default = True
             elif filter_defaults is None:
                 continue
+
+            # Use alias in selectors if looking at a component
+            filter_widget.alias = resource.alias if resource.parent else None
 
             defaults = set()
             variable = filter_widget.variable(resource, get_vars)
@@ -3608,7 +3611,7 @@ class S3FilterForm(object):
 
                 if callable(applicable_defaults):
                     applicable_defaults = applicable_defaults(selector,
-                                                              tablename=tablename)
+                                                              tablename = tablename)
                 if isinstance(applicable_defaults, dict):
                     if operator in applicable_defaults:
                         default = applicable_defaults[operator]

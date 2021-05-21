@@ -43,7 +43,7 @@ from s3compat import PY2, basestring
 from s3dal import SQLCustomType
 from .s3datetime import S3DateTime
 from .s3navigation import S3ScriptItem
-from .s3utils import s3_auth_user_represent, s3_auth_user_represent_name, s3_unicode, s3_str, S3MarkupStripper
+from .s3utils import s3_unicode, s3_str, S3MarkupStripper
 from .s3validators import IS_ISO639_2_LANGUAGE_CODE, IS_ONE_OF, IS_UTC_DATE, IS_UTC_DATETIME
 from .s3widgets import S3CalendarWidget, S3DateWidget
 
@@ -57,52 +57,52 @@ class FieldS3(Field):
     """
 
     def __init__(self, fieldname,
-                 type="string",
-                 length=None,
-                 default=None,
-                 required=False,
-                 requires="<default>",
-                 ondelete="CASCADE",
-                 notnull=False,
-                 unique=False,
-                 uploadfield=True,
-                 widget=None,
-                 label=None,
-                 comment=None,
-                 writable=True,
-                 readable=True,
-                 update=None,
-                 authorize=None,
-                 autodelete=False,
-                 represent=None,
-                 uploadfolder=None,
-                 compute=None,
-                 sortby=None):
+                 type = "string",
+                 length = None,
+                 default = None,
+                 required = False,
+                 requires = "<default>",
+                 ondelete = "CASCADE",
+                 notnull = False,
+                 unique = False,
+                 uploadfield = True,
+                 widget = None,
+                 label = None,
+                 comment = None,
+                 writable = True,
+                 readable = True,
+                 update = None,
+                 authorize = None,
+                 autodelete = False,
+                 represent = None,
+                 uploadfolder = None,
+                 compute = None,
+                 sortby = None):
 
         self.sortby = sortby
 
         Field.__init__(self,
                        fieldname,
-                       type=type,
-                       length=length,
-                       default=default,
-                       required=required,
-                       requires=requires,
-                       ondelete=ondelete,
-                       notnull=notnull,
-                       unique=unique,
-                       uploadfield=uploadfield,
-                       widget=widget,
-                       label=label,
-                       comment=comment,
-                       writable=writable,
-                       readable=readable,
-                       update=update,
-                       authorize=authorize,
-                       autodelete=autodelete,
-                       represent=represent,
-                       uploadfolder=uploadfolder,
-                       compute=compute,
+                       type = type,
+                       length = length,
+                       default = default,
+                       required = required,
+                       requires = requires,
+                       ondelete = ondelete,
+                       notnull = notnull,
+                       unique = unique,
+                       uploadfield = uploadfield,
+                       widget = widget,
+                       label = label,
+                       comment = comment,
+                       writable = writable,
+                       readable = readable,
+                       update = update,
+                       authorize = authorize,
+                       autodelete = autodelete,
+                       represent = represent,
+                       uploadfolder = uploadfolder,
+                       compute = compute,
                        )
 
 # =============================================================================
@@ -1258,9 +1258,16 @@ class S3MetaFields(object):
         """
 
         if current.deployment_settings.get_ui_auth_user_represent() == "name":
-            return s3_auth_user_represent_name
+            show_name = True
+            show_email = False
         else:
-            return s3_auth_user_represent
+            show_name = False
+            show_email = True
+
+        return current.s3db.auth_UserRepresent(show_name = show_name,
+                                               show_email = show_email,
+                                               show_link = False,
+                                               )
 
 # -----------------------------------------------------------------------------
 def s3_meta_fields():
