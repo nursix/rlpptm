@@ -43,7 +43,7 @@ if not failed:
     set_record_owner = auth.s3_set_record_owner
     updated = 0
     for row in rows:
-        set_record_owner(table, row, force_update=True)
+        set_record_owner(rtable, row, force_update=True)
         info(".")
         updated += 1
 
