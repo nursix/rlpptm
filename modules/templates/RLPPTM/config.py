@@ -261,6 +261,30 @@ def config(settings):
                                                  organisation_id,
                                                  )
 
+        elif tablename == "disease_testing_report":
+
+            # Daily reports inherit realm-entity from the testing site
+            table = s3db.table(tablename)
+            stable = s3db.org_site
+            query = (table._id == row.id) & \
+                    (stable.site_id == table.site_id)
+            site = db(query).select(stable.realm_entity,
+                                    limitby = (0, 1),
+                                    ).first()
+            if site:
+                realm_entity = site.realm_entity
+
+            # Fall back to user organisation
+            user = current.auth.user
+            organisation_id = user.organisation_id if user else None
+            if not organisation_id:
+                # Fall back to default organisation
+                organisation_id = settings.get_org_default_organisation()
+            if organisation_id:
+                realm_entity = s3db.pr_get_pe_id("org_organisation",
+                                                 organisation_id,
+                                                 )
+
         #elif tablename == "fin_voucher_program":
         #
         #    # Voucher programs are owned by the organisation managing
