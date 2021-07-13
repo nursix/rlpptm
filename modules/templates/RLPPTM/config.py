@@ -274,16 +274,17 @@ def config(settings):
             if site:
                 realm_entity = site.realm_entity
 
-            # Fall back to user organisation
-            user = current.auth.user
-            organisation_id = user.organisation_id if user else None
-            if not organisation_id:
-                # Fall back to default organisation
-                organisation_id = settings.get_org_default_organisation()
-            if organisation_id:
-                realm_entity = s3db.pr_get_pe_id("org_organisation",
-                                                 organisation_id,
-                                                 )
+            else:
+                # Fall back to user organisation
+                user = current.auth.user
+                organisation_id = user.organisation_id if user else None
+                if not organisation_id:
+                    # Fall back to default organisation
+                    organisation_id = settings.get_org_default_organisation()
+                if organisation_id:
+                    realm_entity = s3db.pr_get_pe_id("org_organisation",
+                                                     organisation_id,
+                                                     )
 
         #elif tablename == "fin_voucher_program":
         #
