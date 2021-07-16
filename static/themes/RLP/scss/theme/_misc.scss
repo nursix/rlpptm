@@ -308,7 +308,8 @@ body.rtl {
     border: 1px solid #EEE;
     background-color: #ec9;
 }
-.auth_register {
+.auth_register,
+.result-register {
     .subheading,
     .consent-widget,
     .controls {
@@ -423,6 +424,32 @@ body.rtl {
     background-color: #FFF8E6;
     padding: 0.7rem;
     max-width: 48rem;
+}
+
+.form-row .cwa-details,
+.form-row .cwa-qrcode {
+    display: inline-block;
+    vertical-align: top;
+}
+.form-row .cwa-details {
+    table {
+        border: none;
+        margin-right: 2.5rem;
+        tr td {
+            padding: 0.5rem;
+            &.cwa-data {
+                font-weight: bold;
+            }
+        }
+    }
+}
+.form-row .cwa-qrcode {
+    margin: 1px solid black;
+    padding-bottom: 0.2rem;
+    .cwa-qrcode-title {
+        width: 100%;
+        text-align: center;
+    }
 }
 
 // END ========================================================================

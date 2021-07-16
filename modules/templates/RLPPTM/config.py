@@ -248,18 +248,31 @@ def config(settings):
         #    # Persons are owned by the org employing them (default ok)
         #    realm_entity = 0
         #
-        if tablename == "disease_case_diagnostics":
-
-            # Test results are owned by the user organisation
-            user = current.auth.user
-            organisation_id = user.organisation_id if user else None
-            if not organisation_id:
-                # Fall back to default organisation
-                organisation_id = settings.get_org_default_organisation()
-            if organisation_id:
-                realm_entity = s3db.pr_get_pe_id("org_organisation",
-                                                 organisation_id,
-                                                 )
+        if tablename in ("disease_case_diagnostics",
+                         "disease_testing_report",
+                         ):
+            # Test results / daily reports inherit realm-entity
+            # from the testing site
+            table = s3db.table(tablename)
+            stable = s3db.org_site
+            query = (table._id == row.id) & \
+                    (stable.site_id == table.site_id)
+            site = db(query).select(stable.realm_entity,
+                                    limitby = (0, 1),
+                                    ).first()
+            if site:
+                realm_entity = site.realm_entity
+            else:
+                # Fall back to user organisation
+                user = current.auth.user
+                organisation_id = user.organisation_id if user else None
+                if not organisation_id:
+                    # Fall back to default organisation
+                    organisation_id = settings.get_org_default_organisation()
+                if organisation_id:
+                    realm_entity = s3db.pr_get_pe_id("org_organisation",
+                                                     organisation_id,
+                                                     )
 
         elif tablename == "disease_testing_report":
 
@@ -565,6 +578,91 @@ def config(settings):
     settings.customise_doc_document_resource = customise_doc_document_resource
 
     # -------------------------------------------------------------------------
+    def case_diagnostics_onaccept(form):
+        """
+            Custom onaccept routine for disease_case_diagnostics
+            - auto-generate/update corresponding daily testing report
+        """
+
+        # Get record ID
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        db = current.db
+        s3db = current.s3db
+
+        # Get the record
+        table = s3db.disease_case_diagnostics
+        query = (table.id == record_id)
+        record = db(query).select(table.site_id,
+                                  table.disease_id,
+                                  table.result_date,
+                                  limitby = (0, 1),
+                                  ).first()
+        if not record:
+            return
+
+        site_id = record.site_id
+        disease_id = record.disease_id
+        result_date = record.result_date
+
+        if site_id and disease_id and result_date:
+
+            # Count records grouped by result
+            query = (table.site_id == site_id) & \
+                    (table.disease_id == disease_id) & \
+                    (table.result_date == result_date) & \
+                    (table.deleted == False)
+            cnt = table.id.count()
+            rows = db(query).select(table.result,
+                                    cnt,
+                                    groupby = table.result,
+                                    )
+            total = positive = 0
+            for row in rows:
+                num = row[cnt]
+                total += num
+                if row.disease_case_diagnostics.result == "POS":
+                    positive += num
+
+            # Look up the daily report
+            rtable = s3db.disease_testing_report
+            query = (rtable.site_id == site_id) & \
+                    (rtable.disease_id == disease_id) & \
+                    (rtable.date == result_date) & \
+                    (rtable.deleted == False)
+            report = db(query).select(rtable.id,
+                                      rtable.tests_total,
+                                      rtable.tests_positive,
+                                      limitby = (0, 1),
+                                      ).first()
+
+            if report:
+                # Update report if actual numbers are greater
+                if report.tests_total < total or report.tests_positive < positive:
+                    report.update_record(tests_total = total,
+                                         tests_positive = positive,
+                                         )
+            else:
+                # Create report
+                report = {"site_id": site_id,
+                          "disease_id": disease_id,
+                          "date": result_date,
+                          "tests_total": total,
+                          "tests_positive": positive,
+                          }
+                report_id = rtable.insert(**report)
+                if report_id:
+                    current.auth.s3_set_record_owner(rtable, report_id)
+                    report["id"] = report_id
+                    s3db.onaccept(rtable, report, method="create")
+
+    # -------------------------------------------------------------------------
     def customise_disease_case_diagnostics_resource(r, tablename):
 
         db = current.db
@@ -572,58 +670,71 @@ def config(settings):
 
         table = s3db.disease_case_diagnostics
 
-        from .helpers import get_stats_projects
-        report_results = get_stats_projects()
+        single_disease = single_site = False
 
-        if not report_results: # or current.auth.s3_has_role("ADMIN"):
-            s3db.configure("disease_case_diagnostics",
-                           insertable = False,
-                           )
+        # Make site link visible + limit to managed+approved+active sites
+        field = table.site_id
+        field.readable = field.writable = True
 
-        if r.interactive and report_results and r.method != "report":
-
-            # Enable project link and make it mandatory
-            field = table.project_id
-            field.readable = True
-
-            ptable = s3db.project_project
-            if len(report_results) == 1:
-                project_id = report_results[0]
-                dbset = db(ptable.id == project_id)
-                field.default = project_id
+        from .helpers import get_managed_facilities
+        site_ids = get_managed_facilities("TEST_PROVIDER")
+        if site_ids is not None:
+            if len(site_ids) == 1:
+                single_site = True
+                # Default + make r/o
+                field.default = site_ids[0]
                 field.writable = False
             else:
-                dbset = ptable.id.belongs(report_results)
-                field.writable = True
-            field.requires = IS_ONE_OF(dbset, "project_project.id",
-                                       field.represent,
-                                       )
-
-            field.comment = None
-
-            # Enable disease link and make it mandatory
-            field = table.disease_id
-            field.readable = field.writable = True
-            field.comment = None
+                # Limit to managed sites
+                dbset = db(s3db.org_site.site_id.belongs(site_ids))
+                field.requires = IS_ONE_OF(dbset, "org_site.site_id",
+                                           field.represent,
+                                           )
+        else:
+            # Site is required
             requires = field.requires
-            if isinstance(requires, (list, tuple)):
-                requires = requires[0]
             if isinstance(requires, IS_EMPTY_OR):
-                field.requires = requires.other
+                requires = requires.other
 
-            # If there is only one disease, default the selector + make r/o
-            dtable = s3db.disease_disease
-            rows = db(dtable.deleted == False).select(dtable.id,
-                                                      cache = s3db.cache,
-                                                      limitby = (0, 2),
-                                                      )
-            if len(rows) == 1:
-                field.default = rows[0].id
-                field.writable = False
+        # Enable disease link and make it mandatory
+        field = table.disease_id
+        field.readable = field.writable = True
+        field.comment = None
+        requires = field.requires
+        if isinstance(requires, (list, tuple)):
+            requires = requires[0]
+        if isinstance(requires, IS_EMPTY_OR):
+            field.requires = requires.other
 
-            # Default result date
-            field = table.result_date
-            field.default = current.request.utcnow.date()
+        # If there is only one disease, default the selector + make r/o
+        dtable = s3db.disease_disease
+        rows = db(dtable.deleted == False).select(dtable.id,
+                                                  cache = s3db.cache,
+                                                  limitby = (0, 2),
+                                                  )
+        if len(rows) == 1:
+            single_disease = True
+            field.default = rows[0].id
+            field.writable = False
+
+        # Default probe details
+        field = table.probe_status
+        field.default = "PROCESSED"
+
+        now = current.request.utcnow
+
+        # Probe date/time is mandatory
+        field = table.probe_date
+        field.label = T("Test Date/Time")
+        field.default = now
+        requires = field.requires
+        if isinstance(requires, IS_EMPTY_OR):
+            requires = requires.other
+
+        # Default result date
+        field = table.result_date
+        field.default = now.date()
+        field.writable = False
 
         # Formal test types
         # TODO move to lookup table?
@@ -644,58 +755,70 @@ def config(settings):
         # Formal results
         result_options = (("NEG", T("Negative")),
                           ("POS", T("Positive")),
-                          ("INC", T("Inconclusive")),
+                          # Only relevant for two-step workflow:
+                          #("INC", T("Inconclusive")),
                           )
         field = table.result
-        field.default = "POS"
         field.requires = IS_IN_SET(result_options,
-                                   zero = None,
+                                   zero = "",
                                    sort = False,
+                                   error_message = T("Please select a value"),
                                    )
         field.represent = S3Represent(options=dict(result_options))
 
+        if not single_site or current.auth.s3_has_role("DISEASE_TEST_READER"):
+            site_id = "site_id"
+        else:
+            site_id = None
+        disease_id = "disease_id" if not single_disease else None
+
         # Custom list_fields
-        list_fields = ["project_id",
-                       "disease_id",
-                       "test_type",
-                       "result_date",
+        list_fields = [site_id,
+                       disease_id,
+                       "probe_date",
                        "result",
                        ]
 
-        # Custom form
+        # Custom form (for read)
         from s3 import S3SQLCustomForm
-        crud_form = S3SQLCustomForm("project_id",
-                                    "disease_id",
-                                    "test_type",
-                                    "result_date",
+        crud_form = S3SQLCustomForm(disease_id,
+                                    site_id,
+                                    "probe_date",
                                     "result",
+                                    "result_date",
                                     )
 
         # Filters
         from s3 import S3DateFilter, S3OptionsFilter
-        filter_widgets = [S3DateFilter("result_date",
+        filter_widgets = [S3DateFilter("probe_date",
                                        label = T("Date"),
+                                       hide_time = True,
                                        ),
-                          S3OptionsFilter("disease_id", hidden=True),
-                          S3OptionsFilter("project_id", hidden=True),
-                          S3OptionsFilter("test_type",
-                                          options = OrderedDict(type_options),
-                                          hidden = True,
-                                          ),
                           S3OptionsFilter("result",
                                           options = OrderedDict(result_options),
                                           hidden = True,
                                           ),
+                          S3DateFilter("result_date",
+                                       label = T("Result Date"),
+                                       hidden = True,
+                                       ),
                           ]
+        if site_id:
+            # Better to use text filter for site name?
+            # - better scalability, but cannot select multiple
+            filter_widgets.append(S3OptionsFilter("site_id", hidden=True))
+        if disease_id:
+            filter_widgets.append(S3OptionsFilter("disease_id", hidden=True))
 
         # Report options
         facts = ((T("Number of Tests"), "count(id)"),
                  )
         axes = ["result",
-                "test_type",
-                "disease_id",
-                "project_id",
+                "site_id",
+                #"disease_id",
                 ]
+        if disease_id:
+            axes.append(disease_id)
         report_options = {
             "rows": axes,
             "cols": axes,
@@ -708,11 +831,36 @@ def config(settings):
             }
 
         s3db.configure("disease_case_diagnostics",
+                       insertable = False,
+                       editable = False,
+                       deletable = False,
                        crud_form = crud_form,
                        filter_widgets = filter_widgets,
                        list_fields = list_fields,
                        report_options = report_options,
+                       orderby = "disease_case_diagnostics.probe_date desc",
                        )
+
+        # Custom callback to auto-update test station daily reports
+        s3db.add_custom_callback("disease_case_diagnostics",
+                                 "onaccept",
+                                 case_diagnostics_onaccept,
+                                 )
+
+        # Custom REST methods
+        #from .cwa import TestResultRegistration
+        #s3db.set_method("disease", "case_diagnostics",
+        #                method = "register",
+        #                action = TestResultRegistration,
+        #                )
+        #s3db.set_method("disease", "case_diagnostics",
+        #                method = "certify",
+        #                action = TestResultRegistration,
+        #                )
+        #s3db.set_method("disease", "case_diagnostics",
+        #                method = "cwaretry",
+        #                action = TestResultRegistration,
+        #                )
 
         crud_strings = current.response.s3.crud_strings
         crud_strings["disease_case_diagnostics"] = Storage(
@@ -729,6 +877,57 @@ def config(settings):
             msg_list_empty = T("No Test Results currently registered"))
 
     settings.customise_disease_case_diagnostics_resource = customise_disease_case_diagnostics_resource
+
+    # -------------------------------------------------------------------------
+    def customise_disease_case_diagnostics_controller(**attr):
+
+        s3 = current.response.s3
+
+        # Enable bigtable features
+        settings.base.bigtable = True
+
+        ## Custom prep
+        #standard_prep = s3.prep
+        #def prep(r):
+        #    # Call standard prep
+        #    result = standard_prep(r) if callable(standard_prep) else True
+        #
+        #    return result
+        #s3.prep = prep
+
+        standard_postp = s3.postp
+        def custom_postp(r, output):
+
+            # Call standard postp
+            if callable(standard_postp):
+                output = standard_postp(r, output)
+
+            if isinstance(output, dict):
+
+                record = r.record
+                method = r.method
+
+                # Add Register-button in list and read views
+                key, label = None, None
+                permitted = current.auth.s3_has_permission("create", r.table)
+                if permitted:
+                    if not record and not method:
+                        key, label = "add_btn", T("Register Test Result")
+                    elif record and method in (None, "read"):
+                        key, label = "list_btn", T("Register another test result")
+                if key:
+                    crud = r.resource.crud
+                    regbtn =  crud.crud_button(label = label,
+                                               _href = r.url(id="", method="register"),
+                                               )
+                    output["buttons"] = {key: regbtn}
+
+            return output
+        s3.postp = custom_postp
+
+        return attr
+
+    settings.customise_disease_case_diagnostics_controller = customise_disease_case_diagnostics_controller
 
     # -------------------------------------------------------------------------
     def customise_disease_testing_report_resource(r, tablename):
@@ -771,11 +970,27 @@ def config(settings):
                 field.default = selectable[0]
                 field.writable = False
 
+        # Daily reports only writable for ORG_ADMINs of test stations
+        writable = current.auth.s3_has_roles(["ORG_ADMIN", "TEST_PROVIDER"], all=True)
+
         s3db.configure("disease_testing_report",
                        list_fields = list_fields,
+                       insertable = writable,
+                       editable = writable,
+                       deletable = writable,
                        )
 
     settings.customise_disease_testing_report_resource = customise_disease_testing_report_resource
+
+    # -------------------------------------------------------------------------
+    def customise_disease_testing_report_controller(**attr):
+
+        # Enable bigtable features
+        settings.base.bigtable = True
+
+        return attr
+
+    settings.customise_disease_testing_report_controller = customise_disease_testing_report_controller
 
     # -------------------------------------------------------------------------
     def customise_fin_voucher_resource(r, tablename):
@@ -2280,8 +2495,11 @@ def config(settings):
         else:
             return
 
-        from .helpers import add_facility_default_tags
+        # Generate facility ID and add default tags
+        from .helpers import add_facility_default_tags, set_facility_code
+        set_facility_code(record_id)
         add_facility_default_tags(record_id)
+
 
     # -------------------------------------------------------------------------
     def facility_postprocess(form):
@@ -2383,6 +2601,12 @@ def config(settings):
         from .helpers import OrganisationRepresent
         field.represent = OrganisationRepresent()
         field.comment = None
+
+        # Expose code (r/o)
+        field = table.code
+        field.label = T("Test Station ID")
+        field.readable = True
+        field.writable = False
 
         # Configure location selector incl. Geocoder
         field = table.location_id
@@ -2655,6 +2879,7 @@ def config(settings):
             crud_fields = [organisation,
                            # -- Facility
                            "name",
+                           "code",
                            S3SQLInlineLink(
                                 "facility_type",
                                 label = T("Facility Type"),
@@ -2748,6 +2973,13 @@ def config(settings):
         # Custom prep
         standard_prep = s3.prep
         def prep(r):
+
+            # Restrict data formats
+            allowed = ("html", "iframe", "popup", "aadata", "plain", "geojson", "pdf", "xls")
+            settings.ui.export_formats = ("pdf", "xls")
+            if r.representation not in allowed:
+                r.error(403, current.ERROR.NOT_PERMITTED)
+
             # Call standard prep
             result = standard_prep(r) if callable(standard_prep) else True
 
@@ -2769,7 +3001,6 @@ def config(settings):
                     s3.crud_strings.org_facility.title_report = T("Facilities Statistics")
 
                 else:
-
                     # Filter by public-tag
                     get_vars = r.get_vars
                     if is_org_group_admin:

@@ -52,29 +52,7 @@
 {{else:}}
 <body>
  <div class='row main-title'>
-    <div class='medium-6 columns'>
-     <a href='{{=URL(c="default", f="index")}}'>
-      {{org_menu = current.menu.org.render() if current.menu.org else ("", "")}}
-      <div class="org-logo">{{=org_menu[1]}}</div>
-      <div class="system-title">
-       <h5 class="system-name hide-for-small"><span class="system-acronym">RMS</span> {{=T("Resource Management System")}}</h5>
-       <h5 class="system-name show-for-small-only"><span class="system-acronym">RMS</span></h5>
-       <h6 class="org-name subheader">{{=org_menu[0]}}</h6>
-      </div>
-     </a>
-    </div>
-    <div class='medium-4 columns'>
-      <div class="username">{{if auth.is_logged_in():}}{{=auth.user.email}}{{else:}}{{=T("anonymous user")}}{{pass}}<i class='icon icon-user'></i></div>
-      {{=current.menu.personal}}
-    </div>
-    <div class='medium-2 columns'>
-      {{=current.menu.lang}}
-    </div>
- </div>
- <div class='row main-navigation'>
-    <div class='small-12 columns'>
-      {{=current.menu.main}}
-    </div>
+ {{=current.menu.main}}
  </div>
  <div class='row main-content'>
   {{if current.menu.options is not None:}}
