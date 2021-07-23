@@ -8,7 +8,7 @@ from gluon.storage import Storage
 
 from s3 import S3Method
 
-from .controllers import deploy_index
+from .controllers import deploy_index, inv_index
 
 RED_CROSS = "Red Cross / Red Crescent"
 
@@ -598,7 +598,7 @@ def config(settings):
     # -------------------------------------------------------------------------
     # RIT
     settings.deploy.team_label = "RIT"
-    settings.customise_deploy_home = deploy_index
+    settings.customise_deploy_home = deploy_index # Imported from controllers.py
     # Alerts get sent to all recipients
     settings.deploy.manual_recipients = False
     settings.deploy.post_to_twitter = True
@@ -646,6 +646,8 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     # Inventory Management
+
+    settings.customise_inv_home = inv_index # Imported from controllers.py
 
     # Hide Staff Management Tabs for Facilities in Inventory Module
     settings.inv.facility_manage_staff = False
@@ -2882,37 +2884,6 @@ Thank you"""
     settings.customise_member_membership_type_controller = customise_member_membership_type_controller
 
     # -------------------------------------------------------------------------
-    def customise_inv_home():
-        """
-            Homepage for the Inventory module
-        """
-
-        from gluon import URL
-        from s3 import s3_redirect_default
-
-        auth = current.auth
-        if auth.user and auth.user.site_id:
-            has_role = auth.s3_has_role
-            if has_role("national_wh_manager") or \
-               has_role(current.session.s3.system_roles.ORG_ADMIN):
-                pass
-            else:
-                # Redirect to this Warehouse
-                table = current.s3db.inv_warehouse
-                wh = current.db(table.site_id == auth.user.site_id).select(table.id,
-                                                                           limitby = (0, 1)
-                                                                           ).first()
-                if wh:
-                    s3_redirect_default(URL(c="inv", f="warehouse",
-                                            args = [wh.id, "inv_item"],
-                                            ))
-
-        # Redirect to Warehouse Summary Page
-        s3_redirect_default(URL(c="inv", f="warehouse", args="summary"))
-
-    settings.customise_inv_home = customise_inv_home
-
-    # -------------------------------------------------------------------------
     def inv_pdf_header(r, title=None):
         """
             PDF header for Stock Reports
@@ -3077,6 +3048,69 @@ Thank you"""
     settings.customise_inv_inv_item_resource = customise_inv_inv_item_resource
 
     # -------------------------------------------------------------------------
+    def customise_inv_recv_resource(r, tablename):
+
+        # Custom GRN
+        current.s3db.set_method("inv", "recv",
+                                method = "form",
+                                action = PrintableShipmentForm,
+                                )
+
+    settings.customise_inv_recv_resource = customise_inv_recv_resource
+
+    # -------------------------------------------------------------------------
+    def customise_inv_recv_controller(**attr):
+
+        s3 = current.response.s3
+
+        # Custom prep
+        standard_prep = s3.prep
+        def custom_prep(r):
+            # Call standard prep
+            if callable(standard_prep):
+                result = standard_prep(r)
+            else:
+                result = True
+
+            record = r.record
+            if record:
+                if not r.component:
+                    s3db = current.s3db
+                    if record.status == s3db.inv_ship_status["RECEIVED"]:
+                        dtable = s3db.doc_document
+                        query = (dtable.doc_id == record.doc_id) & \
+                                (dtable.deleted == False)
+                        filed = current.db(query).select(dtable.id,
+                                                         limitby = (0, 1)
+                                                         ).first()
+                        if filed:
+                            # Allow editing of Filing Status when the rest of the record is locked
+                            s3db.configure("inv_recv",
+                                           editable = True,
+                                           )
+                            s3db.inv_recv.filing_status.writable = True
+
+                elif r.component_name == "document":
+                    s3.crud_strings["doc_document"].label_create = T("File Signed Document")
+                    field = current.s3db.doc_document.name
+                    field.label = T("Type")
+                    document_type_opts = {"REQ": T("Requisition"),
+                                          "GRN": T("GRN"),
+                                          "WB": T("Waybill"),
+                                          }
+                    from gluon import IS_IN_SET
+                    from s3 import S3Represent
+                    field.requires = IS_IN_SET(document_type_opts)
+                    field.represent = S3Represent(options = document_type_opts)
+
+            return result
+        s3.prep = custom_prep
+
+        return attr
+
+    settings.customise_inv_recv_controller = customise_inv_recv_controller
+
+    # -------------------------------------------------------------------------
     def customise_inv_send_resource(r, tablename):
 
         s3db = current.s3db
@@ -3109,15 +3143,55 @@ Thank you"""
     settings.customise_inv_send_resource = customise_inv_send_resource
 
     # -------------------------------------------------------------------------
-    def customise_inv_recv_resource(r, tablename):
+    def customise_inv_send_controller(**attr):
 
-        # Custom GRN
-        current.s3db.set_method("inv", "recv",
-                                method = "form",
-                                action = PrintableShipmentForm,
-                                )
+        s3 = current.response.s3
 
-    settings.customise_inv_recv_resource = customise_inv_recv_resource
+        # Custom prep
+        standard_prep = s3.prep
+        def custom_prep(r):
+            # Call standard prep
+            if callable(standard_prep):
+                result = standard_prep(r)
+            else:
+                result = True
+
+            record = r.record
+            if record:
+                if not r.component:
+                    s3db = current.s3db
+                    if record.status == s3db.inv_ship_status["SENT"]:
+                        dtable = s3db.doc_document
+                        query = (dtable.doc_id == record.doc_id) & \
+                                (dtable.deleted == False)
+                        filed = current.db(query).select(dtable.id,
+                                                         limitby = (0, 1)
+                                                         ).first()
+                        if filed:
+                            # Allow editing of Filing Status when the rest of the record is locked
+                            s3db.configure("inv_send",
+                                           editable = True,
+                                           )
+                            s3db.inv_send.filing_status.writable = True
+
+                elif r.component_name == "document":
+                    s3.crud_strings["doc_document"].label_create = T("File Signed Document")
+                    field = current.s3db.doc_document.name
+                    field.label = T("Type")
+                    document_type_opts = {"REQ": T("Requisition"),
+                                          "WB": T("Waybill"),
+                                          }
+                    from gluon import IS_IN_SET
+                    from s3 import S3Represent
+                    field.requires = IS_IN_SET(document_type_opts)
+                    field.represent = S3Represent(options = document_type_opts)
+
+            return result
+        s3.prep = custom_prep
+
+        return attr
+
+    settings.customise_inv_send_controller = customise_inv_send_controller
 
     # -------------------------------------------------------------------------
     def customise_inv_warehouse_resource(r, tablename):
@@ -3497,6 +3571,24 @@ Thank you"""
         # Enable scalability-optimized strategies
         settings.base.bigtable = True
 
+        EXTERNAL = False
+
+        auth = current.auth
+        has_role = auth.s3_has_role
+        request = current.request
+
+        if "profile" in request.get_vars:
+            PROFILE = True
+        else:
+            len_roles = len(current.session.s3.roles)
+            if (len_roles <= 2) or \
+               (len_roles == 3 and has_role("RIT_MEMBER") and not has_role("ADMIN")):
+                PROFILE = True
+            else:
+                PROFILE = False
+                if request.function == "trainee_person":
+                    EXTERNAL = True
+
         # Custom prep
         standard_prep = s3.prep
         def custom_prep(r):
@@ -3506,26 +3598,12 @@ Thank you"""
                 if not result:
                     return False
 
-            auth = current.auth
-            has_role = auth.s3_has_role
-            EXTERNAL = False
-            if "profile" in current.request.get_vars:
-                profile = True
-            else:
-                len_roles = len(current.session.s3.roles)
-                if (len_roles <= 2) or \
-                   (len_roles == 3 and has_role("RIT_MEMBER") and not has_role("ADMIN")):
-                    profile = True
-                else:
-                    profile = False
-                    if r.function == "trainee_person":
-                        EXTERNAL = True
-                        s3.crud_strings["pr_person"].update(
-                            title_display = T("External Trainee Details"),
-                            title_update = T("External Trainee Details")
-                            )
-            if profile:
+            if PROFILE:
                 # Configure for personal mode
+                s3.crud_strings["pr_person"].update(
+                    title_display = T("Profile"),
+                    title_update = T("Profile")
+                    )
                 # People can edit their own HR data
                 configure = s3db.configure
                 configure("hrm_human_resource",
@@ -3544,6 +3622,12 @@ Thank you"""
                               editable = False,
                               insertable = False,
                               )
+
+            elif EXTERNAL:
+                s3.crud_strings["pr_person"].update(
+                    title_display = T("External Trainee Details"),
+                    title_update = T("External Trainee Details")
+                    )
 
             component_name = r.component_name
             method = r.method
@@ -3566,7 +3650,7 @@ Thank you"""
                     # Lookup organisation_type_id for Red Cross
                     ttable = s3db.org_organisation_type
                     type_ids = db(ttable.name.belongs((RED_CROSS, "Training Center"))).select(ttable.id,
-                                                                                              limitby=(0, 2),
+                                                                                              limitby = (0, 2),
                                                                                               cache = s3db.cache,
                                                                                               )
                     if type_ids:
@@ -3729,7 +3813,7 @@ Thank you"""
         if current.request.controller in ("hrm", "vol"):
             attr["csv_template"] = ("../../themes/RMSAmericas/formats", "hrm_person")
             # Common rheader for all views
-            attr["rheader"] = s3db.hrm_rheader
+            attr["rheader"] = lambda r: s3db.hrm_rheader(r, profile=PROFILE)
 
         return attr
 

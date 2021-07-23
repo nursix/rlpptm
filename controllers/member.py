@@ -114,22 +114,19 @@ def person():
                # @ToDo: Allow Members to have a CV without enabling HRM?
                action = s3db.hrm_CV)
 
-    # Upload for configuration (add replace option)
-    s3.importerPrep = lambda: \
-        dict(ReplaceOption=T("Remove existing data before import"))
-
     # Import pre-process
     def import_prep(data):
         """
             Deletes all Member records of the organisation/branch
             before processing a new data import
         """
-        resource, tree = data
-        xml = current.xml
-        tag = xml.TAG
-        att = xml.ATTRIBUTE
         if s3.import_replace:
+            resource, tree = data
             if tree is not None:
+                xml = current.xml
+                tag = xml.TAG
+                att = xml.ATTRIBUTE
+
                 root = tree.getroot()
                 expr = "/%s/%s[@%s='org_organisation']/%s[@%s='name']" % \
                        (tag.root, tag.resource, att.name, tag.data, att.field)

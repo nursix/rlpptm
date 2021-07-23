@@ -284,7 +284,7 @@ def config(settings):
     settings.cr.shelter_population_dynamic = True
 
     cr_shelter_status_opts = {1 : T("Closed"), # Nominated Centres
-                              #2 : T("Open##the_shelter_is"),
+                              #2 : T("Open##status"),
                               3 : T("Green"),
                               4 : T("Amber"),
                               5 : T("Red"),
@@ -658,7 +658,7 @@ def config(settings):
                 - Control Workflow Flag to track Data Exporting/Anonymising
                 - Add Shelter to Session
             When a Shelter is Closed
-                - Check-out all Clients 
+                - Check-out all Clients
         """
 
         record = form.record
@@ -698,6 +698,7 @@ def config(settings):
 
             return
 
+        # Shelter has been Closed
         tag = db(query).select(table.id,
                                limitby = (0 ,1)
                                ).first()
@@ -2120,6 +2121,7 @@ def config(settings):
         #table.comments.readable = table.comments.writable = False
 
         if r.method == "import":
+
             def create_onaccept(form):
                 """
                     Importing Clients
@@ -2165,7 +2167,61 @@ def config(settings):
     # -----------------------------------------------------------------------------
     def customise_cr_shelter_registration_controller(**attr):
 
+        s3db = current.s3db
+        s3 = current.response.s3
+
+        # NoKs shouldn't deduplicate with clients!
+        s3db.configure("pr_person",
+                       deduplicate = None
+                       )
+
+        # Default to True
+        from s3.s3import import S3Importer
+        S3Importer.define_upload_table()
+        s3db.s3_import_upload.replace_option.default = True
+
+        # Import pre-process
+        def import_prep(data):
+            """
+                Checks out all existing clients of the shelter
+                before processing a new data import
+            """
+            if s3.import_replace:
+                resource, tree = data
+                if tree is not None:
+                    xml = current.xml
+                    tag = xml.TAG
+                    att = xml.ATTRIBUTE
+
+                    root = tree.getroot()
+                    expr = "/%s/%s[@%s='cr_shelter']/%s[@%s='name']" % \
+                           (tag.root, tag.resource, att.name, tag.data, att.field)
+                    shelters = root.xpath(expr)
+                    for shelter in shelters:
+                        shelter_name = shelter.get("value", None) or shelter.text
+                        if shelter_name:
+                            try:
+                                shelter_name = json.loads(xml.xml_decode(shelter_name))
+                            except:
+                                pass
+                        if shelter_name:
+                            # Check-out all clients
+                            db = current.db
+                            rtable = s3db.cr_shelter_registration
+                            stable = s3db.cr_shelter
+                            query = (stable.name == shelter_name) & \
+                                    (rtable.shelter_id == stable.id) & \
+                                    (rtable.registration_status == 2)
+                            rows = db(query).select(rtable.id)
+                            db(rtable.id.belongs([row.id for row in rows])).update(registration_status = 3,# Checked-Out
+                                                                                   check_out_date = current.request.utcnow,
+                                                                                   )
+
+        s3.import_prep = import_prep
+
         attr["csv_template"] = ("../../themes/CumbriaEAC/xls", "Client_Registration.xlsm")
+        attr["replace_option"] = T("Checkout existing clients for this shelter before import")
+        attr["replace_option_help"] = T("If this option is checked, then it assumes that this spreadsheet includes all currently checked-in clients and so all existing clients should be checked-out.")
 
         return attr
 
@@ -2533,7 +2589,7 @@ def config(settings):
         for person_id in person_ids:
 
             row = records[person_id]
-            
+
             nok = nok_lookup_get(person_id)
 
             colname = "pr_person.nok_relationship"
@@ -2675,7 +2731,7 @@ def config(settings):
                                                )
                             ),
                            )
-            
+
         elif current.auth.permission.format == "xls":
             # Custom XLS Title Row
             settings.base.xls_title_row = xls_title_row
@@ -3087,7 +3143,7 @@ def config(settings):
             elif r.component_name == "nok":
                 # Next of Kin
                 s3.crud_strings["pr_person"].title_update = ""
-                
+
                 from gluon import IS_NOT_EMPTY
                 from s3 import S3SQLCustomForm, S3SQLInlineComponent, S3LocationSelector
 
@@ -3152,7 +3208,7 @@ def config(settings):
                 return result
 
             elif r.controller in ("hrm", "default"):
-                
+
                 from s3 import S3SQLCustomForm, S3SQLInlineComponent
 
                 if r.method == "lookup":

@@ -680,10 +680,12 @@ class S3Importer(S3Method):
                 field = table.replace_option
                 field.readable = field.writable = True
                 field.label = replace_option
-                field.comment = DIV(_class="tooltip",
-                                    _title="%s|%s" % \
-                    (replace_option,
-                     current.T("Delete all data of this type which the user has permission to before upload. This is designed for workflows where the data is maintained in an offline spreadsheet and uploaded just for Reads.")))
+                replace_option_help = attr.get("replace_option_help", current.T("Delete all data of this type which the user has permission to before upload. This is designed for workflows where the data is maintained in an offline spreadsheet and uploaded just for Reads."))
+                field.comment = DIV(_class = "tooltip",
+                                    _title = "%s|%s" % (replace_option,
+                                                        replace_option_help,
+                                                        ),
+                                    )
 
         fields = [f for f in table if f.readable or f.writable and not f.compute]
         if EXTRA_FIELDS in attr:
@@ -740,10 +742,12 @@ class S3Importer(S3Method):
 
         if form.accepts(r.post_vars, current.session, formname="upload_form"):
 
-            formvars = form.vars
+            form_vars = form.vars
 
             # Create the upload entry
-            table.insert(file = formvars.file)
+            table.insert(file = form_vars.file,
+                         replace_option = form_vars.get("replace_option"),
+                         )
 
             # Process extra fields
             if self.csv_extra_fields:
@@ -757,8 +761,8 @@ class S3Importer(S3Method):
                     field = f.get("field")
                     value = f.get("value")
                     if field:
-                        if field.name in formvars:
-                            data = formvars[field.name]
+                        if field.name in form_vars:
+                            data = form_vars[field.name]
                         else:
                             data = field.default
                         value = data
@@ -1388,7 +1392,8 @@ $('#import-items').on('click','.toggle-item',function(){$('.importItem.item-'+$(
         table = db[tablename]
 
         output = DIV()
-        details = TABLE(_class="importItem item-%s" % item_id)
+        details = TABLE(_class = "importItem item-%s" % item_id,
+                        )
         header, rows = self._add_item_details(element.findall("data"), table)
         if header is not None:
             output.append(header)
@@ -1413,7 +1418,8 @@ $('#import-items').on('click','.toggle-item',function(){$('.importItem.item-'+$(
             # At this stage we don't have anything to display to see if we can
             # find something to show. This could be the case when a table being
             # imported is a resolver for a many to many relationship
-            refdetail = TABLE(_class="importItem item-%s" % item_id)
+            refdetail = TABLE(_class = "importItem item-%s" % item_id,
+                              )
             references = element.findall("reference")
             for reference in references:
                 tuid = reference.get("tuid")

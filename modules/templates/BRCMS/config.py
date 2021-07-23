@@ -25,7 +25,6 @@ def config(settings):
 
     # PrePopulate data
     settings.base.prepopulate.append("BRCMS")
-    settings.base.prepopulate_demo.append("BRCMS/Demo")
 
     # Theme (folder to use for views/layout.html)
     settings.base.theme = "BRCMS"
@@ -169,6 +168,14 @@ def config(settings):
     # Document settings
     #
     settings.doc.mailmerge_fields = {}
+
+    # -------------------------------------------------------------------------
+    # Event Module Settings
+    #
+    #settings.event.label = "Disaster"
+    settings.event.incident = False
+    settings.event.types_hierarchical = False
+    settings.event.impact_tab = False
 
     # -------------------------------------------------------------------------
     # Human Resource Module Settings
@@ -498,12 +505,12 @@ def config(settings):
         #    restricted = True,
         #    module_type = 10,
         #)),
-        #("event", Storage(
-        #   name_nice = T("Events"),
-        #   #description = "Activate Events (e.g. from Scenario templates) for allocation of appropriate Resources (Human, Assets & Facilities).",
-        #   restricted = True,
-        #   module_type = 10,
-        #)),
+        ("event", Storage(
+            name_nice = T("Events"),
+            #description = "Activate Events (e.g. from Scenario templates) for allocation of appropriate Resources (Human, Assets & Facilities).",
+            restricted = True,
+            module_type = 10,
+        )),
         #("security", Storage(
         #   name_nice = T("Security"),
         #   restricted = True,

@@ -2,7 +2,7 @@
 
 """
     Application Template for Rhineland-Palatinate (RLP) Crisis Management
-    - used to manage Personnel Tests for COVID-19 response
+    - used to manage COVID-19 test stations
 
     @license MIT
 """
@@ -218,7 +218,7 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     # Custom settings
-    settings.custom.test_station_registration = False
+    settings.custom.test_station_registration = True
 
     # -------------------------------------------------------------------------
     # Realm Rules
@@ -848,19 +848,19 @@ def config(settings):
                                  )
 
         # Custom REST methods
-        #from .cwa import TestResultRegistration
-        #s3db.set_method("disease", "case_diagnostics",
-        #                method = "register",
-        #                action = TestResultRegistration,
-        #                )
-        #s3db.set_method("disease", "case_diagnostics",
-        #                method = "certify",
-        #                action = TestResultRegistration,
-        #                )
-        #s3db.set_method("disease", "case_diagnostics",
-        #                method = "cwaretry",
-        #                action = TestResultRegistration,
-        #                )
+        from .cwa import TestResultRegistration
+        s3db.set_method("disease", "case_diagnostics",
+                        method = "register",
+                        action = TestResultRegistration,
+                        )
+        s3db.set_method("disease", "case_diagnostics",
+                        method = "certify",
+                        action = TestResultRegistration,
+                        )
+        s3db.set_method("disease", "case_diagnostics",
+                        method = "cwaretry",
+                        action = TestResultRegistration,
+                        )
 
         crud_strings = current.response.s3.crud_strings
         crud_strings["disease_case_diagnostics"] = Storage(
@@ -2699,6 +2699,7 @@ def config(settings):
                        (T("Telephone"), "phone1"),
                        "email",
                        (T("Opening Hours"), "opening_times"),
+                       "site_details.service_mode_id",
                        "service_site.service_id",
                        "location_id$addr_street",
                        "location_id$addr_postcode",
@@ -2788,7 +2789,7 @@ def config(settings):
                                 ),
                            "location_id",
                            (T("Opening Hours"), "opening_times"),
-                           "site_details.service_mode_id", # not showing - why?
+                           "site_details.service_mode_id",
                            S3SQLInlineLink(
                                 "service",
                                 label = T("Services"),
@@ -2799,7 +2800,7 @@ def config(settings):
                            (T("Telephone"), "phone1"),
                            "email",
                            "website",
-                           (T("Appointments via"), "site_details.booking_mode_id"), # not showing - why?
+                           (T("Appointments via"), "site_details.booking_mode_id"),
                            "comments",
                            ]
         else:

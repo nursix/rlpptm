@@ -558,12 +558,13 @@ def inv_item():
             Deletes all Stock records of the organisation/branch
             before processing a new data import
         """
-        resource, tree = data
-        xml = current.xml
-        tag = xml.TAG
-        att = xml.ATTRIBUTE
-        if s3.importerReplace:
+        if s3.import_replace:
+            resource, tree = data
             if tree is not None:
+                xml = current.xml
+                tag = xml.TAG
+                att = xml.ATTRIBUTE
+
                 root = tree.getroot()
                 expr = "/%s/%s[@%s='org_organisation']/%s[@%s='name']" % \
                        (tag.root, tag.resource, att.name, tag.data, att.field)
@@ -589,9 +590,6 @@ def inv_item():
             resource.skip_import = True
     s3.import_prep = import_prep
 
-    # Upload for configuration (add replace option)
-    s3.importerPrep = lambda: {"ReplaceOption": T("Remove existing data before import")}
-
     output = s3_rest_controller(#csv_extra_fields = [{"label": "Organisation",
                                 #                     "field": s3db.org_organisation_id(comment = None)
                                 #                     },
@@ -600,6 +598,7 @@ def inv_item():
                                 pdf_table_autogrow = "B",
                                 pdf_groupby = "site_id, item_id",
                                 pdf_orderby = "expiry_date, supply_org_id",
+                                replace_option = T("Remove existing data before import"),
                                 rheader = s3db.inv_rheader,
                                 )
 
@@ -946,7 +945,7 @@ def recv():
     auth.permitted_facilities(table=recvtable, error_msg=error_msg)
 
     tracktable = s3db.inv_track_item
-    atable = s3db.inv_adj_item
+    #atable = s3db.inv_adj_item
 
     # The inv_recv record might be created when the shipment is send and so it
     # might not have the recipient identified. If it is null then set it to
@@ -1073,9 +1072,11 @@ def recv():
 
                 # Default the Supplier/Donor to the Org sending the shipment
                 tracktable.supply_org_id.default = record.organisation_id
+
             elif r.component_name == "document":
                 # Simplify a little
                 table = s3db.doc_document
+                table.file.required = True
                 table.url.readable = table.url.writable = False
                 table.date.readable = table.date.writable = False
         else:
@@ -1810,6 +1811,14 @@ def facility():
 # -----------------------------------------------------------------------------
 def facility_type():
     return s3_rest_controller("org")
+
+# -----------------------------------------------------------------------------
+def project():
+    """
+        Simpler version of Projects for use within Inventory module
+    """
+
+    return s3_rest_controller("project")
 
 # -----------------------------------------------------------------------------
 def incoming():
