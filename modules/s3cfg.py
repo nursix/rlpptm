@@ -553,7 +553,7 @@ class S3Config(Storage):
     # Authentication settings
     def get_auth_hmac_key(self):
         """
-            salt to encrypt passwords - normally randomised during 1st run
+            Salt to encrypt passwords - normally randomised during 1st run
         """
         return self.auth.get("hmac_key", "akeytochange")
 
@@ -575,6 +575,14 @@ class S3Config(Storage):
             To set the Minimum Password Length
         """
         return self.auth.get("password_min_length", int(4))
+
+    def get_auth_profile_controller(self):
+        """
+            Which page to use for /default/person:
+            - pr (default)
+            - hrm
+        """
+        return self.auth.get("profile_controller")
 
     def get_auth_gmail_domains(self):
         """ List of domains which can use GMail SMTP for Authentication """
@@ -1007,6 +1015,7 @@ class S3Config(Storage):
         return self.auth.get("ignore_levels_for_presence", ("L0",))
     def get_auth_create_unknown_locations(self):
         return self.auth.get("create_unknown_locations", False)
+
     def get_security_archive_not_delete(self):
         return self.security.get("archive_not_delete", True)
     def get_security_audit_read(self):
@@ -2581,7 +2590,7 @@ class S3Config(Storage):
 
     def get_ui_profile_header(self, r):
         """
-            What Header should be shown in the Profile page
+            What Header should be shown in Profile pages
         """
 
         #profile_header = self.__lazy("ui", "profile_header", None)
@@ -2601,7 +2610,7 @@ class S3Config(Storage):
                 comments = ""
             profile_header = DIV(H2(title),
                                  P(comments),
-                                 _class="profile-header",
+                                 _class = "profile-header",
                                  )
         return profile_header
 
@@ -3222,6 +3231,15 @@ class S3Config(Storage):
             Track effort (=hours spent) for assistance measures
         """
         return self.br.get("assistance_track_effort", True)
+
+    def get_br_assistance_offer_refno(self):
+        """
+            Use reference numbers in offers of assistance
+            False - do not use reference numbers
+            True - use reference numbers, manual input
+            "auto" - auto-generate reference numbers
+        """
+        return self.br.get("assistance_offer_refno", "auto")
 
     # -------------------------------------------------------------------------
     # CAP: Common Alerting Protocol
@@ -5798,8 +5816,8 @@ class S3Config(Storage):
         """
         return self.req.get("copyable", False)
 
-    def get_req_document_filing(self):
-        return self.req.get("document_filing", False)
+    #def get_req_document_filing(self):
+    #    return self.req.get("document_filing", False)
 
     def get_req_recurring(self):
         """
@@ -5955,6 +5973,12 @@ class S3Config(Storage):
             To restrict adding new commits to the Completed commits.
         """
         return self.req.get("req_restrict_on_complete", False)
+
+    def get_req_workflow(self):
+        """
+            Whether to use Workflow for Requests
+        """
+        return self.req.get("workflow", False)
 
     # -------------------------------------------------------------------------
     # Supply

@@ -45,6 +45,9 @@ def config(settings):
     # Uncomment to show a default cancel button in standalone create/update forms
     settings.ui.default_cancel_button = True
 
+    # Limit Export Formats
+    settings.ui.export_formats = ("xls","pdf")
+
     # @todo: configure custom icons
     #settings.ui.custom_icons = {
     #    "male": "icon-male",
@@ -86,6 +89,9 @@ def config(settings):
 
     # Activate entity role manager tabs for OrgAdmins
     settings.auth.entity_role_manager = True
+
+    # Use HRM for the /default/person Profile
+    settings.auth.profile_controller = "hrm"
 
     def ifrc_realm_entity(table, row):
         """
@@ -162,7 +168,8 @@ def config(settings):
         #    link_table = realm_entity_link_table[tablename]
         #    table = s3db[link_table.tablename]
         #    rows = db(table[link_table.link_key] == row.id).select(table.id,
-        #                                                           limitby=(0, 1))
+        #                                                           limitby = (0, 1)
+        #                                                           )
         #    if rows:
         #        # Update not Create
         #        row = rows.first()
@@ -273,6 +280,7 @@ def config(settings):
         ("en", "English"),
         ("pt-br", "Portuguese (Brazil)"),
         ("es", "Spanish"),
+        ("fr", "French"),
         ])
     # Default Language
     settings.L10n.default_language = "en"
@@ -646,7 +654,6 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     # Inventory Management
-
     settings.customise_inv_home = inv_index # Imported from controllers.py
 
     # Hide Staff Management Tabs for Facilities in Inventory Module
@@ -676,21 +683,27 @@ def config(settings):
                                37: T("In Transit"),  # Loaning warehouse space to another agency
                                }
 
+    # Disable Alternate Items
+    settings.supply.use_alt_name = False
 
     # -------------------------------------------------------------------------
     # Request Management
     # Uncomment to disable Inline Forms in Requests module
     settings.req.inline_forms = False
     settings.req.req_type = ["Stock"]
-    settings.req.use_commit = False
-    settings.req.document_filing = True
+    # No need to use Commits
+    #settings.req.use_commit = True
+    #settings.req.document_filing = True
     # Should Requests ask whether Transportation is required?
     settings.req.ask_transport = True
     settings.req.pack_values = False
-    # Disable Request Matching as we don't want users making requests to see what stock is available
+    # HNRC disable Request Matching as don't want users making requests to see what stock is available
+    # PIRAC want this to be done by the Logistics Approver
     settings.req.prompt_match = False
     # Uncomment to disable Recurring Request
     settings.req.recurring = False # HNRC
+    # Use Workflow
+    settings.req.workflow = True
 
     # =========================================================================
     # Template Modules
@@ -811,6 +824,11 @@ def config(settings):
                 restricted = True,
                 #module_type = 4
             )),
+        ("proc", Storage(
+                name_nice = T("Procurement"),
+                restricted = True,
+                #module_type = None, # Not displayed
+            )),
         #("asset", Storage(
         #        name_nice = T("Assets"),
         #        #description = "Recording and Assigning Assets",
@@ -909,7 +927,7 @@ def config(settings):
         ttable = s3db.org_organisation_type
         try:
             type_id = db(ttable.name == RED_CROSS).select(ttable.id,
-                                                          limitby=(0, 1),
+                                                          limitby = (0, 1),
                                                           cache = s3db.cache,
                                                           ).first().id
         except AttributeError:
@@ -1065,7 +1083,7 @@ def config(settings):
     #        s3db = current.s3db
     #        otable = s3db.org_organisation
     #        org = db(otable.id == user_org_id).select(otable.pe_id,
-    #                                                  limitby=(0, 1)
+    #                                                  limitby = (0, 1)
     #                                                  ).first()
     #        if org:
     #            pe_id = org.pe_id
@@ -1151,7 +1169,7 @@ def config(settings):
                     (table.human_resource_id == htable.id)
 
         hr = db(query).select(htable.person_id,
-                              limitby=(0, 1)
+                              limitby = (0, 1)
                               ).first()
         person_id = hr.person_id
 
@@ -1160,7 +1178,7 @@ def config(settings):
         query = (ptable.id == person_id) & \
                 (ltable.pe_id == ptable.pe_id)
         link = db(query).select(ltable.user_id,
-                                limitby=(0, 1)
+                                limitby = (0, 1)
                                 ).first()
         if link:
             # Add them to the RIT role
@@ -1335,7 +1353,7 @@ def config(settings):
             #ttable = s3db.org_organisation_type
             #try:
             #    type_id = db(ttable.name == "Training Center").select(ttable.id,
-            #                                                          limitby=(0, 1),
+            #                                                          limitby = (0, 1),
             #                                                          ).first().id
             #except:
             #    # No/incorrect prepop done - skip (e.g. testing impacts of CSS changes in this theme)
@@ -1480,7 +1498,7 @@ def config(settings):
                 (ltable.organisation_type_id == ttable.id) & \
                 (ltable.organisation_id == organisation_id)
         RC = db(query).select(ltable.id,
-                              limitby=(0, 1),
+                              limitby = (0, 1),
                               ).first()
         if not RC:
             return
@@ -2172,7 +2190,8 @@ Thank you"""
                                                      table.person_id,
                                                      table.course_id,
                                                      table.grade,
-                                                     limitby=(0, 1)).first()
+                                                     limitby = (0, 1)
+                                                     ).first()
         try:
             course_id = record.course_id
         except AttributeError:
@@ -2182,8 +2201,8 @@ Thank you"""
         # Lookup the RIT Course ID
         ctable = db.hrm_course
         row = db(ctable.name == "Regional Intervention Teams").select(ctable.id,
-                                                                      cache = s3db.cache,
-                                                                      limitby=(0, 1)
+                                                                      limitby = (0, 1),
+                                                                      cache = s3db.cache
                                                                       ).first()
         try:
             rit_course_id = row.id
@@ -2203,7 +2222,7 @@ Thank you"""
         person_id = record.person_id
         htable = s3db.hrm_human_resource
         hr = db(htable.person_id == person_id).select(htable.id,
-                                                      limitby=(0, 1)
+                                                      limitby = (0, 1)
                                                       ).first()
         try:
             human_resource_id = hr.id
@@ -2213,7 +2232,7 @@ Thank you"""
 
         dtable = s3db.deploy_application
         exists = db(dtable.human_resource_id == human_resource_id).select(dtable.id,
-                                                                          limitby=(0, 1)
+                                                                          limitby = (0, 1)
                                                                           ).first()
         if not exists:
             # Add them to the list
@@ -2225,7 +2244,7 @@ Thank you"""
         query = (ptable.id == person_id) & \
                 (ltable.pe_id == ptable.pe_id)
         link = db(query).select(ltable.user_id,
-                                limitby=(0, 1)
+                                limitby = (0, 1)
                                 ).first()
         if link:
             current.auth.s3_assign_role(link.user_id, "RIT_MEMBER")
@@ -2486,7 +2505,7 @@ Thank you"""
             ttable = s3db.org_organisation_type
             try:
                 type_id = db(ttable.name == "Training Center").select(ttable.id,
-                                                                      limitby=(0, 1),
+                                                                      limitby = (0, 1),
                                                                       ).first().id
             except AttributeError:
                 # No/incorrect prepop done - skip (e.g. testing impacts of CSS changes in this theme)
@@ -2607,7 +2626,7 @@ Thank you"""
             org = db(otable.id == org_id).select(otable.name,
                                                  otable.acronym, # Present for consistent cache key
                                                  otable.logo,
-                                                 limitby=(0, 1),
+                                                 limitby = (0, 1),
                                                  ).first()
             #if settings.get_L10n_translate_org_organisation():
             #org_name = org_represent(org_id)
@@ -3810,7 +3829,7 @@ Thank you"""
             return True
         s3.prep = custom_prep
 
-        if current.request.controller in ("hrm", "vol"):
+        if current.request.controller in ("default", "hrm", "vol"):
             attr["csv_template"] = ("../../themes/RMSAmericas/formats", "hrm_person")
             # Common rheader for all views
             attr["rheader"] = lambda r: s3db.hrm_rheader(r, profile=PROFILE)
@@ -3848,17 +3867,6 @@ Thank you"""
     settings.customise_pr_physical_description_resource = customise_pr_physical_description_resource
 
     # -------------------------------------------------------------------------
-    def customise_supply_item_category_resource(r, tablename):
-
-        #root_org = current.auth.root_org_name()
-        #if root_org == HNRC:
-        # Not using Assets Module
-        field = current.s3db.supply_item_category.can_be_asset
-        field.readable = field.writable = False
-
-    settings.customise_supply_item_category_resource = customise_supply_item_category_resource
-
-    # -------------------------------------------------------------------------
     def customise_project_window_resource(r, tablename):
 
         r.resource.configure(deletable = False,
@@ -3884,7 +3892,7 @@ Thank you"""
             else:
                 record_id = r.component_id
             record = current.db(table.id == record_id).select(table.value,
-                                                              limitby=(0, 1)
+                                                              limitby = (0, 1)
                                                               ).first()
             if record.value:
                 # Redirect to Read-only mode
@@ -3949,7 +3957,7 @@ Thank you"""
                                                      ptable.name,
                                                      ptable.start_date,
                                                      ptable.end_date,
-                                                     limitby=(0, 1)
+                                                     limitby = (0, 1)
                                                      ).first()
         if not project:
             return
@@ -3964,7 +3972,7 @@ Thank you"""
                                   btable.currency,
                                   # Assume Monthly
                                   #btable.monitoring_frequency,
-                                  limitby=(0, 1)
+                                  limitby = (0, 1)
                                   ).first()
         if not budget:
             return
@@ -3976,7 +3984,7 @@ Thank you"""
         query = (btable.name == project_name) & \
                 (btable.id != budget.id)
         duplicate = db(query).select(btable.id,
-                                     limitby=(0, 1)
+                                     limitby = (0, 1)
                                      ).first()
 
         if not duplicate:
@@ -3989,7 +3997,8 @@ Thank you"""
 
         mtable = s3db.budget_monitoring
         exists = db(mtable.budget_entity_id == budget_entity_id).select(mtable.id,
-                                                                        limitby=(0, 1))
+                                                                        limitby = (0, 1)
+                                                                        )
         if not exists:
             # Create Monitoring Data entries
             start_date = project.start_date
@@ -4035,6 +4044,21 @@ Thank you"""
     def customise_project_project_controller(**attr):
 
         tablename = "project_project"
+
+        if current.request.controller == "inv":
+            # Very simple functionality all that is required
+            from gluon import IS_NOT_EMPTY
+            f = current.s3db.project_project.code
+            f.label = T("Code")
+            f.requires = IS_NOT_EMPTY()
+            # Lead Organisation needs to be an NS (not a branch)
+            ns_only(tablename,
+                    required = True,
+                    branches = False,
+                    # default
+                    #limit_filter_opts = True,
+                    )
+            return attr
 
         # Default Filter
         from s3 import s3_set_default_filter
@@ -4353,7 +4377,7 @@ Thank you"""
                         # No r.component.record :/
                         ctable = s3db.project_organisation
                         crecord = current.db(ctable.id == component_id).select(ctable.role,
-                                                                               limitby=(0, 1)
+                                                                               limitby = (0, 1)
                                                                                ).first()
                         if crecord.role == settings.get_project_organisation_lead_role():
                             ns_only("project_organisation",
@@ -4522,7 +4546,7 @@ Thank you"""
             else:
                 record_id = r.component_id
             record = current.db(table.id == record_id).select(table.value,
-                                                              limitby=(0, 1)
+                                                              limitby = (0, 1)
                                                               ).first()
             if record.value:
                 # Redirect to Read-only mode
@@ -4626,14 +4650,16 @@ Thank you"""
                 # Assume authorised to see details
                 popup_url = URL(f="project", args=[project_id])
                 details_btn = A(T("Open"),
-                                _href=popup_url,
-                                _class="btn",
-                                _id="details-btn",
-                                _target="_blank")
-                output = dict(item = item,
-                              title = title,
-                              details_btn = details_btn,
-                              )
+                                _href = popup_url,
+                                _class = "btn",
+                                _id = "details-btn",
+                                _target = "_blank",
+                                )
+
+                output = {"item": item,
+                          "title": title,
+                          "details_btn": details_btn,
+                          }
 
             return output
 
@@ -4643,44 +4669,264 @@ Thank you"""
     settings.customise_project_location_controller = customise_project_location_controller
 
     # -------------------------------------------------------------------------
-    def customise_req_commit_controller(**attr):
+    def customise_proc_order_item_resource(r, tablename):
+
+        s3db = current.s3db
+        table = s3db.proc_order_item
+        f = table.order_id
+        f.readable = f.writable = False
+
+    settings.customise_proc_order_item_resource = customise_proc_order_item_resource
+
+    # -------------------------------------------------------------------------
+    def customise_req_approver_resource(r, tablename):
+
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+
+        f = s3db.req_approver.pe_id
+
+        if auth.s3_has_role("ADMIN"):
+            # Filter to Red Cross entities
+
+            ttable = s3db.org_organisation_type
+            try:
+                type_id = db(ttable.name == RED_CROSS).select(ttable.id,
+                                                              limitby = (0, 1),
+                                                              cache = s3db.cache,
+                                                              ).first().id
+            except AttributeError:
+                # No IFRC prepop done - skip (e.g. testing impacts of CSS changes in this theme)
+                return
+
+            otable = s3db.org_organisation
+            btable = s3db.org_organisation_branch
+            ltable = db.org_organisation_organisation_type
+            
+            rows = db(ltable.organisation_type_id == type_id).select(ltable.organisation_id)
+            all_rc_organisation_ids = [row.organisation_id for row in rows]
+            query = (btable.deleted != True) & \
+                    (btable.branch_id.belongs(all_rc_organisation_ids))
+            branches = db(query).select(btable.branch_id)
+            root_ns_organisation_ids = list(set(all_rc_organisation_ids) - set(row.branch_id for row in branches))
+            root_ns = db(otable.id.belongs(root_ns_organisation_ids)).select(otable.pe_id)
+            pe_ids = [row.pe_id for row in root_ns]
+
+            # Find all child Orgs/Sites of these
+            entity_types = ["org_organisation"] + list(auth.org_site_types.keys())
+            child_pe_ids = s3db.pr_get_descendants(pe_ids, entity_types=entity_types)
+
+            entities = pe_ids + child_pe_ids
+            
+        else:
+            # Filter to entities the user has the ORG_ADMIN or national_wh_manager role for
+
+            # Lookup which realms the user has the roles for
+            gtable = db.auth_group
+            mtable = db.auth_membership
+            query = (mtable.user_id == auth.user.id) & \
+                    (mtable.group_id == gtable.id) & \
+                    (gtable.uuid.belongs(("ORG_ADMIN", "national_wh_manager")))
+
+            memberships = db(query).select(mtable.pe_id)
+            pe_ids = [m.pe_id for m in memberships]
+            if None in pe_ids:
+                # Default Realm(s)
+                pe_ids.remove(None)
+                realms = s3db.pr_realm(auth.user["pe_id"])
+                if realms:
+                    pe_ids += realms
+
+            # Find all child Orgs/Sites of these
+            entity_types = ["org_organisation"] + list(auth.org_site_types.keys())
+            child_pe_ids = s3db.pr_get_descendants(pe_ids, entity_types=entity_types)
+
+            entities = pe_ids + child_pe_ids
+            if len(entities) == 1:
+                f.default = entities[0]
+                f.readable = f.writable = False
+                return
+
+            # Default to NS (most-common use-case)
+            otable = s3db.org_organisation
+            org = db(otable.id == auth.root_org()).select(otable.pe_id,
+                                                          limitby = (0, 1)
+                                                          ).first()
+            org_pe_id = org.pe_id
+            if org_pe_id in entities:
+                f.default = org_pe_id
+
+        from s3 import IS_ONE_OF
+        f.requires = IS_ONE_OF(db, "pr_pentity.pe_id",
+                               s3db.pr_PersonEntityRepresent(show_type = False),
+                               filterby = "pe_id",
+                               filter_opts = entities,
+                               sort = True
+                               )
+
+    settings.customise_req_approver_resource = customise_req_approver_resource
+
+    # -------------------------------------------------------------------------
+    #def customise_req_commit_controller(**attr):
 
         # Request is mandatory
-        field = current.s3db.req_commit.req_id
-        field.requires = field.requires.other
+    #    field = current.s3db.req_commit.req_id
+    #    field.requires = field.requires.other
 
-        return attr
+    #    return attr
 
-    settings.customise_req_commit_controller = customise_req_commit_controller
+    #settings.customise_req_commit_controller = customise_req_commit_controller
+
+    # -------------------------------------------------------------------------
+    def customise_req_project_req_resource(r, tablename):
+        """
+            Customise reponse from options.s3json
+        """
+
+        from s3 import IS_ONE_OF, S3Represent
+
+        s3db = current.s3db
+        ptable = s3db.project_project
+
+        project_represent = S3Represent(lookup="project_project", fields=["code"])
+        query = ((ptable.end_date == None) | \
+                 (ptable.end_date > r.utcnow)) & \
+                (ptable.deleted == False)
+        the_set = current.db(query)
+        s3db.req_project_req.project_id.requires = IS_ONE_OF(the_set, "project_project.id",
+                                                             project_represent,
+                                                             sort = True,
+                                                             )
+
+    settings.customise_req_project_req_resource = customise_req_project_req_resource
 
     # -------------------------------------------------------------------------
     def customise_req_req_resource(r, tablename):
 
+        from gluon import IS_NOT_EMPTY
+
         s3db = current.s3db
 
-        # Request is mandatory
-        field = s3db.req_commit.req_id
-        field.requires = field.requires.other
-
         table = s3db.req_req
-        table.req_ref.represent = lambda v, show_link=True, pdf=True: \
-                s3db.req_ref_represent(v, show_link, pdf)
+        f = table.req_ref
+        f.represent = lambda v, show_link=True, pdf=True: \
+            s3db.req_ref_represent(v, show_link, pdf)
+        f.requires = IS_NOT_EMPTY()
+        f.widget = None
+        table.priority.readable = table.priority.writable = False
+        table.date.label = T("Date of Issue")
+        table.date_required.label = T("Requested Delivery Date")
         table.site_id.label = T("Deliver To")
-        # Hide Drivers list_field
-        list_fields = s3db.get_config("req_req", "list_fields")
-        try:
-            list_fields.remove((T("Drivers"), "drivers"))
-        except ValueError:
-            # Already removed
-            pass
 
-        # Custom Request Form
-        s3db.set_method("req", "req",
-                        method = "form",
-                        action = PrintableShipmentForm,
-                        )
+        LOGS_ADMIN = current.auth.s3_has_roles(("ORG_ADMIN",
+                                                "wh_manager",
+                                                "national_wh_manager",
+                                                ))
+        if not LOGS_ADMIN:
+            table.requester_id.writable = False
+
+        MINE = r.get_vars.get("mine")
+
+        if r.tablename == tablename:
+            if MINE:
+                # Filter
+                from s3 import FS
+                r.resource.add_filter(FS("requester_id") == current.auth.s3_logged_in_person())
+
+            if r.record and \
+               r.record.workflow_status == 3:
+                # Never opens in Component Tab, always breaks out
+                table.approved_by_id.readable = True
+
+            # Link to Projects
+            from s3 import IS_ONE_OF, S3Represent, S3SQLCustomForm
+            from s3layouts import S3PopupLink
+            ptable = s3db.project_project
+            f = s3db.req_project_req.project_id
+            f.label = T("Project Code")
+            project_represent = S3Represent(lookup="project_project", fields=["code"])
+            query = ((ptable.end_date == None) | \
+                     (ptable.end_date > r.utcnow)) & \
+                    (ptable.deleted == False)
+            the_set = current.db(query)
+            f.requires = IS_ONE_OF(the_set, "project_project.id",
+                                   project_represent,
+                                   sort = True,
+                                   )
+            f.comment = S3PopupLink(c = "inv",
+                                    f = "project",
+                                    label = T("Create Project"),
+                                    tooltip = T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
+                                    vars = {"caller": "req_req_sub_project_req_project_id",
+                                            "parent": "project_req",
+                                            },
+                                    )
+            crud_fields = [f for f in table.fields if table[f].readable]
+            crud_fields.insert(0, "project_req.project_id")
+            crud_form = S3SQLCustomForm(*crud_fields)
+            s3db.configure(tablename,
+                           crud_form = crud_form,
+                           )
+
+            # Custom Request Form
+            s3db.set_method("req", "req",
+                            method = "form",
+                            action = PrintableShipmentForm,
+                            )
+
+        from s3 import S3OptionsFilter
+        filter_widgets = [S3OptionsFilter("workflow_status",
+                                          cols = 5,
+                                          ),
+                          ]
+
+        list_fields = ["req_ref",
+                       "date",
+                       "site_id",
+                       (T("Details"), "details"),
+                       "workflow_status",
+                       #"commit_status",
+                       "transit_status",
+                       "fulfil_status",
+                       ]
+        if LOGS_ADMIN and not MINE:
+            list_fields.insert(2, "date_required")
+            list_fields.insert(4, "requester_id")
+
+            filter_widgets += [
+                               ]
+
+        s3db.configure(tablename,
+                       filter_widgets = filter_widgets,
+                       list_fields = list_fields,
+                       )
 
     settings.customise_req_req_resource = customise_req_req_resource
+
+    # -------------------------------------------------------------------------
+    def customise_supply_item_category_resource(r, tablename):
+
+        #root_org = current.auth.root_org_name()
+        #if root_org == HNRC:
+        # Not using Assets Module
+        field = current.s3db.supply_item_category.can_be_asset
+        field.readable = field.writable = False
+
+    settings.customise_supply_item_category_resource = customise_supply_item_category_resource
+
+    # -------------------------------------------------------------------------
+    def customise_supply_item_resource(r, tablename):
+
+        table = current.s3db.supply_item
+        table.brand_id.readable = table.brand_id.writable = False
+        table.model.readable = table.model.writable = False
+        table.year.readable = table.year.writable = False
+        table.length.readable = table.length.writable = False
+        table.width.readable = table.width.writable = False
+        table.height.readable = table.height.writable = False
+
+    settings.customise_supply_item_resource = customise_supply_item_resource
 
 # =============================================================================
 class PrintableShipmentForm(S3Method):

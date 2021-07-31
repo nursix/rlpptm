@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import os
 
 from uuid import uuid4
 
@@ -12,9 +13,9 @@ from gluon import Field, HTTP, SQLFORM, URL, current, redirect, \
 
 from gluon.storage import Storage
 
-from s3 import FS, IS_PHONE_NUMBER_MULTI, IS_PHONE_NUMBER_SINGLE, \
+from s3 import FS, ICON, IS_PHONE_NUMBER_MULTI, IS_PHONE_NUMBER_SINGLE, \
                JSONERRORS, S3CRUD, S3CustomController, S3LocationSelector, \
-               S3Represent, S3Request, S3WithIntro, \
+               S3Represent, S3Report, S3Request, S3WithIntro, \
                s3_comments_widget, s3_get_extension, s3_mark_required, \
                s3_str, s3_text_represent, s3_truncate
 
@@ -106,11 +107,30 @@ class index(S3CustomController):
             auth.messages.submit_button = T("Login")
             login_form = auth.login(inline=True)
 
+        buttons = UL(LI(A(ICON("bar-chart"), T("Overview & Statistics"),
+                          _href = URL(c="default", f="index", args=["overview"]),
+                          _class="info button",
+                          ),
+                        ),
+                     LI(A(ICON("organisation"), T("Organizations"),
+                          _href = URL(c="org", f="organisation"),
+                          _class="info button",
+                          ),
+                        ),
+                     LI(A(ICON("book"), T("Guides & Videos"),
+                          _href = URL(c="default", f="help"),
+                          _class="info button",
+                          ),
+                        ),
+                     _class="button-group even-3 stack-for-small",
+                     )
+
         output = {"login_div": login_div,
                   "login_form": login_form,
                   "announcements": announcements,
                   "announcements_title": announcements_title,
                   "intro": self.get_cms_intro(("default", "index", "HomepageIntro"), cmsxml=True),
+                  "buttons": buttons,
                   }
 
         # Custom view and homepage styles
@@ -197,6 +217,65 @@ class index(S3CustomController):
             return None
 
         return XML(row.body) if cmsxml else row.body
+
+# =============================================================================
+class overview(S3CustomController):
+    """ Custom page to display site usage statistics """
+
+    def __call__(self):
+
+        s3 = current.response.s3
+
+        request = current.request
+
+        appname = request.application
+        output = {"appname": appname,
+                  }
+
+        # Read latest usage statistics from file
+        source = os.path.join(request.folder, "static", "data", "RLP", "rlpcm_usage.json")
+        try:
+            with open(source, "r") as s:
+                data = json.load(s)
+        except JSONERRORS:
+            current.log.error("Overview data source: invalid JSON")
+        except IOError:
+            current.log.error("Overview data source: file not found or invalid")
+        if data:
+            output["data"] = data
+
+        # TODO add CMS intro
+
+        # Inject D3 scripts
+        S3Report.inject_d3()
+
+        # Inject charts-script
+        scripts = s3.scripts
+        if s3.debug:
+            script = "/%s/static/scripts/S3/s3.ui.charts.js" % appname
+            if script not in scripts:
+                scripts.append(script)
+        else:
+            script = "/%s/static/scripts/S3/s3.ui.charts.min.js" % appname
+            if script not in scripts:
+                scripts.append(script)
+
+        # Instantiate charts
+        scriptopts = {
+            # Standard color set:
+            "colors": ['#0C9CD0', # blue
+                       '#E03158', # red
+                       '#FBA629', # amber
+                       '#8ABC3F', # green
+                       '#AFB8BF', # grey
+                       ],
+            }
+        script = '''$('.homepage-chart').uiChart(%s)''' % json.dumps(scriptopts)
+        s3.jquery_ready.append(script)
+
+        self._view(TEMPLATE, "overview.html")
+
+        return output
 
 # =============================================================================
 class privacy(S3CustomController):

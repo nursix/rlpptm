@@ -41,6 +41,16 @@ class S3MainMenuLayout(S3NavigationItem):
         T = current.T
         auth = current.auth
         has_role = auth.s3_has_role
+        request = current.request
+        c = request.controller
+        f = request.function
+
+        # Inject JavaScript
+        s3 = current.response.s3
+        s3.scripts.append("/%s/static/themes/RMSAmericas/js/nav.js" % request.application)
+        # Use tooltip-f class to avoid clash with widgets.css
+        # Remove nub
+        s3.js_foundation = '''{tooltip:{tooltip_class:'.tooltip-f',tip_template:function(selector,content){var tooltipClass='';if(!$('div[data-selector="'+selector+'"]').hasClass('hd')){tooltipClass=' tooltip-m'};return '<span data-selector="'+selector+'" class="'+Foundation.libs.tooltip.settings.tooltip_class.substring(1)+tooltipClass+'">'+content+'</span>'}}}'''
 
         settings = ""
 
@@ -54,17 +64,6 @@ class S3MainMenuLayout(S3NavigationItem):
             side_menu_control = ""
             module_logo = ""
         else:
-            request = current.request
-            c = request.controller
-            f = request.function
-
-            # Inject JavaScript
-            s3 = current.response.s3
-            s3.scripts.append("/%s/static/themes/RMSAmericas/js/nav.js" % request.application)
-            # Use tooltip-f class to avoid clash with widgets.css
-            # Remove nub
-            s3.js_foundation = '''{tooltip:{tooltip_class:'.tooltip-f',tip_template:function(selector,content){var tooltipClass='';if(!$('div[data-selector="'+selector+'"]').hasClass('hd')){tooltipClass=' tooltip-m'};return '<span data-selector="'+selector+'" class="'+Foundation.libs.tooltip.settings.tooltip_class.substring(1)+tooltipClass+'">'+content+'</span>'}}}'''
-
             # Side-menu control
             if current.menu.options is None:
                 # Don't show control as no side-menu
@@ -102,10 +101,16 @@ class S3MainMenuLayout(S3NavigationItem):
                 image = "human_talent.png"
                 module_name = T("Human Talent")
                 module_href = URL(c="hrm", f="index")
-            elif c in ("inv", "supply", "req"):
+            elif c in ("inv", "proc", "supply", "req"):
                 image = "warehouses.png"
                 module_name = T("Warehouses")
-                module_href = URL(c="inv", f="index")
+                if auth.s3_has_roles(("ORG_ADMIN",
+                                      "wh_manager",
+                                      "national_wh_manager",
+                                      )):
+                    module_href = URL(c="inv", f="index")
+                else:
+                    module_href = URL(c="req", f="req")
             elif c == "project":
                 image = "projects.png"
                 module_name = T("Projects")
@@ -200,15 +205,20 @@ class S3MainMenuLayout(S3NavigationItem):
                     settings_active = " active"
                 else:
                     settings_active = ""
-            #elif auth.s3_has_roles(("wh_manager",
-            #                        )):
-            #   # @ToDo: WMS Module configuration
-            #            ▪ Labelling
-            #            ▪ Auto localisation
-            #            ▪ Sharing authorisation
-            #            ▪ Alerts
-            #            ▪ Email for notification    
-                
+            elif has_role("national_wh_manager"):
+                # WMS Module configuration
+                # ▪ Labelling
+                # ▪ Auto localisation
+                # ▪ Sharing authorisation
+                # ▪ Alerts
+                # ▪ Email for notification    
+                settings = URL(c="req", f="approver")
+                if c == "req" and \
+                   f == "approver":
+                    settings_active = " active"
+                else:
+                    settings_active = ""
+
             if settings:
                 settings = DIV(A(SVG(PATH(_d = "M13.85 22.25h-3.7c-.74 0-1.36-.54-1.45-1.27l-.27-1.89c-.27-.14-.53-.29-.79-.46l-1.8.72c-.7.26-1.47-.03-1.81-.65L2.2 15.53c-.35-.66-.2-1.44.36-1.88l1.53-1.19c-.01-.15-.02-.3-.02-.46 0-.15.01-.31.02-.46l-1.52-1.19c-.59-.45-.74-1.26-.37-1.88l1.85-3.19c.34-.62 1.11-.9 1.79-.63l1.81.73c.26-.17.52-.32.78-.46l.27-1.91c.09-.7.71-1.25 1.44-1.25h3.7c.74 0 1.36.54 1.45 1.27l.27 1.89c.27.14.53.29.79.46l1.8-.72c.71-.26 1.48.03 1.82.65l1.84 3.18c.36.66.2 1.44-.36 1.88l-1.52 1.19c.01.15.02.3.02.46s-.01.31-.02.46l1.52 1.19c.56.45.72 1.23.37 1.86l-1.86 3.22c-.34.62-1.11.9-1.8.63l-1.8-.72c-.26.17-.52.32-.78.46l-.27 1.91c-.1.68-.72 1.22-1.46 1.22zm-3.23-2h2.76l.37-2.55.53-.22c.44-.18.88-.44 1.34-.78l.45-.34 2.38.96 1.38-2.4-2.03-1.58.07-.56c.03-.26.06-.51.06-.78s-.03-.53-.06-.78l-.07-.56 2.03-1.58-1.39-2.4-2.39.96-.45-.35c-.42-.32-.87-.58-1.33-.77l-.52-.22-.37-2.55h-2.76l-.37 2.55-.53.21c-.44.19-.88.44-1.34.79l-.45.33-2.38-.95-1.39 2.39 2.03 1.58-.07.56a7 7 0 0 0-.06.79c0 .26.02.53.06.78l.07.56-2.03 1.58 1.38 2.4 2.39-.96.45.35c.43.33.86.58 1.33.77l.53.22.38 2.55z",
                                           ),
@@ -326,10 +336,7 @@ class S3MainMenuLayout(S3NavigationItem):
                    _role = "button",
                    )
         user_menu = DIV(UL(LI(A(T("Profile"),
-                                _href = URL(c="hrm", f="person",
-                                            args = str(auth.s3_logged_in_person()),
-                                            vars = {"profile": 1},
-                                            ),
+                                _href = URL(c="default", f="person"),
                                 ),
                               ),
                            LI(A(T("Change Password"),
@@ -400,5 +407,84 @@ class S3AboutMenuLayout(S3NavigationItem):
 # -----------------------------------------------------------------------------
 # Shortcut
 MA = S3AboutMenuLayout
+
+# =============================================================================
+class S3OrgMenuLayout(S3NavigationItem):
+    """
+        Layout for the organisation-specific menu
+        - used by the custom PDF Form for REQ
+        - replace with s3db.org_organistion_logo()?
+    """
+
+    @staticmethod
+    def layout(item):
+        """
+            @ToDo: Migrate to s3db.org_logo_represent
+        """
+
+        name = "IFRC"
+        logo = None
+
+        # Lookup Root Organisation name & Logo
+        root_org = current.auth.root_org()
+        if root_org:
+            db = current.db
+            s3db = current.s3db
+            language = current.session.s3.language
+            if language == current.deployment_settings.get_L10n_default_language():
+                l10n = None
+            else:
+                ltable = s3db.org_organisation_name
+                query = (ltable.organisation_id == root_org) & \
+                        (ltable.language == language)
+                l10n = db(query).select(ltable.name_l10n,
+                                        ltable.acronym_l10n,
+                                        limitby = (0, 1),
+                                        cache = s3db.cache,
+                                        ).first()
+            table = s3db.org_organisation
+            record = db(table.id == root_org).select(table.name,
+                                                     #table.acronym,
+                                                     table.logo,
+                                                     limitby = (0, 1),
+                                                     cache = s3db.cache,
+                                                     ).first()
+            if l10n:
+                #if l10n.acronym_l10n:
+                    #name = _name = l10n.acronym_l10n
+                #else:
+                name = l10n.name_l10n
+
+            if record:
+                if not l10n:
+                    #if record.acronym:
+                        #name = _name = record.acronym
+                    #else:
+                    name = record.name
+
+                if record.logo:
+                    size = (60, None)
+                    image = s3db.pr_image_library_represent(record.logo, size=size)
+                    url_small = URL(c="default", f="download", args=image)
+                    alt = "%s logo" % name
+                    logo = IMG(_src = url_small,
+                               _alt = alt,
+                               _width = 60,
+                               )
+
+        if not logo:
+            # Default to generic IFRC
+            logo = IMG(_src = "/%s/static/themes/RMSAmericas/img/logo_small.png" %
+                              current.request.application,
+                       _alt = current.T("Red Cross/Red Crescent"),
+                       _width = 60,
+                       )
+
+        # Note: render using current.menu.org.render()[0] + current.menu.org.render()[1]
+        return (name, logo)
+
+# -----------------------------------------------------------------------------
+# Shortcut
+OM = S3OrgMenuLayout
 
 # END =========================================================================

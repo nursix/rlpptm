@@ -50,11 +50,12 @@ class index(S3CustomController):
         auth = current.auth
 
         if auth.is_logged_in():
-            has_role = auth.s3_has_role
-            if has_role("wh_manager", include_admin=False) or \
-               has_role("national_wh_manager", include_admin=False):
-                # Redirect to WMS Dashboard
-                redirect(URL(c="inv", f="index"))
+            if current.response.confirmation:
+                has_role = auth.s3_has_role
+                if has_role("wh_manager", include_admin=False) or \
+                   has_role("national_wh_manager", include_admin=False):
+                    # Redirect to WMS Dashboard
+                    redirect(URL(c="inv", f="index"))
 
             login_form = ""
         else:
@@ -129,13 +130,19 @@ class apps(S3CustomController):
                       "wh_manager",
                       "national_wh_manager",
                       )):
-            apps_append(_div(label = T("Warehouses"),
-                             url = URL(c = "inv",
-                                       f = "index",
-                                       ),
-                             image = "warehouses.png",
-                             _class = "alw",
-                             ))
+            wh_url = URL(c = "inv",
+                         f = "index",
+                         )
+        else:
+            # Normal users see Warehouses module, but have a different page
+            wh_url = URL(c = "req",
+                         f = "req",
+                         )
+        apps_append(_div(label = T("Warehouses"),
+                         url = wh_url,
+                         image = "warehouses.png",
+                         _class = "alw",
+                         ))
 
         if has_roles(("project_reader",
                       "project_manager",

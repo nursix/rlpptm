@@ -13,6 +13,18 @@ from gluon import current, redirect, URL, A, B
 from s3 import S3Method, S3Represent, s3_str
 
 # =============================================================================
+def delivery_tag_opts():
+    """
+        Options for the DELIVERY-tag of organisations
+    """
+
+    T = current.T
+
+    return OrderedDict((("DIRECT", T("Direct")),
+                        ("VIA_DC", T("Via Distribution Center")),
+                        ))
+
+# =============================================================================
 def req_filter_widgets():
     """
         Filter widgets for requests
@@ -67,6 +79,10 @@ def req_filter_widgets():
                          ),
             S3OptionsFilter("site_id",
                             hidden = True
+                            ),
+            S3OptionsFilter("site_id$organisation_id$delivery.value",
+                            label = T("Delivery##supplying"),
+                            options = delivery_tag_opts(),
                             ),
             ]
         filter_widgets[2:2] = coordinator_filters
@@ -186,6 +202,51 @@ def recv_filter_widgets():
     return filter_widgets
 
 # -----------------------------------------------------------------------------
+def get_orderable_item_categories(orgs=None, site=None):
+    """
+        Get the orderable item categories for a list of managed orgs,
+        or for a particular site; e.g. to filter supply item selectors
+
+        @param orgs: a list of organisation_ids, or
+        @param site: a site ID
+
+        @returns: a set of supply item category IDs
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    stable = s3db.org_site
+    otable = s3db.org_organisation
+    ltable = s3db.org_organisation_organisation_type
+    rtable = s3db.req_requester_category
+    ctable = s3db.supply_item_category
+
+    join = [rtable.on((rtable.item_category_id == ctable.id) & \
+                      (rtable.deleted == False)),
+            ltable.on((ltable.organisation_type_id == rtable.organisation_type_id) & \
+                      (ltable.deleted == False)),
+            ]
+
+    if site:
+        join.extend([otable.on((otable.id == ltable.organisation_id) & \
+                               (otable.deleted == False)),
+                     stable.on((stable.organisation_id == otable.id) & \
+                               (stable.site_id == site) & \
+                               (stable.deleted == False)),
+                     ])
+    elif orgs:
+        join.extend([otable.on((otable.id == ltable.organisation_id) & \
+                               (otable.id.belongs(orgs)) & \
+                               (otable.deleted == False)),
+                     ])
+
+    query = (ctable.deleted == False)
+    rows = db(query).select(ctable.id, groupby=ctable.id, join=join)
+
+    return {row.id for row in rows}
+
+# -----------------------------------------------------------------------------
 def get_managed_requester_orgs(cache=True):
     """
         Get a list of organisations managed by the current user (as ORG_ADMIN)
@@ -209,22 +270,27 @@ def get_managed_requester_orgs(cache=True):
         realms = user.realms.get(ORG_ADMIN)
         if realms:
             from .config import TESTSTATIONS
-            gtable = s3db.org_group
-            mtable = s3db.org_group_membership
             otable = s3db.org_organisation
-            ttable = s3db.org_organisation_tag
+            mtable = s3db.org_group_membership
+            gtable = s3db.org_group
+            ltable = s3db.org_organisation_organisation_type
+            rtable = s3db.req_requester_category
+
             join = [mtable.on((mtable.organisation_id == otable.id) & \
                               (mtable.deleted == False) & \
                               (gtable.id == mtable.group_id) & \
                               (gtable.name == TESTSTATIONS)),
-                    ttable.on((ttable.organisation_id == otable.id) & \
-                              (ttable.tag == "REQUESTER") & \
-                              (ttable.value == "Y") & \
-                              (ttable.deleted == False))
+                    rtable.on((ltable.organisation_id == otable.id) & \
+                              (ltable.deleted == False) & \
+                              (rtable.organisation_type_id == ltable.organisation_type_id) & \
+                              (rtable.item_category_id != None) & \
+                              (rtable.deleted == False)),
                     ]
+
             query = otable.pe_id.belongs(realms)
             rows = db(query).select(otable.id,
                                     cache = s3db.cache if cache else None,
+                                    groupby = otable.id,
                                     join = join,
                                     )
             if rows:
@@ -251,6 +317,30 @@ def is_active(site_id):
     row = current.db(query).select(stable.site_id,
                                    limitby = (0, 1),
                                    ).first()
+    return bool(row)
+
+# -----------------------------------------------------------------------------
+def direct_delivery(site_id):
+    """
+        Verify whether a site is marked for direct delivery
+
+        @param site_id: the site ID
+
+        @returns: True|False
+    """
+
+    if not site_id:
+        return False
+
+    s3db = current.s3db
+    stable = s3db.org_site
+    ttable = s3db.org_organisation_tag
+    query = (stable.site_id == site_id) & \
+            (ttable.organisation_id == stable.organisation_id) & \
+            (ttable.tag == "DELIVERY") & \
+            (ttable.value == "DIRECT") & \
+            (ttable.deleted == False)
+    row = current.db(query).select(ttable.id, limitby=(0, 1)).first()
     return bool(row)
 
 # =============================================================================
@@ -314,7 +404,10 @@ class RegisterShipment(S3Method):
         if not is_active(req.site_id):
             r.error(400, T("Requesting site no longer active"))
 
-        distribution_site_id = cls.distribution_site(req.site_id)
+        if direct_delivery(req.site_id):
+            distribution_site_id = cls.central_warehouse()
+        else:
+            distribution_site_id = cls.distribution_site(req.site_id)
         if not distribution_site_id:
             current.session.warning = T("No suitable distribution center found")
 
@@ -367,12 +460,44 @@ class RegisterShipment(S3Method):
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def central_warehouse():
+        """
+            Find the central warehouse for direct delivery
+
+            @returns: site_id
+        """
+
+        db = current.db
+        s3db = current.s3db
+        auth = current.auth
+
+        wtable = s3db.inv_warehouse
+        ttable = s3db.org_site_tag
+
+        join = ttable.on((ttable.site_id == wtable.site_id) & \
+                         (ttable.tag == "CENTRAL") & \
+                         (ttable.value == "Y") & \
+                         (ttable.deleted == False))
+        query = auth.s3_accessible_query("read", wtable) & \
+                (wtable.deleted == False) & \
+                (wtable.obsolete == False)
+        row = db(query).select(wtable.site_id,
+                               join = join,
+                               limitby = (0, 1),
+                               ).first()
+
+        return row.site_id if row else None
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def distribution_site(req_site_id):
         """
             Find a distribution site (warehouse) in the same L2/L3 as
             the requester site; conducts a path-based search
 
             @param req_site_id: the requester site ID
+
+            @returns: site_id
         """
 
         db = current.db
@@ -398,15 +523,21 @@ class RegisterShipment(S3Method):
         if len(path) > 2:
             # Find warehouses in the same L2
             wtable = s3db.inv_warehouse
+            ttable = s3db.org_site_tag
             join = ltable.on((ltable.id == wtable.location_id) & \
                              (ltable.path.like("%s%%" % "/".join(path[:3]))))
+            left = ttable.on((ttable.site_id == wtable.site_id) & \
+                             (ttable.tag == "CENTRAL") & \
+                             (ttable.deleted == False))
             query = auth.s3_accessible_query("read", wtable) & \
+                    ((ttable.value == "N") | (ttable.id == None)) & \
                     (wtable.deleted == False) & \
                     (wtable.obsolete == False)
             rows = db(query).select(wtable.id,
                                     wtable.site_id,
                                     ltable.path,
                                     join = join,
+                                    left = left,
                                     )
             if len(rows) == 1:
                 # Single match in L2

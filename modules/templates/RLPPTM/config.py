@@ -27,6 +27,7 @@ GOVERNMENT = "Regierungsstellen"
 ISSUER_ORG_TYPE = "pe_id$pe_id:org_organisation.org_organisation_organisation_type.organisation_type_id"
 
 ALLOWED_FORMATS = ("html", "iframe", "popup", "aadata", "json")
+
 # =============================================================================
 def config(settings):
 
@@ -2161,9 +2162,9 @@ def config(settings):
         s3db = current.s3db
 
         s3db.add_components("org_organisation",
-                            org_organisation_tag = ({"name": "requester",
+                            org_organisation_tag = ({"name": "delivery",
                                                      "joinby": "organisation_id",
-                                                     "filterby": {"tag": "REQUESTER"},
+                                                     "filterby": {"tag": "DELIVERY"},
                                                      "multiple": False,
                                                      },
                                                     ),
@@ -2249,9 +2250,15 @@ def config(settings):
 
             is_org_group_admin = auth.s3_has_role("ORG_GROUP_ADMIN")
 
-            # Configure binary tags
-            from .helpers import configure_binary_tags
-            configure_binary_tags(resource, ("requester",))
+            # Configure delivery-tag
+            from .requests import delivery_tag_opts
+            delivery_opts = delivery_tag_opts()
+            component = resource.components.get("delivery")
+            ctable = component.table
+            field = ctable.value
+            field.default = "DIRECT"
+            field.requires = IS_IN_SET(delivery_opts, zero=None)
+            field.represent = lambda v, row=None: delivery_opts.get(v, "-")
 
             # Add invite-method for ORG_GROUP_ADMIN role
             from .helpers import InviteUserOrg
@@ -2320,7 +2327,7 @@ def config(settings):
                                                    label = T("Project Partner for"),
                                                    cols = 1,
                                                    )
-                        requester = (T("Can order equipment"), "requester.value")
+                        delivery = (T("Delivery##supplying"), "delivery.value")
                         types = S3SQLInlineLink("organisation_type",
                                                 field = "organisation_type_id",
                                                 search = False,
@@ -2329,14 +2336,14 @@ def config(settings):
                                                 widget = "multiselect",
                                                 )
                     else:
-                        groups = projects = requester = types = None
+                        groups = projects = delivery = types = None
 
                     crud_fields = [groups,
-                                   projects,
-                                   requester,
                                    "name",
                                    "acronym",
                                    types,
+                                   projects,
+                                   delivery,
                                    S3SQLInlineComponent(
                                         "contact",
                                         fields = [("", "value")],
@@ -2461,19 +2468,30 @@ def config(settings):
             from .helpers import configure_binary_tags
             configure_binary_tags(r.resource, ("commercial",))
 
+            # Expose orderable item categories
+            ltable = s3db.req_requester_category
+            field = ltable.item_category_id
+            field.represent = S3Represent(lookup = "supply_item_category",
+                                          )
+
             # Custom form
-            from s3 import S3SQLCustomForm
+            from s3 import S3SQLCustomForm, S3SQLInlineLink
             crud_form = S3SQLCustomForm("name",
                                         "group.value",
                                         (T("Commercial Providers"), "commercial.value"),
+                                        S3SQLInlineLink("item_category",
+                                                        field = "item_category_id",
+                                                        label = T("Orderable Item Categories"),
+                                                        ),
                                         "comments",
                                         )
 
-            # Include tags in list view
+            # Include tags and orderable item categories in list view
             list_fields = ["id",
                            "name",
                            "group.value",
                            (T("Commercial Providers"), "commercial.value"),
+                           (T("Orderable Item Categories"), "requester_category.item_category_id"),
                            "comments",
                            ]
 
@@ -2745,11 +2763,12 @@ def config(settings):
                             ),
             ]
         if is_org_group_admin:
-            binary_tag_opts = OrderedDict([("Y", T("Yes")), ("N", T("No"))])
+            from .requests import delivery_tag_opts
+            delivery_opts = delivery_tag_opts()
             filter_widgets.extend([
-                S3OptionsFilter("organisation_id$requester.value",
-                                label = T("Can order equipment"),
-                                options = binary_tag_opts,
+                S3OptionsFilter("organisation_id$delivery.value",
+                                label = T("Delivery##supplying"),
+                                options = delivery_opts,
                                 hidden = True,
                                 ),
                 S3OptionsFilter("organisation_id$organisation_type__link.organisation_type_id",
@@ -2760,6 +2779,7 @@ def config(settings):
                                 ),
                 ])
             if r.method == "report":
+                binary_tag_opts = OrderedDict([("Y", T("Yes")), ("N", T("No"))])
                 filter_widgets.extend([
                     S3OptionsFilter("organisation_id$project_organisation.project_id",
                                     options = lambda: s3_get_filter_opts("project_project"),
@@ -3874,6 +3894,42 @@ def config(settings):
     settings.customise_inv_track_item_resource = customise_inv_track_item_resource
 
     # -------------------------------------------------------------------------
+    def warehouse_tag_onaccept(form):
+        """
+            Onaccept of site tags for warehouses:
+                - make sure only one warehouse has the CENTRAL=Y tag
+        """
+
+        # Get record ID
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        db = current.db
+        table = current.s3db.org_site_tag
+
+        tag = form_vars.get("tag")
+        if not tag and record_id:
+            record = db(table.id == record_id).select(table.id,
+                                                      table.tag,
+                                                      limitby = (0, 1),
+                                                      ).first()
+            tag = record.tag if record else None
+
+        value = form_vars.get("value")
+        site_id = form_vars.get("site_id")
+
+        if site_id and tag == "CENTRAL" and value == "Y":
+            query = (table.site_id != site_id) & \
+                    (table.tag == "CENTRAL") & \
+                    (table.value == "Y")
+            db(query).update(value = "N")
+
+    # -------------------------------------------------------------------------
     def customise_inv_warehouse_resource(r, tablename):
 
         T = current.T
@@ -3887,6 +3943,22 @@ def config(settings):
         field.comment = None
         field = table.warehouse_type_id
         field.comment = None
+
+        # Add CENTRAL-tag as component
+        s3db.add_components("org_site",
+                            org_site_tag = ({"name": "central",
+                                             "joinby": "site_id",
+                                             "filterby": {"tag": "CENTRAL"},
+                                             "multiple": False,
+                                             },
+                                            ),
+                            )
+
+        # Custom callback to ensure that there is only one with CENTRAL=Y
+        s3db.add_custom_callback("org_site_tag",
+                                 "onaccept",
+                                 warehouse_tag_onaccept,
+                                 )
 
         # Custom label, represent and tooltip for obsolete-flag
         field = table.obsolete
@@ -3918,6 +3990,7 @@ def config(settings):
                            "name",
                            "code",
                            "warehouse_type_id",
+                           (T("Central Warehouse"), "central.value"),
                            "location_id",
                            "email",
                            "phone1",
@@ -3935,6 +4008,7 @@ def config(settings):
                        "name",
                        "code",
                        "warehouse_type_id",
+                       (T("Central Warehouse"), "central.value"),
                        "location_id",
                        "email",
                        "phone1",
@@ -3952,6 +4026,19 @@ def config(settings):
 
         s3 = current.response.s3
 
+        # Custom prep
+        standard_prep = s3.prep
+        def prep(r):
+            # Call standard prep
+            result = standard_prep(r) if callable(standard_prep) else True
+
+            # Configure central-tag
+            from .helpers import configure_binary_tags
+            configure_binary_tags(r.resource, ("central",))
+
+            return result
+        s3.prep = prep
+
         #standard_postp = s3.postp
         #def postp(r, output):
         #    if callable(standard_postp):
@@ -3968,6 +4055,67 @@ def config(settings):
         return attr
 
     settings.customise_inv_warehouse_controller = customise_inv_warehouse_controller
+
+    # -------------------------------------------------------------------------
+    def req_onvalidation(form):
+        """
+            Onvalidation of req:
+                - prevent the situation that the site is changed in an
+                  existing request while it contains items not orderable
+                  by the new site
+        """
+
+        form_vars = form.vars
+
+        # Read form data
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            record_id = None
+
+        db = current.db
+        s3db = current.s3db
+
+        import json
+        from s3 import JSONERRORS
+
+        if "site_id" in form_vars: # if site is selectable
+            site_id = form_vars.site_id
+
+            if "sub_defaultreq_item" in form_vars:
+                # Items inline
+                try:
+                    items = json.loads(form_vars.sub_defaultreq_item)
+                except JSONERRORS:
+                    item_ids = []
+                else:
+                    item_ids = [item["item_id"]["value"]
+                                for item in items["data"] if not item.get("_delete")
+                                ]
+            elif record_id:
+                # Items in database
+                ritable = s3db.req_req_item
+                query = (ritable.req_id == record_id) & \
+                        (ritable.deleted == False)
+                rows = db(query).select(ritable.item_id)
+                item_ids = [row.item_id for row in rows]
+            else:
+                item_ids = []
+
+            if item_ids:
+                # Check if there are any items not in orderable categories
+                from .requests import get_orderable_item_categories
+                categories = get_orderable_item_categories(site=site_id)
+
+                itable = s3db.supply_item
+                query = (itable.id.belongs(item_ids)) & \
+                        (~(itable.item_category_id.belongs(categories)))
+                row = db(query).select(itable.id, limitby = (0, 1)).first()
+                if row:
+                    form.errors.site_id = T("Request contains items that cannot be ordered for this site")
 
     # -------------------------------------------------------------------------
     def customise_req_req_resource(r, tablename):
@@ -4008,7 +4156,6 @@ def config(settings):
             field = table.requester_id
             field.represent = s3db.pr_PersonRepresent(show_link = False,
                                                       )
-
         # Filter out obsolete items
         ritable = s3db.req_req_item
         sitable = s3db.supply_item
@@ -4074,14 +4221,19 @@ def config(settings):
         standard_prep = s3.prep
         def prep(r):
 
+            add_org_tags()
+
             r.get_vars["type"] = "1"
 
             is_supply_coordinator = has_role("SUPPLY_COORDINATOR")
 
+            from .requests import get_managed_requester_orgs, \
+                                  get_orderable_item_categories, \
+                                  req_filter_widgets
+
             # User must be either SUPPLY_COORDINATOR or ORG_ADMIN of a
             # requester organisation to access this controller
             if not is_supply_coordinator:
-                from .requests import get_managed_requester_orgs
                 requester_orgs = get_managed_requester_orgs(cache=False)
                 if not requester_orgs:
                     r.unauthorised()
@@ -4094,6 +4246,9 @@ def config(settings):
             resource = r.resource
             table = resource.table
 
+            ritable = s3db.req_req_item
+            sitable = s3db.supply_item
+
             # Date is only writable for ADMIN
             field = table.date
             field.default = current.request.utcnow
@@ -4102,7 +4257,6 @@ def config(settings):
             record = r.record
             if record:
                 # Check if there is any shipment for this request
-                ritable = s3db.req_req_item
                 titable = s3db.inv_track_item
                 join = titable.on((titable.req_item_id == ritable.id) & \
                                   (titable.deleted == False))
@@ -4120,43 +4274,63 @@ def config(settings):
                                               deletable = False,
                                               )
             if not r.component:
-                if r.interactive:
-                    # Hide priority, date_required and date_recv
-                    field = table.priority
-                    field.readable = field.writable = False
-                    field = table.date_required
-                    field.readable = field.writable = False
-                    field = table.date_recv
-                    field.readable = field.writable = False
+                # Hide priority, date_required and date_recv
+                field = table.priority
+                field.readable = field.writable = False
+                field = table.date_required
+                field.readable = field.writable = False
+                field = table.date_recv
+                field.readable = field.writable = False
 
-                    if not is_supply_coordinator:
-                        # Limit to sites of managed requester organisations
-                        stable = s3db.org_site
-                        dbset = db((stable.organisation_id.belongs(requester_orgs)) & \
-                                   (stable.obsolete == False))
-                        field = table.site_id
-                        field.requires = IS_ONE_OF(dbset, "org_site.site_id",
-                                                   field.represent,
-                                                   )
-                        # If only one site selectable, set default and make r/o
-                        sites = dbset.select(stable.site_id, limitby=(0, 2))
-                        if len(sites) == 1:
-                            field.default = sites.first().site_id
-                            field.writable = False
-                        elif not sites:
-                            resource.configure(insertable = False)
-                    else:
-                        resource.configure(insertable = False)
+                if is_supply_coordinator:
+                    # Coordinators do not make requests
+                    resource.configure(insertable = False)
 
-                    # Requester is always the current user
-                    # => set as default and make r/o
-                    user_person_id = auth.s3_logged_in_person()
-                    if user_person_id:
-                        field = table.requester_id
-                        field.default = user_person_id
+                else:
+                    # Limit to sites of managed requester organisations
+                    stable = s3db.org_site
+                    dbset = db((stable.organisation_id.belongs(requester_orgs)) & \
+                               (stable.obsolete == False))
+                    field = table.site_id
+                    field.requires = IS_ONE_OF(dbset, "org_site.site_id",
+                                               field.represent,
+                                               )
+                    # If only one site selectable, set default and make r/o
+                    sites = dbset.select(stable.site_id, limitby=(0, 2))
+                    if len(sites) == 1:
+                        field.default = sites.first().site_id
                         field.writable = False
+                    elif not sites:
+                        resource.configure(insertable = False)
+                    else:
+                        # User can order for more than one site
+                        # => add custom callback to make sure all items in the request
+                        #    are orderable for the site selected
+                        s3db.add_custom_callback("req_req",
+                                                 "onvalidation",
+                                                 req_onvalidation,
+                                                 )
 
-                    from .requests import req_filter_widgets
+                    # Filter selectable items to orderable categories
+                    categories = get_orderable_item_categories(orgs=requester_orgs)
+                    item_query = (sitable.item_category_id.belongs(categories)) & \
+                                 ((sitable.obsolete == False) | \
+                                 (sitable.obsolete == None))
+                    field = ritable.item_id
+                    field.requires = IS_ONE_OF(db(item_query), "supply_item.id",
+                                               field.represent,
+                                               sort = True,
+                                               )
+
+                # Requester is always the current user
+                # => set as default and make r/o
+                user_person_id = auth.s3_logged_in_person()
+                if user_person_id:
+                    field = table.requester_id
+                    field.default = user_person_id
+                    field.writable = False
+
+                if r.interactive:
                     resource.configure(filter_widgets = req_filter_widgets(),
                                        )
 
@@ -4180,6 +4354,19 @@ def config(settings):
                                          req_req_item_create_onaccept,
                                          method = "create",
                                          )
+
+            elif r.component_name == "req_item" and record:
+
+                # Filter selectable items to orderable categories
+                categories = get_orderable_item_categories(site = record.site_id)
+                item_query = (sitable.item_category_id.belongs(categories)) & \
+                             ((sitable.obsolete == False) | \
+                              (sitable.obsolete == None))
+                field = ritable.item_id
+                field.requires = IS_ONE_OF(db(item_query), "supply_item.id",
+                                           field.represent,
+                                           sort = True,
+                                           )
             return result
         s3.prep = prep
 
@@ -4457,7 +4644,7 @@ def config(settings):
 
         table = s3db.supply_item
 
-        unused = ("item_category_id",
+        unused = (#"item_category_id",
                   "brand_id",
                   "kit",
                   "model",

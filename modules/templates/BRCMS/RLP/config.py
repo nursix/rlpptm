@@ -97,12 +97,13 @@ def config(settings):
     # Do not send standard welcome emails (using custom function)
     settings.auth.registration_welcome_email = False
 
-    settings.auth.realm_entity_types = ("org_organisation")
+    settings.auth.realm_entity_types = ("org_organisation",)
     settings.auth.privileged_roles = {"EVENT_MANAGER": "EVENT_MANAGER",
                                       "CITIZEN": "ADMIN",
                                       "RELIEF_PROVIDER": "RELIEF_PROVIDER",
                                       "MAP_ADMIN": "ADMIN",
                                       }
+
     # -------------------------------------------------------------------------
     settings.pr.hide_third_gender = False
     settings.pr.separate_name_fields = 2
@@ -140,6 +141,20 @@ def config(settings):
     settings.br.case_notes_tab = False
     settings.br.case_photos_tab = False
     settings.br.case_documents_tab = False
+
+    # -------------------------------------------------------------------------
+    # HRM Settings
+    #
+    settings.hrm.record_tab = False
+    settings.hrm.staff_experience = False
+    settings.hrm.teams = False
+    settings.hrm.use_address = False
+    settings.hrm.use_id = False
+    settings.hrm.use_skills = False
+    settings.hrm.use_certificates = False
+    settings.hrm.use_credentials = False
+    settings.hrm.use_description = False
+    settings.hrm.use_trainings = False
 
     # -------------------------------------------------------------------------
     # ORG Settings
@@ -224,6 +239,18 @@ def config(settings):
         #elif tablename == "br_assistance_offer":
             # Owned by the provider (pe_id, default)
 
+        elif tablename == "br_direct_offer":
+            # Direct offer inherits from offer via offer_id
+            table = s3db.table(tablename)
+            aotable = s3db.br_assistance_offer
+            query = (table._id == row.id) & \
+                    (aotable.id == table.offer_id)
+            offer = db(query).select(aotable.realm_entity,
+                                     limitby = (0, 1),
+                                     ).first()
+            if offer:
+                realm_entity = offer.realm_entity
+
         elif tablename == "pr_group":
 
             # No realm-entity for case groups
@@ -241,6 +268,17 @@ def config(settings):
         return realm_entity
 
     settings.auth.realm_entity = brcms_realm_entity
+
+    # -------------------------------------------------------------------------
+    def overview_stats_update():
+        """
+            Scheduler task to update the data files for the overview page
+        """
+
+        from .helpers import OverviewData
+        OverviewData.update_data()
+
+    settings.tasks.overview_stats_update = overview_stats_update
 
     # -------------------------------------------------------------------------
     def customise_cms_post_resource(r, tablename):
@@ -370,6 +408,43 @@ def config(settings):
                         )
 
     # -------------------------------------------------------------------------
+    def offer_onaccept(form):
+        # TODO docstring
+
+        # Get record ID
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        db = current.db
+        s3db = current.s3db
+
+        # Get the record
+        table = s3db.br_assistance_offer
+        query = (table.id == record_id)
+        record = db(query).select(table.id,
+                                  table.status,
+                                  limitby = (0, 1),
+                                  ).first()
+        if not record:
+            return
+        if record.status == "APR":
+            # Look up all pending direct offers
+            dotable = s3db.br_direct_offer
+            query = (dotable.offer_id == record_id) & \
+                    (dotable.notify == True) & \
+                    (dotable.notified_on == None)
+            pending = db(query).select(dotable.id)
+            # TODO do this async?
+            from .helpers import notify_direct_offer
+            for direct_offer in pending:
+                notify_direct_offer(direct_offer.id)
+
+    # -------------------------------------------------------------------------
     def offer_date_dt_orderby(field, direction, orderby, left_joins):
         """
             When sorting offers by date, use created_on to maintain
@@ -388,6 +463,36 @@ def config(settings):
 
         table = s3db.br_assistance_offer
 
+        # Configure fields
+        from .helpers import ProviderRepresent
+        from s3 import S3PriorityRepresent
+
+        field = table.pe_id
+        field.label = T("Provider")
+        field.represent = ProviderRepresent()
+
+        field = table.contact_phone
+        field.label = T("Phone #")
+
+        field = table.chargeable
+        field.represent = chargeable_warning
+
+        # Color-coded representation of availability/status
+        field = table.availability
+        availability_opts = s3db.br_assistance_offer_availability
+        field.represent = S3PriorityRepresent(dict(availability_opts),
+                                              {"AVL": "green",
+                                               "OCP": "amber",
+                                               "RTD": "black",
+                                               }).represent
+        field = table.status
+        status_opts = s3db.br_assistance_offer_status
+        field.represent = S3PriorityRepresent(dict(status_opts),
+                                              {"NEW": "lightblue",
+                                               "APR": "green",
+                                               "BLC": "red",
+                                               }).represent
+
         subheadings = {"need_id": T("Offer"),
                        "location_id": T("Place where help is provided"),
                        "contact_name": T("Contact Information"),
@@ -405,7 +510,48 @@ def config(settings):
         field = table.date
         field.represent.dt_orderby = offer_date_dt_orderby
 
+        # If the offer is created on direct offer tab, then pre-set the need_id and lock it
+        need_id = r.get_vars.get("need_id")
+        if need_id and need_id.isdigit():
+            field = table.need_id
+            field.default = int(need_id)
+            if field.default:
+                field.writable = False
+
+        # Custom callback to notify pending direct offers upon approval
+        s3db.add_custom_callback("br_assistance_offer",
+                                 "onaccept",
+                                 offer_onaccept,
+                                 )
+
     settings.customise_br_assistance_offer_resource = customise_br_assistance_offer_resource
+
+    # -------------------------------------------------------------------------
+    def configure_offer_details(table):
+        # TODO docstring/comments
+
+        s3db = current.s3db
+
+        from s3 import s3_fieldmethod
+        from .helpers import OfferDetails
+
+        table.place = s3_fieldmethod("place",
+                                     OfferDetails.place,
+                                     represent = OfferDetails.place_represent,
+                                     )
+        table.contact = s3_fieldmethod("contact",
+                                       OfferDetails.contact,
+                                       represent = OfferDetails.contact_represent,
+                                       )
+        s3db.configure("br_assistance_offer",
+                       extra_fields = ["location_id$L3",
+                                       "location_id$L2",
+                                       "location_id$L1",
+                                       "contact_name",
+                                       "contact_phone",
+                                       "contact_email",
+                                       ],
+                       )
 
     # -------------------------------------------------------------------------
     def customise_br_assistance_offer_controller(**attr):
@@ -426,12 +572,13 @@ def config(settings):
             # Call standard prep
             result = standard_prep(r) if callable(standard_prep) else True
 
+            get_vars = r.get_vars
+
             resource = r.resource
             table = resource.table
 
             from .helpers import get_current_events, \
-                                 get_managed_orgs, \
-                                 ProviderRepresent
+                                 get_managed_orgs
 
             if is_relief_provider:
                 providers = get_managed_orgs("RELIEF_PROVIDER")
@@ -441,10 +588,28 @@ def config(settings):
                 providers = []
 
             # Check perspective
-            mine = r.function == "assistance_offer"
+            viewing = r.viewing
+            if viewing and viewing[0] == "br_case_activity":
+                case_activity_id = viewing[1]
+                direct_offers, mine = True, False
+                # Must have update-permission for the case activity viewing
+                if not auth.s3_has_permission("update", "br_case_activity",
+                                              record_id = case_activity_id,
+                                              c = "br",
+                                              f = "case_activity",
+                                              ):
+                    r.unauthorised()
+                # Filter to the context of the case activity viewing
+                query = FS("direct_offer.case_activity_id") == case_activity_id
+                resource.add_filter(query)
+            else:
+                direct_offers = False
+                mine = r.function == "assistance_offer"
+
             if mine:
                 # Adjust list title, allow last update info
-                title_list = T("Our Relief Offers") if org_role else T("My Relief Offers")
+                title_list = T("Our Relief Offers") if org_role else \
+                             T("My Relief Offers")
                 s3.hide_last_update = False
 
                 # Filter for offers of current user
@@ -461,21 +626,39 @@ def config(settings):
                                    )
             else:
                 # Adjust list title, hide last update info
-                title_list = T("Current Relief Offers")
+                title_list = T("Direct Offers") if direct_offers else \
+                             T("Current Relief Offers")
                 s3.hide_last_update = not is_event_manager
 
                 # Restrict data formats
                 allowed = ("html", "iframe", "popup", "aadata", "plain", "geojson", "pdf", "xls")
-                if r.method == "report":
+                if r.method in ("report", "filter"):
                     allowed += ("json",)
                 settings.ui.export_formats = ("pdf", "xls")
                 if r.representation not in allowed:
                     r.error(403, current.ERROR.NOT_PERMITTED)
 
+                # URL pre-filter options
+                match = not direct_offers and get_vars.get("match") == "1"
+                show_pending = show_blocked = show_all = False
+                if is_event_manager and not direct_offers:
+                    if get_vars.get("pending") == "1":
+                        show_pending = True
+                        title_list = T("Pending Approvals")
+                    elif get_vars.get("blocked") == "1":
+                        show_blocked = True
+                        title_list = T("Blocked Entries")
+                    elif get_vars.get("all") == "1":
+                        show_all = True
+                        title_list = T("All Offers")
+                elif match:
+                    title_list = T("Matching Offers")
+
                 # Make read-only
+                writable = is_event_manager and not direct_offers
                 resource.configure(insertable = False,
-                                   editable = is_event_manager,
-                                   deletable = is_event_manager,
+                                   editable = writable,
+                                   deletable = writable,
                                    )
 
             s3.crud_strings["br_assistance_offer"]["title_list"] = title_list
@@ -501,9 +684,7 @@ def config(settings):
 
                 # Default Provider
                 field = table.pe_id
-                field.label = T("Provider")
                 field.readable = not mine or org_role
-                field.represent = ProviderRepresent()
                 if len(providers) == 1:
                     field.default = providers[0]
                     field.writable = False
@@ -543,124 +724,141 @@ def config(settings):
                     # At least phone number is required
                     # - TODO default from user if CITIZEN
                     field = table.contact_phone
-                    field.label = T("Phone #")
                     requires = field.requires
                     if isinstance(requires, IS_EMPTY_OR):
                         field.requires = requires.other
 
-                field = table.chargeable
-                field.represent = chargeable_warning
-
-                from s3 import S3PriorityRepresent
-
-                # Color-coded availability representation
-                field = table.availability
-                availability_opts = s3db.br_assistance_offer_availability
-                field.represent = S3PriorityRepresent(dict(availability_opts),
-                                                      {"AVL": "green",
-                                                       "OCP": "amber",
-                                                       "RTD": "black",
-                                                       }).represent
-
                 # Status only writable for EVENT_MANAGER
                 field = table.status
                 field.writable = is_event_manager
-                # Color-coded status representation
-                status_opts = s3db.br_assistance_offer_status
-                field.represent = S3PriorityRepresent(dict(status_opts),
-                                                      {"NEW": "lightblue",
-                                                       "APR": "green",
-                                                       "BLC": "red",
-                                                       }).represent
 
-                # List configuration
                 if not r.record:
 
-                    # Filter for matching offers?
-                    match = r.get_vars.get("match") == "1"
-                    if not mine and match:
-                        from .helpers import get_offer_filters
-                        filters = get_offer_filters()
-                        if filters:
-                            resource.add_filter(filters)
-
                     # Filters
-                    filter_widgets = [
-                        S3TextFilter(["name",
-                                      "description",
-                                      ],
-                                     label = T("Search"),
-                                     ),
-                        S3OptionsFilter("need_id",
-                                        options = lambda: \
-                                            s3_get_filter_opts("br_need",
-                                                               translate = True,
-                                                               ),
-                                        ),
-                        S3OptionsFilter("chargeable",
-                                        cols = 2,
-                                        hidden = mine,
-                                        ),
-                        ]
+                    if direct_offers:
+                        filter_widgets = None
+                    else:
+                        from .helpers import OfferAvailabilityFilter, \
+                                             get_offer_filters
 
-                    if not mine:
-                        # Add location filter for all-offers perspective
-                        filter_widgets.append(
-                            S3LocationFilter("location_id",
-                                             levels = ("L2", "L3"),
-                                             ))
+                        # Apply availability filter
+                        OfferAvailabilityFilter.apply_filter(resource, get_vars)
 
-                    if mine or is_event_manager:
-                        # Add filter for availability / status
-                        filter_widgets.extend([
-                            S3OptionsFilter("availability",
-                                            options = OrderedDict(availability_opts),
-                                            hidden = True,
-                                            sort = False,
-                                            cols = 3,
+                        # Filter for matching offers?
+                        if not mine and match:
+                            filters = get_offer_filters()
+                            if filters:
+                                resource.add_filter(filters)
+
+                        filter_widgets = [
+                            S3TextFilter(["name",
+                                          "refno",
+                                          "description",
+                                          ],
+                                          label = T("Search"),
+                                          ),
+                            S3OptionsFilter("need_id",
+                                            options = lambda: \
+                                                s3_get_filter_opts("br_need",
+                                                                   translate = True,
+                                                                   ),
                                             ),
-                            S3OptionsFilter("status",
-                                            options = OrderedDict(status_opts),
-                                            hidden = True,
-                                            sort = False,
-                                            cols = 3,
+                            S3OptionsFilter("chargeable",
+                                            cols = 2,
+                                            hidden = mine,
                                             ),
-                            ])
+                            ]
+
+                        if not mine:
+                            # Add location filter for all-offers perspective
+                            filter_widgets.append(
+                                S3LocationFilter("location_id",
+                                                 levels = ("L2", "L3"),
+                                                 ))
+
+                        if mine or is_event_manager:
+                            # Add filter for availability / status
+                            availability_opts = s3db.br_assistance_offer_availability
+                            status_opts = s3db.br_assistance_offer_status
+                            filter_widgets.extend([
+                                S3OptionsFilter("availability",
+                                                options = OrderedDict(availability_opts),
+                                                hidden = True,
+                                                sort = False,
+                                                cols = 3,
+                                                ),
+                                S3OptionsFilter("status",
+                                                options = OrderedDict(status_opts),
+                                                hidden = True,
+                                                sort = False,
+                                                cols = 3,
+                                                ),
+                                ])
+                        if not mine:
+                            # Add availability date range filter for all-offers perspective
+                            filter_widgets.append(
+                                OfferAvailabilityFilter("date",
+                                                        label = T("Available"),
+                                                        hidden = True,
+                                                        ))
 
                     # Visibility Filter
-                    if not mine:
-                        # Filter out unavailable or unapproved offers
+                    if mine:
+                        # Show all accessible
+                        vquery = None
+                    else:
+                        # Filter out unavailable, unapproved and past offers
                         today = current.request.utcnow.date()
                         vquery = (FS("availability") == "AVL") & \
                                  (FS("status") == "APR") & \
                                  ((FS("end_date") == None) | (FS("end_date") >= today))
-                    else:
-                        # Show all accessible
-                        vquery = None
-                    if is_event_manager:
-                        if r.get_vars.get("pending") == "1":
-                            vquery = (FS("status") == "NEW")
-                        elif r.get_vars.get("blocked") == "1":
-                            vquery = (FS("status") == "BLC")
+                        # Event manager can override this with URL options
+                        if is_event_manager and not direct_offers:
+                            if show_pending:
+                                vquery = (FS("status") == "NEW")
+                            elif show_blocked:
+                                vquery = (FS("status") == "BLC")
+                            elif show_all:
+                                vquery = None
                     if vquery:
                         resource.add_filter(vquery)
 
                     # List fields
-                    list_fields = ["need_id",
-                                   "name",
-                                   "chargeable",
-                                   #"pe_id",
-                                   "location_id$L3",
-                                   "location_id$L2",
-                                   "location_id$L1",
-                                   "availability",
-                                   "date",
-                                   "end_date",
-                                   ]
-                    if mine or is_event_manager:
-                        list_fields.append("status")
-                    if not mine or org_role:
-                        list_fields.insert(3, "pe_id")
+                    if not mine:
+                        # All or direct offers
+                        configure_offer_details(table)
+                        list_fields = ["need_id",
+                                       "name",
+                                       (T("Place"), "place"),
+                                       "pe_id",
+                                       (T("Contact"), "contact"),
+                                       "refno",
+                                       "description",
+                                       "chargeable",
+                                       "availability",
+                                       "date",
+                                       "end_date",
+                                       #"status"
+                                       ]
+                        if is_event_manager:
+                            list_fields.append("status")
+                    else:
+                        # My/our offers
+                        list_fields = ["need_id",
+                                       "name",
+                                       #"pe_id",
+                                       "location_id$L3",
+                                       #"location_id$L2",
+                                       "location_id$L1",
+                                       "refno",
+                                       "chargeable",
+                                       "availability",
+                                       "date",
+                                       "end_date",
+                                       "status"
+                                       ]
+                        if org_role:
+                            list_fields.insert(2, "pe_id")
 
                     resource.configure(filter_widgets = filter_widgets,
                                        list_fields = list_fields,
@@ -695,8 +893,31 @@ def config(settings):
                             }
                         resource.configure(report_options=report_options)
 
+            elif r.component_name == "direct_offer":
+
+                # Perspective to manage direct-offer links for an offer
+
+                # List fields
+                list_fields = ["case_activity_id",
+                               "case_activity_id$date",
+                               "case_activity_id$location_id$L3",
+                               "case_activity_id$location_id$L1",
+                               (T("Need Status"), "case_activity_id$status_id"),
+                               (T("Approval"), "offer_id$status"),
+                               ]
+
+                r.component.configure(list_fields = list_fields,
+                                      # Can only read or delete here
+                                      insertable = False,
+                                      editable = False,
+                                      )
+
             return result
         s3.prep = prep
+
+        # Custom rheader
+        from .rheaders import rlpcm_br_rheader
+        attr["rheader"] = rlpcm_br_rheader
 
         return attr
 
@@ -720,7 +941,8 @@ def config(settings):
         # Case file or self-reporting?
         record = r.record
         case_file = r.tablename == "pr_person" and record
-        ours = r.function == "case_activity" and current.auth.s3_has_role("RELIEF_PROVIDER")
+        ours = r.function == "case_activity" and \
+                             current.auth.s3_has_roles(("RELIEF_PROVIDER", "CASE_MANAGER"))
 
         s3 = current.response.s3
         crud_strings = s3.crud_strings
@@ -824,13 +1046,14 @@ def config(settings):
     # -------------------------------------------------------------------------
     def customise_br_case_activity_controller(**attr):
 
+        db = current.db
         auth = current.auth
-        #s3db = current.s3db
+        s3db = current.s3db
 
         s3 = current.response.s3
 
         is_event_manager = auth.s3_has_role("EVENT_MANAGER")
-        is_relief_provider = auth.s3_has_role("RELIEF_PROVIDER")
+        is_case_manager = auth.s3_has_roles(("RELIEF_PROVIDER", "CASE_MANAGER"))
 
         # Custom prep
         standard_prep = s3.prep
@@ -846,7 +1069,7 @@ def config(settings):
             crud_strings = s3.crud_strings["br_case_activity"]
             if mine:
                 # Adjust list title, allow last update info
-                if is_relief_provider:
+                if is_case_manager:
                     crud_strings["title_list"] = T("Our Needs")
                 else:
                     crud_strings["title_list"] = T("My Needs")
@@ -855,7 +1078,7 @@ def config(settings):
                 # Beneficiary requirements
                 field = table.person_id
                 field.writable = False
-                if is_relief_provider:
+                if is_case_manager:
                     # Must add in case-file
                     field.readable = True
                     insertable = False
@@ -879,8 +1102,10 @@ def config(settings):
 
                 # Restrict data formats
                 allowed = ("html", "iframe", "popup", "aadata", "plain", "geojson", "pdf", "xls")
-                if r.method == "report":
+                if r.method in ("report", "filter"):
                     allowed += ("json",)
+                if r.method == "options":
+                    allowed += ("s3json",)
                 settings.ui.export_formats = ("pdf", "xls")
                 if r.representation not in allowed:
                     r.error(403, current.ERROR.NOT_PERMITTED)
@@ -903,7 +1128,7 @@ def config(settings):
 
             if not r.component:
 
-                if not mine or not is_relief_provider:
+                if not mine or not is_case_manager:
                     # Hide irrelevant fields
                     for fn in ("person_id", "activity_details", "outcome", "priority"):
                         field = table[fn]
@@ -921,8 +1146,12 @@ def config(settings):
                                ]
                 if mine or is_event_manager:
                     list_fields.append("status_id")
-                    if is_relief_provider:
+                    if is_case_manager:
                         list_fields[1:1] = ("priority", "person_id")
+
+                        # Represent person_id as link to case file
+                        field = table.person_id
+                        field.represent = s3db.pr_PersonRepresent(show_link=True)
 
                 # Filters
                 from s3 import S3DateFilter, S3TextFilter, S3LocationFilter, S3OptionsFilter, s3_get_filter_opts
@@ -986,12 +1215,190 @@ def config(settings):
                         }
                     resource.configure(report_options=report_options)
 
+            elif r.component_name == "direct_offer":
+
+                if r.function != "activities":
+                    # This perspective is not supported
+                    r.error(403, current.ERROR.NOT_PERMITTED)
+
+                # Perspective to list and add direct offers
+
+                component = r.component
+
+                # Show only approved offers
+                query = (FS("offer_id$status") == "APR")
+                component.add_filter(query)
+
+                # List fields
+                customise_br_assistance_offer_resource(r, "br_assistance_offer")
+                list_fields = ["offer_id",
+                               "offer_id$pe_id",
+                               "offer_id$location_id$L3",
+                               "offer_id$location_id$L1",
+                               "offer_id$date",
+                               "offer_id$end_date",
+                               "offer_id$availability",
+                               ]
+                component.configure(list_fields = list_fields,
+                                    )
+
+                record = r.record
+
+                # Configure offer_id selector
+                ctable = r.component.table
+                field = ctable.offer_id
+
+                # Use must be permitted to manage the offer
+                aotable = s3db.br_assistance_offer
+                query = auth.s3_accessible_query("update", aotable, c="br", f="assistance_offer")
+                # Need type must match
+                need_id = record.need_id if record else None
+                if need_id:
+                    query &= aotable.need_id == need_id
+                # Offer must not be blocked, nor past
+                today = r.utcnow.date()
+                query &= (aotable.status != "BLC") & \
+                         ((aotable.end_date == None) | (aotable.end_date >= today))
+                dbset = db(query)
+                field.requires = IS_ONE_OF(dbset, "br_assistance_offer.id",
+                                           field.represent,
+                                           )
+
+                # Add popup link as primary route to create new offer as direct offer
+                from s3layouts import S3PopupLink
+                popup_vars = {# Request the options via this tab to apply above filters
+                                "parent": "activities/%s/direct_offer" % record.id,
+                                "child": "offer_id",
+                                }
+                need_id = record.need_id
+                if need_id:
+                    popup_vars["need_id"] = need_id
+                field.comment = S3PopupLink(label = T("Create new Offer"),
+                                            c = "br",
+                                            f = "assistance_offer",
+                                            m = "create",
+                                            vars = popup_vars,
+                                            )
+
+                # TODO add a CMS intro for selector
+
+                # Cannot create direct offers for my own needs
+                insertable = not auth.s3_has_permission("update", "br_case_activity",
+                                                        c = "br",
+                                                        f = "case_activity",
+                                                        record_id = record.id,
+                                                        )
+                r.component.configure(insertable = insertable,
+                                        # Direct offers can not be updated
+                                        # => must delete + create new
+                                        editable = False,
+                                        )
+
+                resource.configure(ignore_master_access = ("direct_offer",),
+                                   )
+
             return result
         s3.prep = prep
+
+        # Custom rheader
+        from .rheaders import rlpcm_br_rheader
+        attr["rheader"] = rlpcm_br_rheader
 
         return attr
 
     settings.customise_br_case_activity_controller = customise_br_case_activity_controller
+
+    # -------------------------------------------------------------------------
+    def direct_offer_create_onaccept(form):
+        # TODO docstring
+
+        # Get the record ID
+        form_vars = form.vars
+        if "id" in form_vars:
+            record_id = form_vars.id
+        elif hasattr(form, "record_id"):
+            record_id = form.record_id
+        else:
+            return
+
+        db = current.db
+        s3db = current.s3db
+
+        # Get the offer
+        table = s3db.br_direct_offer
+        aotable = s3db.br_assistance_offer
+        join = aotable.on(aotable.id == table.offer_id)
+
+        query = (table.id == record_id)
+        row = db(query).select(table.id,
+                               table.notify,
+                               table.notified_on,
+                               aotable.id,
+                               aotable.status,
+                               aotable.end_date,
+                               join = join,
+                               limitby = (0, 1),
+                               ).first()
+        if not row:
+            return
+
+        record = row.br_direct_offer
+        offer = row.br_assistance_offer
+
+        today = current.request.utcnow.date()
+
+        if offer.status == "NEW":
+            current.response.warning = T("Your offer is waiting for approval by the administrator")
+
+        elif offer.status == "APR" and \
+             (offer.end_date == None or offer.end_date >= today) and \
+             record.notify and \
+             record.notified_on == None:
+            from .helpers import notify_direct_offer
+            error = notify_direct_offer(record.id)
+            if error:
+                current.response.error = T("Notification could not be sent: %(error)s") % {"error": error}
+            else:
+                current.response.information = T("Notification sent")
+
+    # -------------------------------------------------------------------------
+    def customise_br_direct_offer_resource(r, tablename):
+
+        s3db = current.s3db
+
+        table = s3db.br_direct_offer
+
+        field = table.offer_id
+        from s3 import S3WithIntro
+        from gluon.sqlhtml import OptionsWidget
+        field.widget = S3WithIntro(OptionsWidget.widget,
+                                   intro = ("br",
+                                            "direct_offer",
+                                            "DirectOfferSelectorIntro",
+                                            ),
+                                   )
+
+        # Custom label+represent for case activity
+        # - always link to activities-perspective ("Current Needs")
+        field = table.case_activity_id
+        field.label = T("Need")
+        field.represent = s3db.br_CaseActivityRepresent(show_as = "subject",
+                                                        show_link = True,
+                                                        linkto = URL(c = "br",
+                                                                     f = "activities",
+                                                                     args = "[id]",
+                                                                     extension = "",
+                                                                     ),
+                                                        )
+
+        # Callback to trigger notification
+        s3db.add_custom_callback("br_direct_offer",
+                                 "onaccept",
+                                 direct_offer_create_onaccept,
+                                 method = "create",
+                                 )
+
+    settings.customise_br_direct_offer_resource = customise_br_direct_offer_resource
 
     # -------------------------------------------------------------------------
     # TODO customise event_event
@@ -1016,6 +1423,24 @@ def config(settings):
             resource = r.resource
 
             is_org_group_admin = auth.s3_has_role("ORG_GROUP_ADMIN")
+            mine = False
+
+            if not is_org_group_admin:
+
+                if r.get_vars.get("mine") == "1":
+                    mine = True
+                    # Filter to those the user can update
+                    aquery = current.auth.s3_accessible_query("update", "org_organisation")
+                    if aquery:
+                        resource.add_filter(aquery)
+
+                # Restrict data formats
+                allowed = ("html", "iframe", "popup", "aadata", "plain", "geojson", "pdf", "xls")
+                if r.method in ("report", "filter"):
+                    allowed += ("json",)
+                settings.ui.export_formats = ("pdf", "xls")
+                if r.representation not in allowed:
+                    r.error(403, current.ERROR.NOT_PERMITTED)
 
             if not r.component:
                 if r.interactive:
@@ -1059,9 +1484,17 @@ def config(settings):
                                    ]
 
                     # Filters
-                    text_fields = ["name", "acronym", "website", "phone"]
+                    text_fields = ["name",
+                                   "acronym",
+                                   "website",
+                                   "phone",
+                                   ]
                     if is_org_group_admin:
                         text_fields.append("email.value")
+                    if not mine:
+                        text_fields.extend(["office.location_id$L3",
+                                            "office.location_id$L1",
+                                            ])
                     filter_widgets = [S3TextFilter(text_fields,
                                                    label = T("Search"),
                                                    ),
@@ -1080,16 +1513,37 @@ def config(settings):
                                        )
 
                 # Custom list fields
-                list_fields = ["name",
-                               "acronym",
-                               #"organisation_type__link.organisation_type_id",
-                               "website",
-                               "phone",
-                               #"email.value"
-                               ]
                 if is_org_group_admin:
-                    list_fields.insert(2, (T("Type"), "organisation_type__link.organisation_type_id"))
-                    list_fields.append((T("Email"), "email.value"))
+                    list_fields = ["name",
+                                   "organisation_type__link.organisation_type_id",
+                                   (T("Description"), "comments"),
+                                   "office.location_id$L3",
+                                   "office.location_id$L1",
+                                   "website",
+                                   "phone",
+                                   (T("Email"), "email.value"),
+                                   ]
+                elif not mine:
+                    list_fields = ["name",
+                                   "organisation_type__link.organisation_type_id",
+                                   (T("Description"), "comments"),
+                                   #"office.location_id$L3",
+                                   #"office.location_id$L1",
+                                   "website",
+                                   "phone",
+                                   ]
+                    if auth.user:
+                        list_fields[3:3] = ("office.location_id$L3",
+                                            "office.location_id$L1",
+                                            )
+
+                else:
+                    list_fields = ["name",
+                                   (T("Description"), "comments"),
+                                   "website",
+                                   "phone",
+                                   (T("Email"), "email.value"),
+                                   ]
                 r.resource.configure(list_fields = list_fields,
                                      )
 
