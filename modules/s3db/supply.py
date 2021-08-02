@@ -110,6 +110,7 @@ class S3SupplyModel(S3Model):
         super_link = self.super_link
 
         float_represent = IS_FLOAT_AMOUNT.represent
+        translate = settings.get_L10n_translate_supply_item()
 
         NONE = current.messages["NONE"]
         YES = T("Yes")
@@ -180,6 +181,7 @@ class S3SupplyModel(S3Model):
         define_table(tablename,
                      Field("name", length=128, notnull=True, unique=True,
                            label = T("Name"),
+                           represent = lambda v: T(v) if translate else v,
                            requires = [IS_NOT_EMPTY(),
                                        IS_LENGTH(128),
                                        IS_NOT_ONE_OF(db,
@@ -217,7 +219,7 @@ class S3SupplyModel(S3Model):
         else:
             comment = None
 
-        represent = S3Represent(lookup=tablename)
+        represent = S3Represent(lookup=tablename, translate=translate)
         catalog_id = S3ReusableField("catalog_id", "reference %s" % tablename,
             default = 1,
             label = T("Catalog"),
@@ -251,9 +253,9 @@ class S3SupplyModel(S3Model):
         telephone = settings.get_asset_telephones()
         vehicle = settings.has_module("vehicle")
 
-        item_category_represent = supply_ItemCategoryRepresent()
+        item_category_represent = supply_ItemCategoryRepresent(translate=translate)
         item_category_represent_nocodes = \
-            supply_ItemCategoryRepresent(use_code=False)
+            supply_ItemCategoryRepresent(translate=translate, use_code=False)
 
         if format == "xls":
             parent_represent = item_category_represent_nocodes
@@ -282,6 +284,7 @@ class S3SupplyModel(S3Model):
                            ),
                      Field("name", length=128,
                            label = T("Name"),
+                           represent = lambda v: T(v) if translate else v,
                            requires = IS_LENGTH(128),
                            ),
                      Field("can_be_asset", "boolean",
@@ -380,6 +383,7 @@ $.filterOptionsS3({
                                       ),
                      Field("name", length=128, notnull=True,
                            label = T("Name"),
+                           represent = lambda v: T(v) if translate else v,
                            requires = [IS_NOT_EMPTY(),
                                        IS_LENGTH(128),
                                        ],
@@ -486,7 +490,8 @@ $.filterOptionsS3({
             msg_no_match = T("No Matching Items")
             )
 
-        supply_item_represent = supply_ItemRepresent(show_link = True)
+        supply_item_represent = supply_ItemRepresent(show_link = True,
+                                                     translate = translate)
 
         # Reusable Field
         supply_item_tooltip = T("Type the name of an existing catalog item OR Click 'Create Item' to add an item which is not in the catalog.")
@@ -1192,6 +1197,7 @@ $.filterOptionsS3({
 
         item_category_id = form_vars.get("item_category_id")
 
+        catalog_id = None
         if "catalog_id" in form_vars:
             catalog_id = form_vars.catalog_id
         elif item_category_id:
@@ -2010,8 +2016,8 @@ class supply_ItemPackRepresent(S3Represent):
                                 table.name,
                                 table.quantity,
                                 itable.um,
-                                left=left,
-                                limitby=(0, qty),
+                                left = left,
+                                limitby = (0, qty)
                                 )
         self.queries += 1
 
@@ -2124,6 +2130,9 @@ class supply_ItemCategoryRepresent(S3Represent):
             @param row: the supply_item_category Row
         """
 
+        translate = self.translate
+        t_ = current.T if translate else lambda v: v
+
         use_code = self.use_code
 
         name = row["supply_item_category.name"]
@@ -2135,6 +2144,8 @@ class supply_ItemCategoryRepresent(S3Represent):
             name = code
         elif not name:
             name = code
+        else:
+            name = t_(name)
 
         if parent:
             if use_code:
@@ -2142,9 +2153,13 @@ class supply_ItemCategoryRepresent(S3Represent):
                 sep = "-"
             else:
                 sep = " - "
+            if translate:
+                parent = t_(parent)
             name = "%s%s%s" % (name, sep, parent)
             grandparent = row["supply_grandparent_item_category.name"]
             if grandparent:
+                if translate:
+                    grandparent = t_(grandparent)
                 name = "%s%s%s" % (name, sep, grandparent)
                 # Check for Great-grandparent
                 # Trade-off "all in 1 row" vs "too many joins"
@@ -2176,8 +2191,12 @@ class supply_ItemCategoryRepresent(S3Represent):
                         else:
                             greatgrandparent = row["supply_item_category.name"] or row["supply_item_category.code"]
                             greatgreatgrandparent = row["supply_parent_item_category.name"] or row["supply_parent_item_category.code"]
+                        if translate:
+                            greatgrandparent = t_(greatgrandparent)
                         name = "%s%s%s" % (name, sep, greatgrandparent)
                         if greatgreatgrandparent:
+                            if translate:
+                                greatgreatgrandparent = t_(greatgreatgrandparent)
                             name = "%s%s%s" % (name, sep, greatgreatgrandparent)
                             if use_code:
                                 greatgreatgreatgrandparent = row["supply_grandparent_item_category.code"]
@@ -2187,6 +2206,8 @@ class supply_ItemCategoryRepresent(S3Represent):
                                 name = "%s%s%s" % (name, sep, greatgreatgreatgrandparent)
 
         if catalog:
+            if translate:
+                catalog = t_(catalog)
             name = "%s > %s" % (catalog, name)
 
         return s3_str(name)
