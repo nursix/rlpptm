@@ -145,6 +145,7 @@ def config(settings):
                             "inv_inv_item": SID,
                             "inv_track_item": "track_org_id",
                             "inv_adj_item": "adj_id",
+                            "req_req": "site_id",
                             "req_req_item": "req_id",
                             #"po_household": "area_id",
                             #"po_organisation_area": "area_id",
@@ -225,8 +226,8 @@ def config(settings):
             if not otype or otype.name != RED_CROSS:
                 use_user_organisation = True
 
-        # Facilities, Forums & Requisitions are owned by the user's organisation
-        elif tablename in ("org_facility", "pr_forum", "req_req"):
+        # Facilities & Forums are owned by the user's organisation
+        elif tablename in ("org_facility", "pr_forum"):
             use_user_organisation = True
 
         elif tablename == "hrm_training":
@@ -692,7 +693,7 @@ def config(settings):
     settings.req.inline_forms = False
     settings.req.req_type = ["Stock"]
     # No need to use Commits
-    #settings.req.use_commit = True
+    settings.req.use_commit = False
     #settings.req.document_filing = True
     # Should Requests ask whether Transportation is required?
     settings.req.ask_transport = True
@@ -702,6 +703,8 @@ def config(settings):
     settings.req.prompt_match = False
     # Uncomment to disable Recurring Request
     settings.req.recurring = False # HNRC
+    # Use Order Items
+    settings.req.order_items = True
     # Use Workflow
     settings.req.workflow = True
 
@@ -824,11 +827,11 @@ def config(settings):
                 restricted = True,
                 #module_type = 4
             )),
-        ("proc", Storage(
-                name_nice = T("Procurement"),
-                restricted = True,
-                #module_type = None, # Not displayed
-            )),
+        #("proc", Storage(
+        #        name_nice = T("Procurement"),
+        #        restricted = True,
+        #        #module_type = None, # Not displayed
+        #    )),
         #("asset", Storage(
         #        name_nice = T("Assets"),
         #        #description = "Recording and Assigning Assets",
@@ -2751,8 +2754,8 @@ Thank you"""
                 s3.rfooter = DIV(A(ICON("print"),
                                  " ",
                                  T("PDF Report"),
-                                   _href=URL(args=[r.id, "report_pdf_export"]),#, extension="pdf"),
-                                   _class="action-btn",
+                                   _href = URL(args=[r.id, "report_pdf_export"]),#, extension="pdf"),
+                                   _class = "action-btn",
                                    ),
                                  )
 
@@ -2952,25 +2955,20 @@ Thank you"""
 
         s3db = current.s3db
 
+        # Add field methods for total weight and volume
+        from gluon import Field
+        table = s3db.inv_inv_item
+        table.total_weight = Field.Method("total_weight",
+                                          s3db.inv_item_total_weight,
+                                          )
+        table.total_volume = Field.Method("total_volume",
+                                          s3db.inv_item_total_volume,
+                                          )
+
         resource = r.resource
         if resource.tablename == "inv_inv_item" and r.method == "grouped":
             report = r.get_vars.get("report")
-            if report == "weight_and_volume":
-                # Add field methods for total weight and volume
-                from gluon import Field
-                table = s3db.inv_inv_item
-                table.total_weight = Field.Method("total_weight",
-                                                  s3db.inv_item_total_weight,
-                                                  )
-                table.total_volume = Field.Method("total_volume",
-                                                  s3db.inv_item_total_volume,
-                                                  )
-                s3db.configure("inv_inv_item",
-                               extra_fields = ["item_id$weight",
-                                               "item_id$volume",
-                                               ],
-                               )
-            elif report == "movements":
+            if report == "movements":
                 # Inject a date filter for transactions
                 filter_widgets = resource.get_config("filter_widgets")
                 from s3 import S3DateFilter
@@ -3056,12 +3054,31 @@ Thank you"""
 
         direct_stock_edits = settings.get_inv_direct_stock_edits()
 
+        list_fields = [(T("Description"), "item_id"),
+                       (T("Reference"), "item_id$code"),
+                       (T("Donor"), "supply_org_id"),
+                       (T("Stock Location"), "site_id"),
+                       (T("Physical Balance"), "quantity"),
+                       (T("Unit Weight"), "item_id$weight"),
+                       (T("Total Weight"), "total_weight"),
+                       (T("Unit Volume"), "item_id$volume"),
+                       (T("Total Volume"), "total_volume"),
+                       (T("Unit Price"), "pack_value"),
+                       (T("Total Price"), "total_value"),
+                       (T("Comments"), "comments"),
+                       ]
+
         current.s3db.configure("inv_inv_item",
                                create = direct_stock_edits,
                                deletable = direct_stock_edits,
                                editable = direct_stock_edits,
                                listadd = direct_stock_edits,
                                grouped = stock_reports,
+                               # Needed for Field.Methods
+                               extra_fields = ["item_id$weight",
+                                               "item_id$volume",
+                                               ],
+                               list_fields = list_fields,
                                )
 
     settings.customise_inv_inv_item_resource = customise_inv_inv_item_resource
@@ -3410,7 +3427,7 @@ Thank you"""
                                                "website",
                                                ]
 
-                        resource.configure(list_fields=list_fields)
+                        resource.configure(list_fields = list_fields)
 
                         if r.interactive:
                             table.country.label = T("Country")
@@ -3432,7 +3449,7 @@ Thank you"""
                                             "logo",
                                             "comments",
                                             )
-                            resource.configure(crud_form=crud_form)
+                            resource.configure(crud_form = crud_form)
 
             return result
         s3.prep = custom_prep
@@ -4669,14 +4686,14 @@ Thank you"""
     settings.customise_project_location_controller = customise_project_location_controller
 
     # -------------------------------------------------------------------------
-    def customise_proc_order_item_resource(r, tablename):
+    #def customise_proc_order_item_resource(r, tablename):
 
-        s3db = current.s3db
-        table = s3db.proc_order_item
-        f = table.order_id
-        f.readable = f.writable = False
+    #    s3db = current.s3db
+    #    table = s3db.proc_order_item
+    #    f = table.order_id
+    #    f.readable = f.writable = False
 
-    settings.customise_proc_order_item_resource = customise_proc_order_item_resource
+    #settings.customise_proc_order_item_resource = customise_proc_order_item_resource
 
     # -------------------------------------------------------------------------
     def customise_req_approver_resource(r, tablename):
@@ -4834,14 +4851,14 @@ Thank you"""
                 from s3 import FS
                 r.resource.add_filter(FS("requester_id") == current.auth.s3_logged_in_person())
 
-            if r.record and \
-               r.record.workflow_status == 3:
-                # Never opens in Component Tab, always breaks out
-                table.approved_by_id.readable = True
+            import json
+            from gluon import IS_EMPTY_OR, IS_IN_SET
+            from s3 import IS_ONE_OF, S3GroupedOptionsWidget, S3Represent, S3SQLCustomForm, S3SQLInlineComponent
+            from s3layouts import S3PopupLink
+
+            db = current.db
 
             # Link to Projects
-            from s3 import IS_ONE_OF, S3Represent, S3SQLCustomForm
-            from s3layouts import S3PopupLink
             ptable = s3db.project_project
             f = s3db.req_project_req.project_id
             f.label = T("Project Code")
@@ -4849,7 +4866,7 @@ Thank you"""
             query = ((ptable.end_date == None) | \
                      (ptable.end_date > r.utcnow)) & \
                     (ptable.deleted == False)
-            the_set = current.db(query)
+            the_set = db(query)
             f.requires = IS_ONE_OF(the_set, "project_project.id",
                                    project_represent,
                                    sort = True,
@@ -4862,8 +4879,63 @@ Thank you"""
                                             "parent": "project_req",
                                             },
                                     )
+
+            # Compact JSON encoding
+            SEPARATORS = (",", ":")
+
+            # Filtered components
+            s3db.add_components("req_req",
+                                req_req_tag = ({"name": "transport",
+                                                "joinby": "req_id",
+                                                "filterby": {"tag": "transport"},
+                                                "multiple": False,
+                                                },
+                                                ),
+                                )
+
+            # Individual settings for specific tag components
+            components_get = s3db.resource(tablename).components.get
+
+            transport_opts = {"Air": T("Air"),
+                              "Sea": T("Sea"),
+                              "Road": T("Road"),
+                              "RC Freight": T("RC Freight"),
+                              }
+            transport = components_get("transport")
+            f = transport.table.value
+            f.requires = IS_EMPTY_OR(IS_IN_SET(transport_opts))
+            f.represent = S3Represent(options = transport_opts)
+            f.widget = S3GroupedOptionsWidget(options = transport_opts,
+                                              multiple = False,
+                                              cols = 4,
+                                              sort = False,
+                                              )
+
             crud_fields = [f for f in table.fields if table[f].readable]
             crud_fields.insert(0, "project_req.project_id")
+            insert_index = crud_fields.index("transport_req") + 1
+            crud_fields.insert(insert_index, ("", "transport.value"))
+            s3 = current.response.s3
+            s3.jquery_ready.append('''S3.showHidden('%s',%s,'%s')''' % \
+                ("transport_req", json.dumps(["sub_transport_value"], separators=SEPARATORS), "req_req"))
+
+            req_id = r.id
+            if req_id:
+                # Never opens in Component Tab, always breaks out
+                atable = s3db.req_approver_req
+                approved = db(atable.req_id == req_id).select(atable.id,
+                                                              limitby = (0, 1),
+                                                              )
+                if approved:
+                    crud_fields.insert(-1, S3SQLInlineComponent("approver",
+                                                                name = "approver",
+                                                                label = T("Approved By"),
+                                                                fields = [("", "person_id"),
+                                                                          ("", "title"),
+                                                                          ],
+                                                                readonly = True,
+                                                                ))
+
             crud_form = S3SQLCustomForm(*crud_fields)
             s3db.configure(tablename,
                            crud_form = crud_form,
@@ -4894,8 +4966,8 @@ Thank you"""
             list_fields.insert(2, "date_required")
             list_fields.insert(4, "requester_id")
 
-            filter_widgets += [
-                               ]
+            #filter_widgets += [
+            #                   ]
 
         s3db.configure(tablename,
                        filter_widgets = filter_widgets,
@@ -4905,26 +4977,94 @@ Thank you"""
     settings.customise_req_req_resource = customise_req_req_resource
 
     # -------------------------------------------------------------------------
+    def customise_req_req_controller(**attr):
+
+        s3 = current.response.s3
+
+        # Custom prep
+        standard_prep = s3.prep
+        def custom_prep(r):
+            # Call standard prep
+            if callable(standard_prep):
+                result = standard_prep(r)
+                if not result:
+                    return False
+
+            if r.component_name == "req_item":
+                workflow_status = r.record.workflow_status
+                if workflow_status == 2: # Submitted for Approval
+                    # Are we a Logistics Approver?
+                    s3db = current.s3db
+                    approvers = s3db.req_approvers(r.record.site_id)
+                    person_id = current.auth.s3_logged_in_person()
+                    if person_id in approvers and approvers[person_id]["matcher"]:
+                        # Have we already approved?
+                        atable = s3db.req_approver_req
+                        query = (atable.req_id == r.id) & \
+                                (atable.person_id == person_id)
+                        approved = current.db(query).select(atable.id,
+                                                            limitby = (0, 1)
+                                                            )
+                        if approved:
+                            show_site_id = True
+                        else:
+                            # Allow User to Match
+                            settings.req.prompt_match = True
+                    else:
+                        show_site_id = True
+                elif workflow_status == 3: # Approved
+                   show_site_id = True
+
+                if show_site_id:
+                    # Show in read-only form
+                    r.component.table.site_id.readable = True
+                    # Show in list_fields
+                    list_fields = ["item_id",
+                                   "item_pack_id",
+                                   "site_id",
+                                   "quantity",
+                                   "quantity_transit",
+                                   "quantity_fulfil",
+                                   ]
+                    r.component.configure(list_fields = list_fields)
+            return result
+        s3.prep = custom_prep
+
+        return attr
+
+    settings.customise_req_req_controller = customise_req_req_controller
+
+    # -------------------------------------------------------------------------
     def customise_supply_item_category_resource(r, tablename):
 
+        s3db = current.s3db
+
+        table = s3db.supply_item_category
         #root_org = current.auth.root_org_name()
         #if root_org == HNRC:
         # Not using Assets Module
-        field = current.s3db.supply_item_category.can_be_asset
-        field.readable = field.writable = False
+        table.can_be_asset.readable = table.can_be_asset.writable = False
+        table.parent_item_category_id.represent = s3db.supply_ItemCategoryRepresent(show_catalog = False,
+                                                                                    use_code = False,
+                                                                                    )
 
     settings.customise_supply_item_category_resource = customise_supply_item_category_resource
 
     # -------------------------------------------------------------------------
     def customise_supply_item_resource(r, tablename):
 
-        table = current.s3db.supply_item
+        s3db = current.s3db
+
+        table = s3db.supply_item
         table.brand_id.readable = table.brand_id.writable = False
         table.model.readable = table.model.writable = False
         table.year.readable = table.year.writable = False
         table.length.readable = table.length.writable = False
         table.width.readable = table.width.writable = False
         table.height.readable = table.height.writable = False
+        table.item_category_id.represent = s3db.supply_ItemCategoryRepresent(show_catalog = False,
+                                                                             use_code = False,
+                                                                             )
 
     settings.customise_supply_item_resource = customise_supply_item_resource
 

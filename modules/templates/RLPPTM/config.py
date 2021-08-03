@@ -2978,6 +2978,13 @@ def config(settings):
                            report_options = report_options,
                            )
 
+        # Custom method to produce KV report
+        from .helpers import TestFacilityInfo
+        s3db.set_method("org", "facility",
+                        method = "info",
+                        action = TestFacilityInfo,
+                        )
+
     settings.customise_org_facility_resource = customise_org_facility_resource
 
     # -------------------------------------------------------------------------
@@ -2997,6 +3004,8 @@ def config(settings):
 
             # Restrict data formats
             allowed = ("html", "iframe", "popup", "aadata", "plain", "geojson", "pdf", "xls")
+            if r.method == "info":
+                allowed += ("json", )
             settings.ui.export_formats = ("pdf", "xls")
             if r.representation not in allowed:
                 r.error(403, current.ERROR.NOT_PERMITTED)
@@ -4663,10 +4672,10 @@ def config(settings):
         field = table.code
         field.requires = [IS_NOT_EMPTY(), field.requires]
 
-        # Represent categories by name, not code
+        # Represent categories by name (no hierarchy)
         field = table.item_category_id
         field.comment = None
-        field.represent = s3db.supply_ItemCategoryRepresent(use_code=False)
+        field.represent = S3Represent(lookup="supply_item_category")
 
         # Use a localized default for um
         field = table.um

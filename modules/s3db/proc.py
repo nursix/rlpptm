@@ -277,6 +277,7 @@ class S3PurchaseOrdersModel(S3Model):
         Purchase Orders (PO)
 
         @ToDo: Link to inv_send
+        @ToDo: Link to req_req
     """
 
     names = ("proc_order",
@@ -483,7 +484,21 @@ class S3PurchaseOrdersModel(S3Model):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return {}
+        return {"proc_order_id": order_id,
+                }
+
+    # -------------------------------------------------------------------------
+    def defaults(self):
+        """
+            Safe defaults for model-global names in case module is disabled
+        """
+
+        dummy = S3ReusableField("dummy_id", "integer",
+                                readable = False,
+                                writable = False)
+
+        return {"proc_order_id": lambda **attr: dummy("order_id"),
+                }
 
     # -------------------------------------------------------------------------
     @staticmethod

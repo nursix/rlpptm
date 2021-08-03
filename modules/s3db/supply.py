@@ -111,6 +111,10 @@ class S3SupplyModel(S3Model):
 
         float_represent = IS_FLOAT_AMOUNT.represent
         translate = settings.get_L10n_translate_supply_item()
+        if translate:
+            translate_represent = T
+        else:
+            translate_represent = None
 
         NONE = current.messages["NONE"]
         YES = T("Yes")
@@ -181,7 +185,7 @@ class S3SupplyModel(S3Model):
         define_table(tablename,
                      Field("name", length=128, notnull=True, unique=True,
                            label = T("Name"),
-                           represent = lambda v: T(v) if translate else v,
+                           represent = translate_represent,
                            requires = [IS_NOT_EMPTY(),
                                        IS_LENGTH(128),
                                        IS_NOT_ONE_OF(db,
@@ -284,7 +288,7 @@ class S3SupplyModel(S3Model):
                            ),
                      Field("name", length=128,
                            label = T("Name"),
-                           represent = lambda v: T(v) if translate else v,
+                           represent = translate_represent,
                            requires = IS_LENGTH(128),
                            ),
                      Field("can_be_asset", "boolean",
@@ -383,7 +387,7 @@ $.filterOptionsS3({
                                       ),
                      Field("name", length=128, notnull=True,
                            label = T("Name"),
-                           represent = lambda v: T(v) if translate else v,
+                           represent = translate_represent,
                            requires = [IS_NOT_EMPTY(),
                                        IS_LENGTH(128),
                                        ],
@@ -396,6 +400,7 @@ $.filterOptionsS3({
                      Field("um", length=128, notnull=True,
                            default = "piece",
                            label = T("Unit of Measure"),
+                           represent = translate_represent,
                            requires = [IS_NOT_EMPTY(),
                                        IS_LENGTH(128),
                                        ],
@@ -696,6 +701,7 @@ $.filterOptionsS3({
                            notnull=True, # Ideally this would reference another table for normalising Pack names
                            default = T("piece"),
                            label = T("Name"),
+                           represent = translate_represent,
                            requires = [IS_NOT_EMPTY(),
                                        IS_LENGTH(128),
                                        ],
@@ -736,7 +742,8 @@ $.filterOptionsS3({
 
         # ---------------------------------------------------------------------
         # Reusable Field
-        item_pack_represent = supply_ItemPackRepresent(lookup="supply_item_pack")
+        item_pack_represent = supply_ItemPackRepresent(lookup = "supply_item_pack",
+                                                       translate = translate)
         item_pack_id = S3ReusableField("item_pack_id", "reference %s" % tablename,
                     label = T("Pack"),
                     ondelete = "RESTRICT",
@@ -2059,23 +2066,28 @@ class supply_ItemCategoryRepresent(S3Represent):
     def __init__(self,
                  translate = False,
                  show_link = False,
+                 show_catalog = None,
                  use_code = True,
                  multiple = False,
                  ):
 
-        self.catalog_multi = catalog_multi = current.deployment_settings.get_supply_catalog_multi()
+        if show_catalog is None:
+            show_catalog = current.deployment_settings.get_supply_catalog_multi()
+        self.show_catalog = show_catalog
+
         self.use_code = use_code
 
         # Need a custom lookup to join with Parent/Catalog
         fields = ["supply_item_category.id",
                   "supply_item_category.name",
-                  # Always-included since used as fallback if no name
-                  "supply_item_category.code",
+                  "supply_item_category.code", # Always-included since used as fallback if no name
                   "supply_parent_item_category.name",
+                  "supply_parent_item_category.code", # Always-included since used as fallback if no name
                   "supply_grandparent_item_category.name",
+                  "supply_grandparent_item_category.code", # Always-included since used as fallback if no name
                   "supply_grandparent_item_category.parent_item_category_id",
                   ]
-        if catalog_multi:
+        if show_catalog:
             fields.append("supply_catalog.name")
 
         super(supply_ItemCategoryRepresent,
@@ -2104,7 +2116,7 @@ class supply_ItemCategoryRepresent(S3Represent):
         left = [ptable.on(ptable.id == table.parent_item_category_id),
                 gtable.on(gtable.id == ptable.parent_item_category_id),
                 ]
-        if self.catalog_multi:
+        if self.show_catalog:
             ctable = db.supply_catalog
             left.append(ctable.on(ctable.id == table.catalog_id))
 
@@ -2130,36 +2142,49 @@ class supply_ItemCategoryRepresent(S3Represent):
             @param row: the supply_item_category Row
         """
 
-        translate = self.translate
-        t_ = current.T if translate else lambda v: v
-
-        use_code = self.use_code
-
         name = row["supply_item_category.name"]
         code = row["supply_item_category.code"]
-        catalog = row.get("supply_catalog.name")
-        parent = row["supply_parent_item_category.name"]
 
+        translate = self.translate
+        if translate:
+            T = current.T
+
+        use_code = self.use_code
         if use_code:
             name = code
         elif not name:
             name = code
-        else:
-            name = t_(name)
+        elif translate:
+            name = T(name)
 
-        if parent:
+        parent_name = row["supply_parent_item_category.name"]
+        parent_code = row["supply_parent_item_category.code"] 
+        if parent_name or parent_code:
             if use_code:
                 # Compact format
                 sep = "-"
+                parent = parent_code
             else:
                 sep = " - "
-            if translate:
-                parent = t_(parent)
+                if not parent_name:
+                    parent = parent_code
+                else:
+                    parent = parent_name
+                    if translate:
+                        parent = T(parent)
             name = "%s%s%s" % (name, sep, parent)
-            grandparent = row["supply_grandparent_item_category.name"]
-            if grandparent:
-                if translate:
-                    grandparent = t_(grandparent)
+            grandparent_name = row["supply_grandparent_item_category.name"]
+            grandparent_code = row["supply_grandparent_item_category.code"]
+            if grandparent_name or grandparent_code:
+                if use_code:
+                    grandparent = grandparent_code
+                else:
+                    if not grandparent_name:
+                        grandparent = grandparent_code
+                    else:
+                        grandparent = grandparent_name
+                        if translate:
+                            grandparent = T(grandparent)
                 name = "%s%s%s" % (name, sep, grandparent)
                 # Check for Great-grandparent
                 # Trade-off "all in 1 row" vs "too many joins"
@@ -2182,32 +2207,45 @@ class supply_ItemCategoryRepresent(S3Represent):
                               gtable.code,
                               ]
                     row = db(query).select(*fields,
-                                           left=left,
-                                           limitby=(0, 1)).first()
+                                           left = left,
+                                           limitby = (0, 1)
+                                           ).first()
                     if row:
                         if use_code:
                             greatgrandparent = row["supply_item_category.code"]
                             greatgreatgrandparent = row["supply_parent_item_category.code"]
                         else:
-                            greatgrandparent = row["supply_item_category.name"] or row["supply_item_category.code"]
-                            greatgreatgrandparent = row["supply_parent_item_category.name"] or row["supply_parent_item_category.code"]
-                        if translate:
-                            greatgrandparent = t_(greatgrandparent)
+                            greatgrandparent = row["supply_item_category.name"]
+                            if greatgrandparent:
+                                if translate:
+                                    greatgrandparent = T(greatgrandparent)
+                            else:
+                                greatgrandparent = row["supply_item_category.code"]
+                            greatgreatgrandparent = row["supply_parent_item_category.name"]
+                            if greatgreatgrandparent:
+                                if translate:
+                                    greatgreatgrandparent = T(greatgreatgrandparent)
+                            else:
+                                greatgreatgrandparent = row["supply_parent_item_category.code"]
                         name = "%s%s%s" % (name, sep, greatgrandparent)
                         if greatgreatgrandparent:
-                            if translate:
-                                greatgreatgrandparent = t_(greatgreatgrandparent)
                             name = "%s%s%s" % (name, sep, greatgreatgrandparent)
                             if use_code:
                                 greatgreatgreatgrandparent = row["supply_grandparent_item_category.code"]
                             else:
-                                greatgreatgreatgrandparent = row["supply_grandparent_item_category.name"] or row["supply_grandparent_item_category.code"]
+                                greatgreatgreatgrandparent = row["supply_grandparent_item_category.name"]
+                                if greatgreatgreatgrandparent:
+                                    if translate:
+                                        greatgreatgreatgrandparent = T(greatgreatgreatgrandparent)
+                                else:
+                                    greatgreatgreatgrandparent = row["supply_grandparent_item_category.code"]
                             if greatgreatgreatgrandparent:
                                 name = "%s%s%s" % (name, sep, greatgreatgreatgrandparent)
 
+        catalog = row.get("supply_catalog.name")
         if catalog:
             if translate:
-                catalog = t_(catalog)
+                catalog = T(catalog)
             name = "%s > %s" % (catalog, name)
 
         return s3_str(name)
