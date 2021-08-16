@@ -81,7 +81,6 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import long
 from s3layouts import S3PopupLink
 
 # =============================================================================
@@ -612,12 +611,10 @@ class S3EventModel(S3Model):
             Return safe defaults in case the model has been deactivated.
         """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
+        dummy = S3ReusableField.dummy
 
-        return {"event_event_id": lambda **attr: dummy("event_id"),
-                "event_type_id": lambda **attr: dummy("event_type_id"),
+        return {"event_event_id": dummy("event_id"),
+                "event_type_id": dummy("event_type_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -1496,11 +1493,7 @@ class S3IncidentModel(S3Model):
             Return safe defaults in case the model has been deactivated.
         """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"event_incident_id": lambda **attr: dummy("incident_id"),
+        return {"event_incident_id": S3ReusableField.dummy("incident_id"),
                 }
 
     # ---------------------------------------------------------------------
@@ -2787,11 +2780,7 @@ class S3IncidentTypeModel(S3Model):
             Return safe defaults in case the model has been deactivated.
         """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"event_incident_type_id": lambda **attr: dummy("incident_type_id"),
+        return {"event_incident_type_id": S3ReusableField.dummy("incident_type_id"),
                 }
 
 # =============================================================================
@@ -5134,11 +5123,7 @@ class S3EventSitRepModel(S3Model):
             Return safe defaults in case the model has been deactivated.
         """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"event_sitrep_id": lambda **attr: dummy("sitrep_id"),
+        return {"event_sitrep_id": S3ReusableField.dummy("sitrep_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -6422,7 +6407,7 @@ class event_IncidentAssignMethod(S3Method):
                 for incident_id in selected:
 
                     try:
-                        i_id = long(incident_id.strip())
+                        i_id = int(incident_id.strip())
                     except ValueError:
                         continue
 

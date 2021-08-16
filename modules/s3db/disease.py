@@ -31,6 +31,7 @@
 
 __all__ = ("DiseaseDataModel",
            "DiseaseMonitoringModel",
+           "DiseaseCertificateModel",
            "CaseTrackingModel",
            "ContactTracingModel",
            "DiseaseStatsModel",
@@ -40,11 +41,12 @@ __all__ = ("DiseaseDataModel",
 import datetime
 import json
 
+from functools import reduce
+
 from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import basestring, reduce
 from s3layouts import S3PopupLink
 
 # Monitoring upgrades {new_level:previous_levels}
@@ -69,6 +71,8 @@ class DiseaseDataModel(S3Model):
              "disease_disease_id",
              "disease_symptom",
              "disease_symptom_id",
+             "disease_testing_device",
+             "disease_testing_device_id",
              )
 
     def model(self):
@@ -180,9 +184,95 @@ class DiseaseDataModel(S3Model):
             msg_record_deleted = T("Symptom Information deleted"),
             msg_list_empty = T("No Symptom Information currently available"))
 
+        # ---------------------------------------------------------------------
+        # Testing device registry
+        # - registry of approved testing devices for reference in e.g.
+        #   diagnostics, certificates etc.
+        #
+        device_classes = {"RAT": T("Rapid Antigen Test"),
+                          # to be extended
+                          }
+
+        tablename = "disease_testing_device"
+        define_table(tablename,
+                     disease_id(
+                         ondelete = "CASCADE",
+                         ),
+                     Field("name",
+                           label = T("Name"),
+                           requires = IS_NOT_EMPTY(),
+                           ),
+                     Field("code", length=64,
+                           label = T("Code"),
+                           requires = IS_EMPTY_OR(IS_LENGTH(64)),
+                           ),
+                     Field("device_class",
+                           label = T("Device Class"),
+                           requires = IS_IN_SET(device_classes,
+                                                zero = None,
+                                                ),
+                           represent = S3Represent(options=device_classes),
+                           ),
+                     Field("approved", "boolean",
+                           default = True,
+                           label = T("Approved##actionable"),
+                           represent = s3_yes_no_represent,
+                           ),
+                     # The list of approved devices can be long, but not all
+                     # of them are commonly available/in use - so can use this
+                     # flag to reduce the list in selectors to what is practical:
+                     Field("available", "boolean",
+                           default = True,
+                           label = T("Available"),
+                           represent = s3_yes_no_represent,
+                           ),
+                     # Source would normally be a URI, but can also be a name
+                     # or similar, activate in template if/as needed:
+                     Field("source",
+                           readable = False,
+                           writable = False,
+                           ),
+                     s3_comments(),
+                     *s3_meta_fields())
+
+        # Table configuration
+        self.configure(tablename,
+                       onaccept = self.testing_device_onaccept,
+                       )
+
+        # CRUD Strings
+        crud_strings[tablename] = Storage(
+            label_create = T("Add Testing Device"),
+            title_display = T("Testing Device Details"),
+            title_list = T("Testing Devices"),
+            title_update = T("Edit Testing Device"),
+            label_list_button = T("List Testing Devices"),
+            label_delete_button = T("Delete Testing Device"),
+            msg_record_created = T("Testing Device created"),
+            msg_record_modified = T("Testing Device updated"),
+            msg_record_deleted = T("Testing Device deleted"),
+            msg_list_empty = T("No Testing Devices currently registered"),
+            )
+
+        # Reusable field
+        represent = S3Represent(lookup=tablename)
+        device_id = S3ReusableField("device_id", "reference %s" % tablename,
+                                    label = T("Testing Device"),
+                                    represent = represent,
+                                    requires = IS_ONE_OF(db, "%s.id" % tablename,
+                                                         represent,
+                                                         filterby = "available",
+                                                         filter_opts = [True],
+                                                         ),
+                                    sortby = "name",
+                                    )
+
+        # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
+        #
         return {"disease_disease_id": disease_id,
                 "disease_symptom_id": symptom_id,
+                "disease_testing_device_id": device_id,
                 }
 
     # -------------------------------------------------------------------------
@@ -190,8 +280,11 @@ class DiseaseDataModel(S3Model):
     def defaults():
         """ Safe defaults for names in case the module is disabled """
 
-        return {"disease_disease_id": S3ReusableField.dummy("disease_id"),
-                "disease_symptom_id": S3ReusableField.dummy("symptom_id"),
+        dummy = S3ReusableField.dummy
+
+        return {"disease_disease_id": dummy("disease_id"),
+                "disease_symptom_id": dummy("symptom_id"),
+                "disease_testing_device_id": dummy("device_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -231,6 +324,37 @@ class DiseaseDataModel(S3Model):
         if duplicate:
             item.id = duplicate
             item.method = item.METHOD.UPDATE
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def testing_device_onaccept(form):
+        """
+            Onaccept routine for testing devices
+                - make sure only approved devices are available
+        """
+
+        form_vars = form.vars
+        try:
+            record_id = form_vars.id
+        except AttributeError:
+            record_id = None
+        if not record_id:
+            return
+
+        # Get the record
+        table = current.s3db.disease_testing_device
+        query = (table.id == record_id)
+        record = current.db(query).select(table.id,
+                                          table.approved,
+                                          table.available,
+                                          limitby = (0, 1),
+                                          ).first()
+        if not record:
+            return
+
+        # If record is not approved, it must not be available either
+        if record.available and not record.approved:
+            record.update_record(available=False)
 
 # =============================================================================
 class DiseaseMonitoringModel(S3Model):
@@ -426,6 +550,85 @@ class DiseaseMonitoringModel(S3Model):
         if total is not None and positive is not None:
             if positive > total:
                 form.errors["tests_positive"] = T("Number of positive results cannot be greater than number of tests")
+
+# =============================================================================
+class DiseaseCertificateModel(S3Model):
+    """
+        Model to manage disease-related health certificates
+    """
+
+    names = ("disease_hcert_data",
+             )
+
+    def model(self):
+
+        T = current.T
+
+        #db = current.db
+        #s3 = current.response.s3
+
+        # ---------------------------------------------------------------------
+        # Health Certificate Data
+        #
+        hcert_types = {"TEST": T("Test Certificate"),
+                       "VACC": T("Vaccination Certificate"),
+                       "RECO": T("Recovery Certificate"),
+                       }
+        hcert_status = {"PENDING": T("Pending"),
+                        "ISSUED": T("Issued"),
+                        "EXPIRED": T("Expired"),
+                        "INVALID": T("Invalid"),
+                        }
+        tablename = "disease_hcert_data"
+        self.define_table(tablename,
+                          self.disease_disease_id(),
+                          Field("type",
+                                represent = S3Represent(options = hcert_types),
+                                requires = IS_IN_SET(hcert_types),
+                                ),
+                          Field("instance_id",
+                                ),
+                          Field("issuer_id",
+                                ),
+                          Field("payload", "json",
+                                ),
+                          Field("vhash", "text",
+                                ),
+                          Field("status",
+                                represent = S3Represent(options = hcert_status),
+                                requires = IS_IN_SET(hcert_status),
+                                ),
+                          Field("errors", "text",
+                                ),
+                          # Date after which a certificate can no longer be issued
+                          s3_datetime("valid_until",
+                                      label = T("Valid until"),
+                                      ),
+                          # Date when the certificate was issued
+                          s3_datetime("certified_on",
+                                      label = T("Certified on"),
+                                      ),
+                          *s3_meta_fields())
+
+        self.configure(tablename,
+                       insertable = False,
+                       editable = False,
+                       deletable = False,
+                       )
+
+        # ---------------------------------------------------------------------
+        # Pass names back to global scope (s3.*)
+        #
+        return {}
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def defaults():
+        """ Safe defaults for names in case the module is disabled """
+
+        #dummy = S3ReusableField.dummy
+
+        return {}
 
 # =============================================================================
 class CaseTrackingModel(S3Model):
@@ -878,10 +1081,17 @@ class CaseTrackingModel(S3Model):
                            requires = IS_IN_SET(probe_status),
                            default = "PENDING",
                            ),
-                     # @todo: make a lookup table in DiseaseDataModel:
                      Field("test_type",
                            label = T("Test Type"),
                            ),
+                     # Alternative to test type:
+                     # - activate in template is/as needed
+                     self.disease_testing_device_id(
+                            label = T("Testing Device used"),
+                            ondelete = "RESTRICT",
+                            readable = False,
+                            writable = False,
+                            ),
                      Field("result",
                            label = T("Result"),
                            ),
@@ -1910,7 +2120,7 @@ class DiseaseStatsModel(S3Model):
             return
 
         # Test to see which date format we have based on how we were called
-        if isinstance(records, basestring):
+        if isinstance(records, str):
             from_json = True
             from dateutil.parser import parse
             records = json.loads(records)

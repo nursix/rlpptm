@@ -2788,12 +2788,12 @@ body.rtl .event-type-header {
 }
 /* line 313, ../scss/theme/_misc.scss */
 .auth_register .subheading,
+.auth_register .form-row,
 .auth_register .consent-widget,
-.auth_register .controls,
 .result-register .subheading,
-.result-register .consent-widget,
-.result-register .controls {
-  max-width: 48rem;
+.result-register .form-row,
+.result-register .consent-widget {
+  max-width: 48rem !important;
 }
 
 /* line 320, ../scss/theme/_misc.scss */
@@ -3022,4 +3022,19 @@ body.rtl .event-type-header {
   line-height: 3.5rem;
   font-weight: bold;
   color: #406080;
+}
+
+/* line 502, ../scss/theme/_misc.scss */
+.olFramedCloudPopupContent ul {
+  list-style-type: disc;
+  list-style-position: outside;
+}
+/* line 505, ../scss/theme/_misc.scss */
+.olFramedCloudPopupContent ul .mpinfo {
+  font-size: 0.8rem;
+}
+/* line 508, ../scss/theme/_misc.scss */
+.olFramedCloudPopupContent ul .mptitle {
+  font-weight: bold;
+  font-size: 0.9rem;
 }

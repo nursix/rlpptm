@@ -132,14 +132,13 @@ class S3DeploymentModel(S3Model):
                      # @ToDo: Link to event_type via event_id link table instead of duplicating
                      self.event_type_id(),
                      Field("code", length=24,
-                           represent = lambda v: s3_unicode(v) if v else NONE,
+                           represent = lambda v: s3_str(v) if v else NONE,
                            requires = IS_LENGTH(24),
                            ),
                      Field("status", "integer",
                            default = 2,
                            label = T("Status"),
-                           represent = lambda opt: \
-                                       mission_status_opts.get(opt, UNKNOWN_OPT),
+                           represent = S3Represent(options = mission_status_opts),
                            requires = IS_IN_SET(mission_status_opts),
                            ),
                      # @todo: change into real fields written onaccept?
@@ -570,7 +569,8 @@ class S3DeploymentModel(S3Model):
         # Pass names back to global scope (s3.*)
         #
         return {"deploy_mission_id": mission_id,
-                "deploy_mission_status_opts": mission_status_opts,
+                # Currently only used by inactive IFRC template
+                #"deploy_mission_status_opts": mission_status_opts,
                 }
 
     # -------------------------------------------------------------------------
@@ -579,11 +579,7 @@ class S3DeploymentModel(S3Model):
             Safe defaults for model-global names in case module is disabled
         """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"deploy_mission_id": lambda **attr: dummy("mission_id"),
+        return {"deploy_mission_id": S3ReusableField.dummy("mission_id"),
                 }
 
     # -------------------------------------------------------------------------

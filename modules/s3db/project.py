@@ -89,13 +89,15 @@ import datetime
 import json
 
 from collections import OrderedDict
+from io import BytesIO
 
 from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import BytesIO, xrange
 from s3layouts import S3PopupLink
+
+from .req import req_timeframe
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -397,7 +399,7 @@ class S3ProjectModel(S3Model):
             cappend(S3SQLInlineLink("hazard",
                                     label = T("Hazards"),
                                     field = "hazard_id",
-                                    help_field = self.project_hazard_help_fields,
+                                    help_field = project_hazard_help_fields,
                                     cols = 4,
                                     translate = True,
                                     ))
@@ -409,7 +411,7 @@ class S3ProjectModel(S3Model):
             cappend(S3SQLInlineLink("theme",
                                     label = T("Themes"),
                                     field = "theme_id",
-                                    help_field = self.project_theme_help_fields,
+                                    help_field = project_theme_help_fields,
                                     cols = 4,
                                     translate = True,
                                     # Filter Theme by Sector
@@ -433,7 +435,7 @@ class S3ProjectModel(S3Model):
             rappend("sum(total_organisation_amount)")
             rappend("avg(total_organisation_amount)")
         if budget_monitoring:
-            # @ToDo: Add the defaulting from RMSAmericas/config.py
+            # @ToDo: Add the defaulting from RMS/config.py
             #cappend(S3SQLInlineComponent("budget",
             #                             label = T("Budget"),
             #                             #link = False,
@@ -740,11 +742,7 @@ class S3ProjectModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_project_id": lambda **attr: dummy("project_id"),
+        return {"project_project_id": S3ReusableField.dummy("project_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -1571,11 +1569,7 @@ class S3ProjectActivityModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_activity_id": lambda **attr: dummy("activity_id"),
+        return {"project_activity_id": S3ReusableField.dummy("activity_id"),
                 }
 
     # ---------------------------------------------------------------------
@@ -1622,7 +1616,7 @@ class S3ProjectActivityModel(S3Model):
         elif not start_date:
             return [end_date.year]
         else:
-            return list(xrange(start_date.year, end_date.year + 1))
+            return list(range(start_date.year, end_date.year + 1))
 
     # ---------------------------------------------------------------------
     @staticmethod
@@ -2080,7 +2074,7 @@ class S3ProjectActivityDemographicsModel(S3Model):
                                           empty = False,
                                           comment = parameter_id_comment,
                                           ),
-                          self.req_timeframe(),
+                          req_timeframe()(),
                           Field("target_value", "integer",
                                 label = T("Target Value"),
                                 represent = IS_INT_AMOUNT.represent,
@@ -2143,7 +2137,7 @@ $.filterOptionsS3({
                                               widget = None,
                                               ),
                           self.supply_item_pack_id(),
-                          self.req_timeframe(),
+                          req_timeframe()(),
                           Field("target_value", "integer",
                                 label = T("Target Value"),
                                 represent = IS_INT_AMOUNT.represent,
@@ -4026,12 +4020,7 @@ class S3ProjectLocationModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False,
-                                )
-
-        return {"project_location_id": lambda **attr: dummy("project_location_id"),
+        return {"project_location_id": S3ReusableField.dummy("project_location_id"),
                 "project_location_represent": lambda v, row=None: "",
                 }
 
@@ -5236,7 +5225,7 @@ class S3ProjectPlanningModel(S3Model):
                      indicator_id(readable = False,
                                   writable = False,
                                   ),
-                     # Used as linktable for RMSAmericas HNRC for their UI
+                     # Used as linktable for RMS HNRC for their UI
                      indicator_activity_id(),
                      # Populated Automatically
                      # Used for Timeplot &, in future, to ease changing the monitoring frequency
@@ -8410,7 +8399,7 @@ class project_SummaryReport(S3Method):
                 (ltable.hazard_id == htable.id)
         hazards = db(query).select(htable.name)
         if hazards:
-            hazards = ", ".join([s3_unicode(T(h.name)) for h in hazards])
+            hazards = ", ".join([s3_str(T(h.name)) for h in hazards])
         else:
             hazards = NONE
 
@@ -8420,7 +8409,7 @@ class project_SummaryReport(S3Method):
                 (ltable.sector_id == stable.id)
         sectors = db(query).select(stable.name)
         if sectors:
-            sectors = ", ".join([s3_unicode(T(s.name)) for s in sectors])
+            sectors = ", ".join([s3_str(T(s.name)) for s in sectors])
         else:
             sectors = NONE
 
@@ -8430,7 +8419,7 @@ class project_SummaryReport(S3Method):
                 (ltable.theme_id == ttable.id)
         themes = db(query).select(ttable.name)
         if themes:
-            themes = ", ".join([s3_unicode(T(t.name)) for t in themes])
+            themes = ", ".join([s3_str(T(t.name)) for t in themes])
         else:
             themes = NONE
 
@@ -9124,9 +9113,9 @@ class project_IndicatorSummaryReport(S3Method):
 
         date_represent = s3db.project_indicator_data.end_date.represent
 
-        labels11 = [s3_unicode(T("Number")),
-                    s3_unicode(T("Indicators")),
-                    s3_unicode(T("Total Target")),
+        labels11 = [s3_str(T("Number")),
+                    s3_str(T("Indicators")),
+                    s3_str(T("Total Target")),
                     ]
         labels12 = []
         lappend = labels12.append
@@ -9139,16 +9128,16 @@ class project_IndicatorSummaryReport(S3Method):
                 year = years[y]
             lappend(date_represent(d))
         lappend(str(year))
-        labels13 = [s3_unicode(T("Actual Total")),
-                    s3_unicode(T("% Achieved")),
+        labels13 = [s3_str(T("Actual Total")),
+                    s3_str(T("% Achieved")),
                     ]
 
         labels22 = []
         lappend = labels22.append
         y = 0
         year = years[y]
-        TARGET = s3_unicode(T("Target"))
-        ACTUAL = s3_unicode(T("Actual"))
+        TARGET = s3_str(T("Target"))
+        ACTUAL = s3_str(T("Actual"))
         for d in dates:
             if d.year != year:
                 lappend(TARGET)
@@ -9175,7 +9164,7 @@ class project_IndicatorSummaryReport(S3Method):
         book = xlwt.Workbook(encoding="utf-8")
 
         # Add sheet
-        sheet = book.add_sheet(s3_unicode(T("Report")))
+        sheet = book.add_sheet(s3_str(T("Report")))
 
         # Set column Widths
         col_index = 0
@@ -9188,7 +9177,7 @@ class project_IndicatorSummaryReport(S3Method):
             col_index += 1
 
         # 1st row => Report Title
-        title = s3_unicode(T("Summary of Progress Indicators for Outcomes and Indicators"))
+        title = s3_str(T("Summary of Progress Indicators for Outcomes and Indicators"))
         current_row = sheet.row(0)
         current_row.height = 500
         current_row.write(0, title, large_header_style)
@@ -9365,7 +9354,7 @@ class project_IndicatorSummaryReport(S3Method):
                         row_index += 1
 
         current_row = sheet.row(row_index)
-        label = s3_unicode(T(self.project_status_label))
+        label = s3_str(T(self.project_status_label))
         # Fix the size of the column to display the label
         if len(label) * COL_WIDTH_MULTIPLIER > sheet.col(colspan).width:
             sheet.col(colspan).width = len(label) * COL_WIDTH_MULTIPLIER
@@ -9951,11 +9940,7 @@ class S3ProjectProgrammeModel(S3Model):
     def defaults():
         """ Safe defaults for names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_programme_id": lambda **attr: dummy("programme_id"),
+        return {"project_programme_id": S3ReusableField.dummy("programme_id"),
                 }
 
 # =============================================================================
@@ -10098,12 +10083,7 @@ class S3ProjectStatusModel(S3Model):
             Safe defaults for model-global names in case module is disabled
         """
 
-        dummy = S3ReusableField("dummy", "string",
-                                readable = False,
-                                writable = False,
-                                )
-
-        return {"project_status_id": lambda **attr: dummy("status_id"),
+        return {"project_status_id": S3ReusableField.dummy("status_id"),
                 }
 
 # =============================================================================
@@ -10179,11 +10159,7 @@ class S3ProjectStrategyModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_strategy_id": lambda **attr: dummy("strategy_id"),
+        return {"project_strategy_id": S3ReusableField.dummy("strategy_id"),
                 }
 
 # =============================================================================
@@ -11694,11 +11670,7 @@ class S3ProjectTaskModel(S3Model):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False)
-
-        return {"project_task_id": lambda **attr: dummy("task_id"),
+        return {"project_task_id": S3ReusableField.dummy("task_id"),
                 "project_task_active_statuses": [],
                 }
 
@@ -12861,7 +12833,7 @@ def project_activity_year_options():
     if not start_year or not end_year:
         return {start_year:start_year} or {end_year:end_year}
     years = {}
-    for year in xrange(start_year, end_year + 1):
+    for year in range(start_year, end_year + 1):
         years[year] = year
     return years
 

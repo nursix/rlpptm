@@ -39,6 +39,8 @@ __all__ = ("S3AxisFilter",
 import json
 import sys
 
+from functools import reduce
+from io import StringIO
 from itertools import chain
 
 try:
@@ -53,13 +55,12 @@ from gluon.validators import IS_EMPTY_OR
 from gluon.storage import Storage
 from gluon.tools import callback
 
-from s3compat import StringIO, basestring, reduce, xrange
 from s3dal import Expression, Field, Row, Rows, Table, S3DAL, VirtualCommand
 from .s3data import S3DataTable, S3DataList
 from .s3datetime import s3_format_datetime
 from .s3fields import s3_all_meta_field_names
 from .s3query import FS, S3ResourceField, S3ResourceQuery, S3Joins, S3URLQuery
-from .s3utils import s3_get_foreign_key, s3_get_last_record_id, s3_has_foreign_key, s3_remove_last_record_id, s3_str, s3_unicode
+from .s3utils import s3_get_last_record_id, s3_has_foreign_key, s3_remove_last_record_id, s3_str
 from .s3validators import IS_ONE_OF
 from .s3xml import S3XMLFormat
 
@@ -108,7 +109,8 @@ class S3Resource(object):
                  approved = True,
                  unapproved = False,
                  context = False,
-                 extra_filters = None):
+                 extra_filters = None
+                 ):
         """
             Constructor
 
@@ -152,7 +154,7 @@ class S3Resource(object):
         table_alias = None
 
         if prefix is None:
-            if not isinstance(tablename, basestring):
+            if not isinstance(tablename, str):
                 if isinstance(tablename, Table):
                     table = tablename
                     table_alias = table._tablename
@@ -323,7 +325,8 @@ class S3Resource(object):
                     filter = None,
                     vars = None,
                     extra_filters = None,
-                    filter_component = None):
+                    filter_component = None,
+                    ):
         """
             Query builder
 
@@ -494,7 +497,8 @@ class S3Resource(object):
                as_rows = False,
                represent = False,
                show_links = True,
-               raw_data = False):
+               raw_data = False,
+               ):
         """
             Extract data from this resource
 
@@ -527,7 +531,8 @@ class S3Resource(object):
                               as_rows = as_rows,
                               represent = represent,
                               show_links = show_links,
-                              raw_data = raw_data)
+                              raw_data = raw_data,
+                              )
         if as_rows:
             return data.rows
         else:
@@ -1268,7 +1273,7 @@ class S3Resource(object):
         if self._rows is None:
             self.load()
         rows = self._rows
-        for i in xrange(len(rows)):
+        for i in range(len(rows)):
             yield rows[i]
         return
 
@@ -1655,7 +1660,7 @@ class S3Resource(object):
                 if isinstance(s, etree._ElementTree):
                     t = s
                 elif format == "json":
-                    if isinstance(s, basestring):
+                    if isinstance(s, str):
                         source = StringIO(s)
                         t = xml.json2tree(s)
                     else:
@@ -2808,7 +2813,7 @@ class S3Resource(object):
                     numcols = 0
 
                 flist = []
-                for i in xrange(numcols):
+                for i in range(numcols):
                     try:
                         rfield = rfields[i]
                         field = rfield.field
@@ -2900,7 +2905,7 @@ class S3Resource(object):
                     elif options is not None:
                         opts[fname] = options
                         vlist = [v for v, t in options
-                                   if s3_unicode(t).lower().find(s3_unicode(w)) != -1]
+                                   if s3_str(t).lower().find(s3_str(w)) != -1]
                         if vlist:
                             wqueries.append(field.belongs(vlist))
                 if len(wqueries):
@@ -2929,7 +2934,7 @@ class S3Resource(object):
 
             columns = []
             pkey = str(self._id)
-            for i in xrange(numcols):
+            for i in range(numcols):
                 try:
                     iSortCol = int(get_vars["iSortCol_%s" % i])
                 except (AttributeError, KeyError):
@@ -2940,7 +2945,7 @@ class S3Resource(object):
                 # Map sortable-column index to the real list_fields
                 # index: for every non-id non-sortable column to the
                 # left of sortable column subtract 1
-                for j in xrange(iSortCol):
+                for j in range(iSortCol):
                     if get_vars.get("bSortable_%s" % j, "true") == "false":
                         try:
                             if rfields[j].colname != pkey:
@@ -2958,7 +2963,7 @@ class S3Resource(object):
                     columns.append(rfield)
 
             # Process the orderby-fields
-            for i in xrange(len(columns)):
+            for i in range(len(columns)):
                 rfield = columns[i]
                 field = rfield.field
                 if field is None:
@@ -3084,7 +3089,7 @@ class S3Resource(object):
                     fdict = {}
                     if include:
                         for v in values:
-                            vstr = s3_unicode(v) if v is not None else v
+                            vstr = s3_str(v) if v is not None else v
                             if vstr in include and vstr not in exclude:
                                 fdict[v] = None
                     else:
@@ -3755,11 +3760,11 @@ class S3AxisFilter(object):
            fieldname == rfield.fname:
             value = self.r
             if isinstance(value, (list, tuple)):
-                value = [s3_unicode(v) for v in value]
+                value = [s3_str(v) for v in value]
                 if not value:
                     value = [None]
             else:
-                value = [s3_unicode(value)]
+                value = [s3_str(value)]
             if op == "CONTAINS":
                 return value, []
             elif op == "EQ":
@@ -4565,19 +4570,20 @@ class S3ResourceData(object):
     def __init__(self,
                  resource,
                  fields,
-                 start=0,
-                 limit=None,
-                 left=None,
-                 orderby=None,
-                 groupby=None,
-                 distinct=False,
-                 virtual=True,
-                 count=False,
-                 getids=False,
-                 as_rows=False,
-                 represent=False,
-                 show_links=True,
-                 raw_data=False):
+                 start = 0,
+                 limit = None,
+                 left = None,
+                 orderby = None,
+                 groupby = None,
+                 distinct = False,
+                 virtual = True,
+                 count = False,
+                 getids = False,
+                 as_rows = False,
+                 represent = False,
+                 show_links = True,
+                 raw_data = False
+                 ):
         """
             Constructor, extracts (and represents) data from a resource
 
@@ -5233,11 +5239,11 @@ class S3ResourceData(object):
     # -------------------------------------------------------------------------
     def filter_query(self,
                      query,
-                     join=None,
-                     left=None,
-                     getids=False,
-                     limitby=None,
-                     orderby=None,
+                     join = None,
+                     left = None,
+                     getids = False,
+                     limitby = None,
+                     orderby = None,
                      ):
         """
             Execute a query to determine the number/record IDs of all
@@ -5341,8 +5347,9 @@ class S3ResourceData(object):
                       dfields,
                       vfields,
                       joined_tables,
-                      as_rows=False,
-                      groupby=None):
+                      as_rows = False,
+                      groupby = None
+                      ):
         """
             Find all tables and fields to retrieve in the master query
 
@@ -5556,9 +5563,10 @@ class S3ResourceData(object):
                 rows,
                 pkey,
                 columns,
-                join=True,
-                records=None,
-                represent=False):
+                join = True,
+                records = None,
+                represent = False
+                ):
         """
             Extract the data from rows and store them in self.field_data
 
@@ -5642,9 +5650,10 @@ class S3ResourceData(object):
     def render(self,
                rfield,
                results,
-               none="-",
-               raw_data=False,
-               show_links=True):
+               none = "-",
+               raw_data = False,
+               show_links = True
+               ):
         """
             Render the representations of the values for rfield in
             all records in the result

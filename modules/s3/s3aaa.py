@@ -43,6 +43,7 @@ import json
 import time
 
 from collections import OrderedDict
+from functools import reduce
 from uuid import uuid4
 
 #from gluon import *
@@ -56,7 +57,6 @@ from gluon.storage import Storage
 from gluon.tools import Auth, callback, DEFAULT, replace_id
 from gluon.utils import web2py_uuid
 
-from s3compat import basestring, reduce
 from s3dal import Row, Rows, Query, Table, Field, original_tablename
 from .s3datetime import S3DateTime
 from .s3error import S3PermissionError
@@ -3797,7 +3797,7 @@ Please go to %(url)s to approve this user."""
         if not user_id:
             # Anonymous
             user = None
-        elif isinstance(user_id, basestring) and not user_id.isdigit():
+        elif isinstance(user_id, str) and not user_id.isdigit():
             query = (utable[settings.login_userfield] == user_id)
         else:
             query = (utable.id == user_id)
@@ -4030,7 +4030,7 @@ Please go to %(url)s to approve this user."""
                                   system_roles.AUTHENTICATED,
                                   )
 
-                default_realm = s3db.pr_realm(self.user["pe_id"])
+                default_realm = s3db.pr_default_realms(self.user["pe_id"])
 
                 # Store the realms:
                 for row in rows:
@@ -4557,7 +4557,7 @@ Please go to %(url)s to approve this user."""
         check = set()
         resolve = set()
         for role in roles:
-            if isinstance(role, basestring):
+            if isinstance(role, str):
                 resolve.add(role)
             else:
                 check.add(role)
@@ -4919,7 +4919,7 @@ Please go to %(url)s to approve this user."""
 
         result = None
 
-        if isinstance(person_id, basestring) and not person_id.isdigit():
+        if isinstance(person_id, str) and not person_id.isdigit():
             # User email address
             utable = self.settings.table_user
             query = (utable.email == person_id)
@@ -6087,7 +6087,8 @@ class S3Permission(object):
         self.unrestricted_pages = ("default/index",
                                    "default/user",
                                    "default/contact",
-                                   "default/about")
+                                   "default/about",
+                                   )
 
         # Default landing pages
         _next = URL(args=request.args, vars=request.get_vars)
@@ -6153,24 +6154,27 @@ class S3Permission(object):
                             # apply this ACL to all records regardless
                             # of the realm entity
                             Field("unrestricted", "boolean",
-                                  default=False),
-                            migrate=migrate,
-                            fake_migrate=fake_migrate,
-                            *S3MetaFields.sync_meta_fields())
+                                  default = False
+                                  ),
+                            migrate = migrate,
+                            fake_migrate = fake_migrate,
+                            *S3MetaFields.sync_meta_fields()
+                            )
             self.table = db[self.tablename]
 
     # -------------------------------------------------------------------------
     # ACL Management
     # -------------------------------------------------------------------------
     def update_acl(self, group,
-                   c=None,
-                   f=None,
-                   t=None,
-                   record=None,
-                   oacl=None,
-                   uacl=None,
-                   entity=None,
-                   delete=False):
+                   c = None,
+                   f = None,
+                   t = None,
+                   record = None,
+                   oacl = None,
+                   uacl = None,
+                   entity = None,
+                   delete = False
+                   ):
         """
             Update an ACL
 
@@ -6229,7 +6233,7 @@ class S3Permission(object):
                    "entity": entity,
                    }
 
-            if isinstance(group, basestring) and not group.isdigit():
+            if isinstance(group, str) and not group.isdigit():
                 gtable = self.auth.settings.table_group
                 query = (gtable.uuid == group) & \
                         (table.group_id == gtable.id)
@@ -6245,7 +6249,8 @@ class S3Permission(object):
                       (table.entity == entity))
             record = current.db(query).select(table.id,
                                               table.group_id,
-                                              limitby=(0, 1)).first()
+                                              limitby = (0, 1)
+                                              ).first()
             if record:
                 if delete:
                     acl = {"group_id": None,
@@ -6262,7 +6267,7 @@ class S3Permission(object):
             else:
                 # Lookup the group_id
                 record = current.db(gtable.uuid == group).select(gtable.id,
-                                                                 limitby=(0, 1)
+                                                                 limitby = (0, 1)
                                                                  ).first()
                 if record:
                     acl["group_id"] = group_id
@@ -6272,11 +6277,12 @@ class S3Permission(object):
 
     # -------------------------------------------------------------------------
     def delete_acl(self, group,
-                   c=None,
-                   f=None,
-                   t=None,
-                   record=None,
-                   entity=None):
+                   c = None,
+                   f = None,
+                   t = None,
+                   record = None,
+                   entity = None
+                   ):
         """
             Delete an ACL
             @param group: the ID or UID of the auth_group this ACL applies to
@@ -6289,12 +6295,13 @@ class S3Permission(object):
         """
 
         return self.update_acl(group,
-                               c=c,
-                               f=f,
-                               t=t,
-                               record=record,
-                               entity=entity,
-                               delete=True)
+                               c = c,
+                               f = f,
+                               t = t,
+                               record = record,
+                               entity = entity,
+                               delete = True
+                               )
 
     # -------------------------------------------------------------------------
     # Record Ownership
@@ -6354,7 +6361,9 @@ class S3Permission(object):
             # Get the record
             fs = [table[f] for f in fields] + [table.id]
             query = (table._id == record_id)
-            record = current.db(query).select(limitby=(0, 1), *fs).first()
+            record = current.db(query).select(limitby = (0, 1),
+                                              *fs
+                                              ).first()
         if not record:
             # Record does not exist
             return DEFAULT
@@ -6439,9 +6448,10 @@ class S3Permission(object):
     def owner_query(self,
                     table,
                     user,
-                    use_realm=True,
-                    realm=None,
-                    no_realm=None):
+                    use_realm = True,
+                    realm = None,
+                    no_realm = None
+                    ):
         """
             Returns a query to select the records in table owned by user
 
@@ -6492,7 +6502,6 @@ class S3Permission(object):
                         query = None
 
             if not self.strict_ownership:
-
                 # Any authenticated user owns all records with no owner
                 public = None
                 if OUSR in table.fields:
@@ -6657,7 +6666,7 @@ class S3Permission(object):
 
         if record is None and record_id:
             record = current.db(table._id == record_id).select(table.approved_by,
-                                                               limitby=(0, 1)
+                                                               limitby = (0, 1)
                                                                ).first()
             if not record:
                 return False
@@ -6835,7 +6844,7 @@ class S3Permission(object):
         # Do we need to check the owner role (i.e. table+record given)?
         if t is not None and record is not None:
             owners = self.get_owners(t, record)
-            is_owner = self.is_owner(t, record, owners=owners)
+            is_owner = self.is_owner(t, record, owners=owners, strict=self.strict_ownership)
             entity = owners[0]
         else:
             owners = []
@@ -6858,12 +6867,13 @@ class S3Permission(object):
 
         # Get the applicable ACLs
         acls = self.applicable_acls(racl,
-                                    realms=realms,
-                                    delegations=delegations,
-                                    c=c,
-                                    f=f,
-                                    t=t,
-                                    entity=entity)
+                                    realms = realms,
+                                    delegations = delegations,
+                                    c = c,
+                                    f = f,
+                                    t = t,
+                                    entity = entity
+                                    )
 
         permitted = None
         if acls is None:
@@ -7078,11 +7088,12 @@ class S3Permission(object):
 
         # Get the applicable ACLs
         acls = self.applicable_acls(racl,
-                                    realms=realms,
-                                    delegations=delegations,
-                                    c=c,
-                                    f=f,
-                                    t=table)
+                                    realms = realms,
+                                    delegations = delegations,
+                                    c = c,
+                                    f = f,
+                                    t = table
+                                    )
 
         if acls is None:
             #_debug("==> no ACLs defined for this case")
@@ -7128,9 +7139,9 @@ class S3Permission(object):
             use_realm = "ANY" not in oacls
             owner_query = self.owner_query(table,
                                            user,
-                                           use_realm=use_realm,
-                                           realm=oacls,
-                                           no_realm=no_realm,
+                                           use_realm = use_realm,
+                                           realm = oacls,
+                                           no_realm = no_realm,
                                            )
 
             if owner_query is not None:
@@ -7160,16 +7171,17 @@ class S3Permission(object):
 
     # -------------------------------------------------------------------------
     def accessible_url(self,
-                       c=None,
-                       f=None,
-                       p=None,
-                       t=None,
-                       a=None,
-                       args=None,
-                       vars=None,
-                       anchor="",
-                       extension=None,
-                       env=None):
+                       c = None,
+                       f = None,
+                       p = None,
+                       t = None,
+                       a = None,
+                       args = None,
+                       vars = None,
+                       anchor = "",
+                       extension = None,
+                       env = None
+                       ):
         """
             Return a URL only if accessible by the user, otherwise False
             - used for Navigation Items
@@ -7207,14 +7219,15 @@ class S3Permission(object):
 
         permitted = self.has_permission(p, c=c, f=f, t=t)
         if permitted:
-            return URL(a=a,
-                       c=c,
-                       f=f,
-                       args=args,
-                       vars=vars,
-                       anchor=anchor,
-                       extension=extension,
-                       env=env)
+            return URL(a = a,
+                       c = c,
+                       f = f,
+                       args = args,
+                       vars = vars,
+                       anchor = anchor,
+                       extension = extension,
+                       env = env
+                       )
         else:
             return False
 
@@ -7252,12 +7265,13 @@ class S3Permission(object):
     # ACL Lookup
     # -------------------------------------------------------------------------
     def applicable_acls(self, racl,
-                        realms=None,
-                        delegations=None,
-                        c=None,
-                        f=None,
-                        t=None,
-                        entity=None):
+                        realms = None,
+                        delegations = None,
+                        c = None,
+                        f = None,
+                        t = None,
+                        entity = None
+                        ):
         """
             Find all applicable ACLs for the specified situation for
             the specified realms and delegations
@@ -7335,7 +7349,8 @@ class S3Permission(object):
                                     table.entity,
                                     table.uacl,
                                     table.oacl,
-                                    cacheable=True)
+                                    cacheable = True
+                                    )
         else:
             rows = []
 
@@ -7507,7 +7522,7 @@ class S3Permission(object):
             # b) looking up OU ancestors of a person (=a few) is much more
             #    efficient than looking up pr_person OU descendants of the
             #    role realm (=could be tens or hundreds of thousands)
-            ancestors = set(s3db.pr_realm(entity))
+            ancestors = set(s3db.pr_default_realms(entity))
 
         result = {}
         for e in acls:

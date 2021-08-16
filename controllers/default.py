@@ -338,9 +338,6 @@ google.setOnLoadCallback(LoadDynamicFeedControl)'''))
               "datatable_ajax_source": datatable_ajax_source,
               }
 
-    if get_vars.tour:
-        output = s3db.tour_builder(output)
-
     return output
 
 # -----------------------------------------------------------------------------
@@ -972,7 +969,7 @@ def page():
         raise HTTP(404, "Page not found in CMS")
 
     if row.body:
-        from s3compat import StringIO
+        from io import StringIO
         try:
             body = current.response.render(StringIO(row.body), {})
         except:

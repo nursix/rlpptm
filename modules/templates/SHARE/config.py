@@ -201,10 +201,6 @@ def config(settings):
             access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
             module_type = None  # This item is handled separately for the menu
         )),
-        #("tour", Storage(
-        #    name_nice = T("Guided Tour Functionality"),
-        #    module_type = None,
-        #)),
         ("translate", Storage(
             name_nice = T("Translation Functionality"),
             #description = "Selective translation of strings based on module.",
@@ -362,7 +358,7 @@ def config(settings):
 
         ctable.json_dump = s3_fieldmethod("json_dump",
                                           comment_as_json,
-                                          # over-ride the default represent of s3_unicode to prevent HTML being rendered too early
+                                          # over-ride the default represent of s3_str to prevent HTML being rendered too early
                                           #represent = lambda v: v,
                                           )
 
@@ -2435,7 +2431,7 @@ S3.redraw_fns.push('tagit')''' % (T("Add tags here…"),
             #
             #    table.quantity_delivered_w_location = s3_fieldmethod("quantity_delivered_w_location",
             #                                                         quantity_delivered_w_location,
-            #                                                         # over-ride the default represent of s3_unicode to prevent HTML being rendered too early
+            #                                                         # over-ride the default represent of s3_str to prevent HTML being rendered too early
             #                                                         #represent = lambda v: v,
             #                                                         )
             #    list_fields.insert(9, (T("Items Delivered"), "quantity_delivered_w_location"))

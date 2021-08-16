@@ -50,7 +50,6 @@ from gluon.sqlhtml import OptionsWidget
 from gluon.storage import Storage
 from gluon.validators import IS_IN_SET, IS_EMPTY_OR
 
-from s3compat import INTEGER_TYPES, basestring, xrange
 from .s3query import FS
 from .s3rest import S3Method
 from .s3utils import s3_flatlist, s3_has_foreign_key, s3_str, S3MarkupStripper, s3_represent_value
@@ -539,16 +538,18 @@ class S3Report(S3Method):
             # Generate the report form
             ajax_vars = Storage(r.get_vars)
             ajax_vars.update(get_vars)
-            filter_form = attr.get("filter_form", None)
-            filter_tab = attr.get("filter_tab", None)
+            attr_get = attr.get
+            filter_form = attr_get("filter_form", None)
+            filter_tab = attr_get("filter_tab", None)
             filter_url = r.url(method = "",
                                representation = "",
                                vars = ajax_vars.fromkeys((k for k in ajax_vars
                                                           if k not in report_vars)),
                                )
-            ajaxurl = attr.get("ajaxurl", r.url(method="report",
-                                                representation="json",
-                                                vars=ajax_vars))
+            ajaxurl = attr_get("ajaxurl", r.url(method = "report",
+                                                representation = "json",
+                                                vars = ajax_vars
+                                                ))
             output = S3ReportForm(resource).html(pivotdata,
                                                  get_vars = get_vars,
                                                  filter_widgets = None,
@@ -556,7 +557,8 @@ class S3Report(S3Method):
                                                  filter_url = filter_url,
                                                  filter_form = filter_form,
                                                  filter_tab = filter_tab,
-                                                 widget_id = widget_id)
+                                                 widget_id = widget_id
+                                                 )
 
             # Detect and store theme-specific inner layout
             view = self._view(r, "pivottable.html")
@@ -1504,7 +1506,7 @@ class S3PivotTableFact(object):
         else:
             # Numeric values required - some virtual fields
             # return '-' for None, so must type-check here:
-            values = [v for v in values if isinstance(v, INTEGER_TYPES + (float,))]
+            values = [v for v in values if isinstance(v, (int, float))]
 
             if method == "min":
                 try:
@@ -1670,7 +1672,7 @@ class S3PivotTableFact(object):
         selector = prefix(rfield.selector)
         for f in fields:
             if type(f) is tuple and \
-                isinstance(f[1], basestring) and \
+                isinstance(f[1], str) and \
                 prefix(f[1]) == selector:
                 label = f[0]
                 break
@@ -1736,7 +1738,7 @@ class S3PivotTable(object):
             @param strict: filter out dimension values which don't match
                            the resource filter
             @param precision: maximum precision of aggregate computations,
-                              a dict {selector:number_of_decimals}
+                              a dict {selector: number_of_decimals}
         """
 
         # Initialize ----------------------------------------------------------
@@ -1958,7 +1960,7 @@ class S3PivotTable(object):
         if self.empty:
             location_ids = []
         else:
-            numeric = lambda x: isinstance(x, INTEGER_TYPES + (float,))
+            numeric = lambda x: isinstance(x, (int, float))
             row_repr = s3_str
 
             ids = {}
@@ -1967,7 +1969,7 @@ class S3PivotTable(object):
 
             # Group and sort the rows
             is_numeric = None
-            for i in xrange(self.numrows):
+            for i in range(self.numrows):
                 irow = irows[i]
                 total = irow[layer]
                 if is_numeric is None:
@@ -2089,7 +2091,7 @@ class S3PivotTable(object):
             irows = self.row
             rows = []
             rtail = (None, None)
-            for i in xrange(self.numrows):
+            for i in range(self.numrows):
                 irow = irows[i]
                 totals = [irow[layer] for layer in layers]
                 sort_total = totals[0]
@@ -2113,7 +2115,7 @@ class S3PivotTable(object):
             icols = self.col
             cols = []
             ctail = (None, None)
-            for i in xrange(self.numcols):
+            for i in range(self.numcols):
                 icol = icols[i]
                 totals = [icol[layer] for layer in layers]
                 sort_total = totals[0]
@@ -2140,11 +2142,11 @@ class S3PivotTable(object):
             # @todo: break up into subfunctions
             icell = self.cell
             cells = {}
-            for i in xrange(self.numrows):
+            for i in range(self.numrows):
                 irow = icell[i]
                 ridx = (i, OTHER) if rothers and i in rothers else (i,)
 
-                for j in xrange(self.numcols):
+                for j in range(self.numcols):
                     cell = irow[j]
                     cidx = (j, OTHER) if cothers and j in cothers else (j,)
 
@@ -2294,7 +2296,7 @@ class S3PivotTable(object):
                                 except AttributeError:
                                     continue
                                 if method == "sum" and \
-                                   isinstance(fvalue, INTEGER_TYPES + (float,)) and fvalue:
+                                   isinstance(fvalue, (int, float)) and fvalue:
                                     okeys.append(record_id)
                                 elif method == "count" and \
                                    fvalue is not None:
@@ -2431,10 +2433,10 @@ class S3PivotTable(object):
             # Get the representation method
             has_fk = f is not None and s3_has_foreign_key(f)
             if has_fk:
-                represent = lambda v, f=f: s3_str(f.represent(v))
+                represent = lambda v, field=f: s3_str(field.represent(v))
             else:
-                m = self._represent_method(selector)
-                represent = lambda v, m=m: s3_str(m(v))
+                reprmethod = self._represent_method(selector)
+                represent = lambda v, m=reprmethod: s3_str(m(v))
 
             represents[selector] = represent
 
@@ -2524,7 +2526,7 @@ class S3PivotTable(object):
                 return (keys, totals[0], totals)
         except (TypeError, ValueError):
             pass
-        return (None, None)
+        return (None, None, None)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2598,9 +2600,9 @@ class S3PivotTable(object):
                 cells[(r, c)].append(item[pkey_colname])
 
         matrix = []
-        for r in xrange(len(rvalues)):
+        for r in range(len(rvalues)):
             row = []
-            for c in xrange(len(cvalues)):
+            for c in range(len(cvalues)):
                 row.append(cells[(r, c)])
             matrix.append(row)
 
@@ -2650,12 +2652,12 @@ class S3PivotTable(object):
         # Initialize cells
         if self.cell is None:
             self.cell = [[Storage()
-                          for i in xrange(numcols)]
-                         for j in xrange(numrows)]
+                          for i in range(numcols)]
+                         for j in range(numrows)]
         cells = self.cell
 
         all_values = []
-        for r in xrange(numrows):
+        for r in range(numrows):
 
             # Initialize row header
             row = rows[r]
@@ -2665,7 +2667,7 @@ class S3PivotTable(object):
             row_records = row[RECORDS]
             row_values = row[VALUES]
 
-            for c in xrange(numcols):
+            for c in range(numcols):
 
                 # Initialize column header
                 col = cols[c]
@@ -2727,7 +2729,7 @@ class S3PivotTable(object):
             del row[VALUES]
 
         # Compute column total
-        for c in xrange(numcols):
+        for c in range(numcols):
             col = cols[c]
             col[layer] = fact.compute(col[VALUES],
                                       totals = True,

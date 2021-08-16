@@ -39,7 +39,7 @@ def is_affiliated():
     else:
         table = auth.settings.table_user
         auth_user = db(table.id == auth.user.id).select(table.organisation_id,
-                                                        limitby=(0, 1),
+                                                        limitby = (0, 1),
                                                         ).first()
         if auth_user and auth_user.organisation_id:
             return True
@@ -124,8 +124,7 @@ def req_template():
     if "req_item" in request.args:
         # List fields for req_item
         table = s3db.req_req_item
-        list_fields = ["id",
-                       "item_id",
+        list_fields = ["item_id",
                        "item_pack_id",
                        "quantity",
                        "comments",
@@ -137,8 +136,7 @@ def req_template():
     elif "req_skill" in request.args:
         # List fields for req_skill
         table = s3db.req_req_skill
-        list_fields = ["id",
-                       "skill_id",
+        list_fields = ["skill_id",
                        "quantity",
                        "comments",
                        ]
@@ -163,8 +161,7 @@ def req_template():
             field = table[fieldname]
             field.readable = field.writable = False
         table.purpose.label = T("Details")
-        list_fields = ["id",
-                       "site_id"
+        list_fields = ["site_id"
                        ]
         if len(settings.get_req_req_type()) > 1:
             list_fields.append("type")
@@ -221,19 +218,38 @@ def req_controller(template = False):
         workflow_status = record.workflow_status if record else None
 
         if r.interactive:
-            # Set the req_item site_id (Requested From), called from action buttons on req/req_item_inv_item/x page
-            if "req_item_id" in get_vars and "inv_item_id" in get_vars:
+            inv_item_id = get_vars.get("inv_item_id")
+            if inv_item_id:
+                # Called from action buttons on req/req_item_inv_item/x page
+                req_item_id = get_vars.get("req_item_id")
+                if not auth.s3_has_permission("update", "req_req_item", record_id=req_item_id):
+                    r.unauthorised()
+                # Set the req_item.site_id (Requested From)
                 iitable = s3db.inv_inv_item
-                inv_item = db(iitable.id == get_vars.inv_item_id).select(iitable.site_id,
-                                                                         iitable.item_id,
-                                                                         limitby=(0, 1),
-                                                                         ).first()
+                inv_item = db(iitable.id == inv_item_id).select(iitable.site_id,
+                                                                iitable.item_id,
+                                                                limitby = (0, 1)
+                                                                ).first()
                 site_id = inv_item.site_id
-                # @ToDo: Check Permissions & Avoid DB updates in GETs
-                db(s3db.req_req_item.id == get_vars.req_item_id).update(site_id = site_id)
+                # @ToDo: Avoid DB updates in GETs
+                #        - JS to catch the GET & convert to POST (like searchRewriteAjaxOptions in s3.filter.js)
+                db(s3db.req_req_item.id == req_item_id).update(site_id = site_id)
+                onaccepts = s3db.get_config("req_req_item", "onaccept")
+                if onaccepts:
+                    record = Storage(id = req_item_id,
+                                     req_id = r.id,
+                                     site_id = site_id,
+                                     )
+                    form = Storage(vars = record)
+                    if not isinstance(onaccepts, (list, tuple)):
+                        onaccepts = [onaccepts]
+                    [onaccept(form) for onaccept in onaccepts]
+
+                from s3db.org import org_SiteRepresent
+                from s3db.supply import supply_ItemRepresent
                 response.confirmation = T("%(item)s requested from %(site)s") % \
-                    {"item": s3db.supply_ItemRepresent()(inv_item.item_id),
-                     "site": s3db.org_SiteRepresent()(site_id)
+                    {"item": supply_ItemRepresent()(inv_item.item_id),
+                     "site": org_SiteRepresent()(site_id)
                      }
             elif "req.site_id" in get_vars:
                 # Called from 'Make new request' button on [siteinstance]/req page
@@ -306,7 +322,8 @@ def req_controller(template = False):
                 elif r.component_name == "req_item":
                     ctable = r.component.table
                     ctable.site_id.writable = ctable.site_id.readable = False
-                    s3.req_hide_quantities(ctable)
+                    from s3db.req import req_hide_quantities
+                    req_hide_quantities(ctable)
                     if use_workflow and workflow_status in (3, 4, 5): # Approved, Completed, Cancelled
                         # Lock all fields
                         s3db.configure("req_req_item",
@@ -316,7 +333,8 @@ def req_controller(template = False):
                                        )
 
                 elif r.component_name == "req_skill":
-                    s3.req_hide_quantities(r.component.table)
+                    from s3db.req import req_hide_quantities
+                    req_hide_quantities(r.component.table)
                     if use_workflow and workflow_status in (3, 4, 5): # Approved, Completed, Cancelled
                         # Lock all fields
                         s3db.configure("req_req_skill",
@@ -524,7 +542,7 @@ def req_controller(template = False):
                             # Can't commit if we have no acceptable sites
                             # TODO do not redirect if site is not required,
                             #      e.g. org-only commits of skills
-                            error_msg=T("You do not have permission for any facility to make a commitment.")
+                            error_msg = T("You do not have permission for any facility to make a commitment.")
                             current.session.error = error_msg
                             redirect(r.url(component="", method=""))
                         else:
@@ -734,21 +752,21 @@ $.filterOptionsS3({
                             {"label": s3_str(T("Open")),
                              "url": URL(c="req",
                                         f="req_template",
-                                        args=[record_id, "job", "[id]"],
+                                        args = [record_id, "job", "[id]"],
                                         ),
                              "_class": "action-btn",
                              },
                             {"label": s3_str(T("Reset")),
                              "url": URL(c="req",
                                         f="req_template",
-                                        args=[record_id, "job", "[id]", "reset"],
+                                        args = [record_id, "job", "[id]", "reset"],
                                         ),
                              "_class": "action-btn",
                              },
                             {"label": s3_str(T("Run Now")),
                              "url": URL(c="req",
                                         f="req_template",
-                                        args=[record_id, "job", "[id]", "run"],
+                                        args = [record_id, "job", "[id]", "run"],
                                         ),
                              "_class": "action-btn",
                              },
@@ -940,6 +958,32 @@ def req_item():
     if request.function != "fema":
         s3.filter = (FS("req_id$is_template") == False)
 
+    def order_item(r, **attr):
+        """
+            Create a req_order_item from a req_req_item
+        """
+
+        record = r.record
+        req_id = record.req_id
+
+        s3db.req_order_item.insert(req_item_id = record.id,
+                                   req_id = req_id,
+                                   item_id = record.item_id,
+                                   item_pack_id = record.item_pack_id,
+                                   quantity = record.quantity,
+                                   )
+
+        session.confirmation = T("Item added to your list of Purchases")
+        # Redirect back to the Request's Items tab
+        redirect(URL(c="req", f="req",
+                     args = [req_id, "req_item"]
+                     ))
+
+    s3db.set_method("req", "req_item",
+                    method = "order",
+                    action = order_item
+                    )
+
     def prep(r):
 
         if r.interactive or r.representation == "aadata":
@@ -1016,27 +1060,42 @@ def req_item_packs():
 def req_item_inv_item():
     """
         Shows the inventory items which match a requested item
-        @ToDo: Make this page a component of req_item
     """
 
     req_item_id  = request.args[0]
-    request.args = [] #
+    request.args = []
     ritable = s3db.req_req_item
-    req_item = ritable[req_item_id]
+    req_item = db(ritable.id == req_item_id).select(ritable.req_id,
+                                                    ritable.item_id,
+                                                    ritable.quantity,
+                                                    ritable.quantity_commit,
+                                                    ritable.quantity_transit,
+                                                    ritable.quantity_fulfil,
+                                                    limitby = (0, 1)
+                                                    ).first()
+    req_id = req_item.req_id
     rtable = s3db.req_req
-    req = rtable[req_item.req_id]
+    req = db(rtable.id == req_id).select(rtable.site_id,
+                                         rtable.requester_id,
+                                         rtable.date,
+                                         rtable.date_required,
+                                         rtable.priority,
+                                         limitby = (0, 1)
+                                         ).first()
+    site_id = req.site_id
 
     output = {}
 
     output["title"] = T("Request Stock from Available Warehouse")
     output["req_btn"] = A(T("Return to Request"),
                           _href = URL(c="req", f="req",
-                                      args=[req_item.req_id, "req_item"]),
+                                      args = [req_id, "req_item"]
+                                      ),
                           _class = "action-btn"
                           )
 
     output["req_item"] = TABLE(TR(TH( "%s: " % T("Requested By") ),
-                                  rtable.site_id.represent(req.site_id),
+                                  rtable.site_id.represent(site_id),
                                   TH( "%s: " % T("Item")),
                                   ritable.item_id.represent(req_item.item_id),
                                   ),
@@ -1066,7 +1125,8 @@ def req_item_inv_item():
 
     itable = s3db.inv_inv_item
     # Get list of matching inventory items
-    s3.filter = (itable.item_id == req_item.item_id)
+    s3.filter = (itable.item_id == req_item.item_id) & \
+                (itable.site_id != site_id)
     # Tweak CRUD String for this context
     s3.crud_strings["inv_inv_item"].msg_list_empty = T("No Inventories currently have this item in stock")
 
@@ -1087,20 +1147,33 @@ def req_item_inv_item():
             output["items_alt"] = inv_items_alt["items"]
         else:
             output["items_alt"] = T("No Inventories currently have suitable alternative items in stock")
+    else:
+        output["items_alt"] = None
 
-    response.view = "req/req_item_inv_item.html"
+    if settings.get_req_order_item():
+        output["order_btn"] = A(T("Order Item"),
+                                _href = URL(c="req", f="req_item",
+                                            args = [req_item_id, "order"]
+                                            ),
+                                _class = "action-btn"
+                                )
+    else:
+        output["order_btn"] = None
+
     s3.actions = [{"label": s3_str(T("Request From")),
                    "url": URL(c = request.controller,
                               f = "req",
-                              args = [req_item.req_id, "req_item"],
-                              vars = {"req_item_id": req_item_id,
-                                      "inv_item_id": "[id]",
+                              args = [req_id, "req_item"],
+                              vars = {"inv_item_id": "[id]",
+                                      # Not going to this record as we want the list of items next without a redirect
+                                      "req_item_id": req_item_id,
                                       },
                               ),
                    "_class": "action-btn",
                    }
                   ]
 
+    response.view = "req/req_item_inv_item.html"
     return output
 
 # =============================================================================
@@ -1174,8 +1247,8 @@ def skills_filter(req_id):
                                                         s3db.hrm_multi_skill_represent,
                                                         filterby = "id",
                                                         filter_opts = filter_opts,
-                                                        sort=True,
-                                                        multiple=True
+                                                        sort = True,
+                                                        multiple = True
                                                         )
 
 # =============================================================================
@@ -1247,11 +1320,12 @@ def commit():
                                               error_msg=T("You do not have permission for any facility to make a commitment.") )
 
                     table.site_id.comment = A(T("Set as default Site"),
-                                              _id="req_commit_site_id_link",
-                                              _target="_blank",
-                                              _href=URL(c="default",
-                                                        f="user",
-                                                        args=["profile"]))
+                                              _id = "req_commit_site_id_link",
+                                              _target = "_blank",
+                                              _href = URL(c = "default",
+                                                          f = "user",
+                                                          args = ["profile"]
+                                                          ))
 
                     jappend = s3.jquery_ready.append
                     jappend('''
@@ -1310,11 +1384,12 @@ $.filterOptionsS3({
                     auth.permitted_facilities(table=r.table,
                           error_msg=T("You do not have permission for any facility to make a commitment."))
                     table.site_id.comment = A(T("Set as default Site"),
-                                              _id="req_commit_site_id_link",
-                                              _target="_blank",
-                                              _href=URL(c="default",
-                                                        f="user",
-                                                        args=["profile"]))
+                                              _id = "req_commit_site_id_link",
+                                              _target = "_blank",
+                                              _href = URL(c = "default",
+                                                          f = "user",
+                                                          args = ["profile"]
+                                                          ))
                     # Limit organisation_id to organisations the user has permissions for
                     #auth.permitted_organisations(table=r.table, redirect_on_error=False)
                     #table.organisation_id.readable = True
@@ -1684,7 +1759,7 @@ def send_req():
 
         # Redirect to view the list of items in the Request
         redirect(URL(c="req", f="req",
-                     args=[req_id, "req_item"])
+                     args = [req_id, "req_item"])
                  )
 
     # Create a new send record

@@ -37,13 +37,13 @@ __all__ = ("S3DocumentLibrary",
 
 import os
 
+from io import BytesIO
 from uuid import uuid4
 
 from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import BytesIO
 
 # =============================================================================
 class S3DocumentLibrary(S3Model):
@@ -119,7 +119,6 @@ class S3DocumentLibrary(S3Model):
                                security_seized_item = T("Seized Item"),
                                # @ToDo: Deprecate
                                #stats_people = T("People"),
-                               stdm_tenure = T("Tenure"),
                                vulnerability_document = T("Vulnerability Document"),
                                vulnerability_risk = T("Risk"),
                                vulnerability_evac_route = T("Evacuation Route"),
@@ -364,10 +363,7 @@ class S3DocumentLibrary(S3Model):
     def defaults(self):
         """ Safe defaults if the module is disabled """
 
-        document_id = S3ReusableField("document_id", "integer",
-                                      readable=False, writable=False)
-
-        return {"doc_document_id": document_id,
+        return {"doc_document_id": S3ReusableField.dummy("document_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -940,11 +936,6 @@ class S3DataCardModel(S3Model):
     @classmethod
     def defaults(cls):
         """ Safe defaults for names in case the module is disabled """
-
-        #dummy = S3ReusableField("dummy_id", "integer",
-        #                        readable = False,
-        #                        writable = False,
-        #                        )
 
         return {"doc_card_types": {},
                 "doc_update_card_type_requires": cls.update_card_type_requires,

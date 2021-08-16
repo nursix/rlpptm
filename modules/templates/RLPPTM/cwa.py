@@ -15,10 +15,10 @@ import secrets
 import sys
 import uuid
 
-from gluon import current, Field, IS_IN_SET, SQLFORM, URL, \
+from gluon import current, Field, IS_EMPTY_OR, IS_IN_SET, SQLFORM, URL, \
                   BUTTON, DIV, FORM, H5, INPUT, TABLE, TD, TR
 
-from s3 import S3CustomController, S3Method, \
+from s3 import IS_ONE_OF, S3CustomController, S3Method, \
                s3_date, s3_mark_required, s3_qrcode_represent, \
                JSONERRORS
 
@@ -100,14 +100,37 @@ class TestResultRegistration(S3Method):
         # Instantiate Consent Tracker
         consent = s3db.auth_Consent(processing_types=["CWA_ANONYMOUS", "CWA_PERSONAL"])
 
-        # Form Fields
         table = s3db.disease_case_diagnostics
+
+        # Configure disease_id
         field = table.disease_id
         if field.writable:
+            default_disease = None
             offset = 1
         else:
+            default_disease = field.default
             field.readable = False
             offset = 0
+
+        # Probe date is mandatory
+        field = table.probe_date
+        requires = field.requires
+        if isinstance(requires, IS_EMPTY_OR):
+            field.requires = requires.other
+
+        # Configure device_id
+        field = table.device_id
+        field.readable = field.writable = True
+
+        dtable = s3db.disease_testing_device
+        query = (dtable.device_class == "RAT") & \
+                (dtable.approved == True) & \
+                (dtable.available == True)
+        if default_disease:
+            query = (dtable.disease_id == default_disease) & query
+        field.requires = IS_ONE_OF(db(query), "disease_testing_device.id",
+                                   field.represent,
+                                   )
 
         cwa_options = (("NO", T("Do not report")),
                        ("ANONYMOUS", T("Issue anonymous contact tracing code")),
@@ -117,6 +140,7 @@ class TestResultRegistration(S3Method):
                       table.site_id,
                       table.disease_id,
                       table.probe_date,
+                      table.device_id,
                       table.result,
 
                       # -- Report to CWA --
@@ -135,6 +159,10 @@ class TestResultRegistration(S3Method):
                               label = T("Date of Birth"),
                               month_selector = True,
                               ),
+                      Field("dcc_option", "boolean",
+                            default = False,
+                            label = T("Provide Digital %(title)s Certificate") % {"title": "COVID-19 Test"},
+                            ),
                       Field("consent",
                             label = "",
                             widget = consent.widget,
@@ -146,7 +174,7 @@ class TestResultRegistration(S3Method):
 
         # Subheadings
         subheadings = ((0, T("Test Result")),
-                       (3 + offset, CWA["system"]),
+                       (4 + offset, CWA["system"]),
                        )
 
         # Generate labels (and mark required fields in the process)
@@ -207,6 +235,8 @@ class TestResultRegistration(S3Method):
                 testresult["disease_id"] = formvars["disease_id"]
             if "probe_date" in formvars:
                 testresult["probe_date"] = formvars["probe_date"]
+            if "device_id" in formvars:
+                testresult["device_id"] = formvars["device_id"]
 
             record_id = table.insert(**testresult)
             if not record_id:
@@ -227,16 +257,19 @@ class TestResultRegistration(S3Method):
                 self.next = r.url(id=record_id, method="read")
             else:
                 # Report to CWA and show test certificate
+                dcc_option = False
                 if report_to_cwa == "ANONYMOUS":
                     processing_type = "CWA_ANONYMOUS"
                     cwa_report = CWAReport(record_id)
                 elif report_to_cwa == "PERSONAL":
+                    dcc_option = formvars.get("dcc_option")
                     processing_type = "CWA_PERSONAL"
                     cwa_report = CWAReport(record_id,
                                            anonymous = False,
                                            first_name = formvars.get("first_name"),
                                            last_name = formvars.get("last_name"),
                                            dob = formvars.get("date_of_birth"),
+                                           dcc = dcc_option,
                                            )
                 else:
                     processing_type = cwa_report = None
@@ -255,6 +288,26 @@ class TestResultRegistration(S3Method):
                     else:
                         response.error = T("Report to %(system)s failed") % CWA
                         retry = True
+
+                    # Store DCC data
+                    if dcc_option:
+                        cwa_data = cwa_report.data
+                        from .dcc import DCC
+                        try:
+                            hcert = DCC.from_result(cwa_data.get("hash"),
+                                                    record_id,
+                                                    cwa_data.get("fn"),
+                                                    cwa_data.get("ln"),
+                                                    cwa_data.get("dob"),
+                                                    )
+                        except ValueError as e:
+                            hcert = None
+                            response.warning = str(e)
+                        if hcert:
+                            hcert.save()
+                        else:
+                            # Remove DCC flag if hcert could not be generated
+                            cwa_report.dcc = False
 
                     S3CustomController._view("RLPPTM", "certificate.html")
 
@@ -295,6 +348,7 @@ class TestResultRegistration(S3Method):
             Validate the test result registration form
             - personal details are required for reporting to CWA by name
             - make sure the required consent option is checked
+            - make sure the selected device matches the selected disease
         """
 
         T = current.T
@@ -304,6 +358,7 @@ class TestResultRegistration(S3Method):
         consent = current.s3db.auth_Consent
         response = consent.parse(formvars.get("consent"))
 
+        # Verify that we have the data and consent required
         cwa = formvars.get("report_to_cwa")
         if cwa == "PERSONAL":
             # Personal data required
@@ -320,8 +375,26 @@ class TestResultRegistration(S3Method):
             if not c or not c[1]:
                 form.errors.consent = T("Consent required")
 
+        # Verify that the selected testing device matches the selected
+        # disease (only if disease is selectable - otherwise, the device
+        # list is pre-filtered anyway):
+        if "disease_id" in formvars:
+            disease_id = formvars["disease_id"]
+            device_id = formvars.get("device_id")
+            if device_id:
+                table = current.s3db.disease_testing_device
+                query = (table.id == device_id) & \
+                        (table.disease_id == disease_id) & \
+                        (table.deleted == False)
+                row = current.db(query).select(table.id,
+                                               limitby = (0, 1),
+                                               ).first()
+                if not row:
+                    form.errors.device_id = T("Device not applicable for selected disease")
+
     # -------------------------------------------------------------------------
-    def certify(self, r, **attr):
+    @staticmethod
+    def certify(r, **attr):
         """
             Generate a test certificate (PDF) for download
 
@@ -361,6 +434,7 @@ class TestResultRegistration(S3Method):
                                   first_name = cwadata.get("fn"),
                                   last_name = cwadata.get("ln"),
                                   dob = cwadata.get("dob"),
+                                  dcc = cwadata.get("dcc", False),
                                   salt = cwadata.get("salt"),
                                   dhash = cwadata.get("hash"),
                                   )
@@ -416,7 +490,8 @@ class TestResultRegistration(S3Method):
         return output
 
     # -------------------------------------------------------------------------
-    def cwaretry(self, r, **attr):
+    @staticmethod
+    def cwaretry(r, **attr):
         """
             Retry sending test result to CWA result server
 
@@ -458,6 +533,7 @@ class TestResultRegistration(S3Method):
                                   first_name = cwadata.get("fn"),
                                   last_name = cwadata.get("ln"),
                                   dob = cwadata.get("dob"),
+                                  dcc = cwadata.get("dgc", False),
                                   salt = cwadata.get("salt"),
                                   dhash = cwadata.get("hash"),
                                   )
@@ -485,6 +561,7 @@ class CWAReport(object):
                  first_name=None,
                  last_name=None,
                  dob=None,
+                 dcc=False,
                  salt=None,
                  dhash=None,
                  ):
@@ -495,7 +572,8 @@ class CWAReport(object):
             @param anonymous: generate anonymous report
             @param first_name: first name
             @param last_name: last name
-            @param doc: date of birth (str in isoformat, or datetime.date)
+            @param dob: date of birth (str in isoformat, or datetime.date)
+            @param dcc: whether to provide a digital test certificate
             @param salt: previously used salt (for retry)
             @param dhash: previously generated hash (for retry)
 
@@ -531,6 +609,7 @@ class CWAReport(object):
         self.probe_date = result.probe_date
         self.result_date = result.result_date
         self.result = result.result
+        self.dcc = False
 
         # Determine the testid and timestamp
         testid = result.uuid
@@ -545,6 +624,9 @@ class CWAReport(object):
                     "timestamp": timestamp,
                     "testid": testid,
                     }
+            if dcc:
+                # Indicate whether we can issue a DCC (Digital COVID Certificate)
+                self.dcc = bool(dcc) and self.result in ("POS", "NEG")
         else:
             data = {"timestamp": timestamp,
                     }
@@ -602,9 +684,14 @@ class CWAReport(object):
         # Template for CWA-link
         template = current.deployment_settings.get_custom(key="cwa_link_template")
 
+        # Add "dgc" parameter if DCC option enabled
+        data = dict(self.data)
+        if self.dcc:
+            data["dgc"] = True
+
         # Convert data to JSON
         from s3.s3xml import SEPARATORS
-        data_json = json.dumps(self.data, separators=SEPARATORS)
+        data_json = json.dumps(data, separators=SEPARATORS)
 
         # Base64-encode the data JSON
         data_str = base64.urlsafe_b64encode(data_json.encode("utf-8")).decode("utf-8")
@@ -814,11 +901,22 @@ class CWAReport(object):
             # Use python-certifi (=> make sure the latest version is installed)
             verify = True
 
+        # Build the result_list
+        result_list = {"testResults": [testresult]}
+        if self.dcc:
+            # Look up the LabID
+            from .dcc import DCC
+            lab_id = DCC.get_issuer_id(self.site_id)
+            if not lab_id:
+                raise RuntimeError("Point-of-Care ID for test station not found")
+            else:
+                result_list["labId"] = lab_id
+
         # POST to server
         try:
             sr = requests.post(server_url,
-                               # Send a QuickTestResultList
-                               json = {"testResults": [testresult]},
+                               # Send the QuickTestResultList
+                               json = result_list,
                                cert = (cert, key),
                                verify = verify,
                                )

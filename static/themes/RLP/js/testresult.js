@@ -62,8 +62,31 @@
             }
         };
         toggleConsentOption();
+
+        var toggleDCCOption = function() {
+
+            var cwaOption = reportToCWA.val(),
+                dccOption = $('#test_result_dcc_option'),
+                dccRow = dccOption.closest('.form-row');
+            switch(cwaOption) {
+                case "ANONYMOUS":
+                    dccOption.prop('checked', false);
+                    dccRow.hide();
+                    break;
+                case "PERSONAL":
+                    dccRow.show();
+                    break;
+                default:
+                    dccOption.prop('checked', false);
+                    dccRow.hide();
+                    break;
+            }
+        };
+        toggleDCCOption();
+
         reportToCWA.off(ns).on('change' + ns, function() {
             toggleConsentOption();
+            toggleDCCOption();
         });
 
         // Toggle personal certificate option depending on result
@@ -94,6 +117,7 @@
                 });
             }
             toggleConsentOption();
+            toggleDCCOption();
         };
         $('#test_result_result').off(ns).on('change' + ns, function() {
             togglePersonalOption();

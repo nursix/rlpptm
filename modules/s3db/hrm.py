@@ -82,7 +82,6 @@ from gluon.sqlhtml import RadioWidget
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import long
 from s3layouts import S3PopupLink
 
 # Compact JSON encoding
@@ -1066,7 +1065,7 @@ class HRModel(S3Model):
         role_type = data.get("type", None)
 
         table = item.table
-        query = (table.name.lower() == s3_unicode(name).lower())
+        query = (table.name.lower() == s3_str(name).lower())
         if org:
             query  = query & (table.organisation_id == org)
         if role_type:
@@ -1144,7 +1143,7 @@ class HRModel(S3Model):
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
-        value = s3_unicode(value).lower()
+        value = s3_str(value).lower()
 
         if " " in value:
             # Multiple words
@@ -1764,7 +1763,7 @@ class HRInsuranceModel(S3Model):
         self.define_table(tablename,
                           # The original use (IFRC) used human_resource_id instead of the usual person_id in order to put it into the HR form
                           self.hrm_human_resource_id(),
-                          # RMSAmericas uses person_id in order to have on a common Medical Information tab with Physical Description fields
+                          # RMS uses person_id in order to have on a common Medical Information tab with Physical Description fields
                           #self.pr_person_id(),
                           Field("type",
                                 label = T("Type"),
@@ -2949,7 +2948,7 @@ class HRSkillModel(S3Model):
 
         # =====================================================================
         # Training Event Report
-        # - this is currently configured for RMS Americas
+        # - this is currently configured for RMS
         #   (move custom labels there if need to make this more generic)
         #
 
@@ -3805,7 +3804,7 @@ class HRSkillModel(S3Model):
 
         if not person_id:
             # This record is being created as a direct component of the Training,
-            # in order to set the Number (RMS Americas usecase).
+            # in order to set the Number (RMS  usecase).
             # Find the other record (created onaccept of training)
             query = (table.training_id == training_id) & \
                     (table.id != record_id)
@@ -3898,9 +3897,9 @@ class HRSkillModel(S3Model):
 
         table = item.table
         stable = current.s3db.hrm_skill_type
-        query = (table.name.lower() == s3_unicode(name).lower()) & \
+        query = (table.name.lower() == s3_str(name).lower()) & \
                 (table.skill_type_id == stable.id) & \
-                (stable.value.lower() == s3_unicode(skill).lower())
+                (stable.value.lower() == s3_str(skill).lower())
         duplicate = current.db(query).select(table.id,
                                              limitby=(0, 1)).first()
         if duplicate:
@@ -9078,7 +9077,7 @@ def hrm_training_controller():
             table.month = Field.Method("month", hrm_training_month)
 
         # Can't reliably link to persons as these are imported in random order
-        # - do this postimport if desired (see RMSAmericas)
+        # - do this postimport if desired (see RMS)
         #elif method == "import":
         #    # If users accounts are created for imported participants
         #    s3db.configure("auth_user",
@@ -9507,7 +9506,7 @@ class hrm_CV(S3Method):
                           "create_function": "person",
                           "create_component": "experience",
                           "pagesize": None, # all records
-                          # Settings suitable for RMSAmericas
+                          # Settings suitable for RMS
                           "list_fields": ["start_date",
                                           "end_date",
                                           "employment_type",
@@ -9527,7 +9526,7 @@ class hrm_CV(S3Method):
                           "filter": FS("assignment__link.assignment_id") != None,
                           "insert": False,
                           "pagesize": None, # all records
-                          # Settings suitable for RMSAmericas
+                          # Settings suitable for RMS
                           "list_fields": ["start_date",
                                           "end_date",
                                           "location_id",
@@ -9880,7 +9879,7 @@ class hrm_Record(S3Method):
                     # Exclude Training Hours
                     filter_ &= (FS("programme_id") != None)
                 if phtable.place.readable:
-                    # RMSAmericas
+                    # RMS
                     list_fields += ["place",
                                     "event",
                                     ]
@@ -10126,7 +10125,7 @@ def hrm_configure_salary(r):
         default_hr_id = hr_id
         if "human_resource.id" in r.get_vars:
             try:
-                default_hr_id = long(r.get_vars["human_resource.id"])
+                default_hr_id = int(r.get_vars["human_resource.id"])
             except ValueError:
                 pass
         if default_hr_id in hr_id:

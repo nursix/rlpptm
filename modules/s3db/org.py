@@ -65,6 +65,10 @@ __all__ = ("OrgOrganisationModel",
            "org_rheader",
            "org_site_staff_config",
            "org_organisation_controller",
+           "org_organisation_organisation_onaccept",
+           "org_organisation_organisation_ondelete",
+           "org_organisation_organisation_type_onaccept",
+           "org_organisation_organisation_type_ondelete",
            "org_office_controller",
            "org_facility_controller",
            "org_update_affiliations",
@@ -82,10 +86,11 @@ __all__ = ("OrgOrganisationModel",
 
 import json
 
+from io import BytesIO
+
 from gluon import *
 
 from ..s3 import *
-from s3compat import BytesIO
 from s3dal import Row
 from s3layouts import S3PopupLink
 
@@ -431,9 +436,10 @@ class OrgOrganisationModel(S3Model):
                            label = T("Logo"),
                            length = current.MAX_FILENAME_LENGTH,
                            represent = self.doc_image_represent,
-                           requires = [IS_EMPTY_OR(IS_IMAGE(maxsize=(400, 400),
-                                                            error_message=T("Upload an image file (png or jpeg), max. 400x400 pixels!"))),
-                                       IS_EMPTY_OR(IS_UPLOAD_FILENAME())],
+                           requires = [IS_EMPTY_OR(IS_IMAGE(maxsize = (400, 400),
+                                                            error_message = T("Upload an image file (png or jpeg), max. 400x400 pixels!"))),
+                                       IS_EMPTY_OR(IS_UPLOAD_FILENAME()),
+                                       ],
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (T("Logo"),
                                                            T("Logo of the organization. This should be a png or jpeg file and it should be no larger than 400x400"))),
@@ -652,6 +658,7 @@ class OrgOrganisationModel(S3Model):
                                     "organisation_id")],
                   report_options = report_options,
                   super_entity = "pr_pentity",
+                  realm_components = ("organisation_organisation_type",),
                   )
 
         # Custom Method for S3OrganisationAutocompleteWidget
@@ -888,8 +895,10 @@ class OrgOrganisationModel(S3Model):
                                                        "organisation_type_id",
                                                        ),
                                             ),
-                  onaccept = self.org_organisation_organisation_type_onaccept,
-                  ondelete = self.org_organisation_organisation_type_ondelete,
+                  # Leave this to templates which need this
+                  # - RMS
+                  #onaccept = org_organisation_organisation_type_onaccept,
+                  #ondelete = org_organisation_organisation_type_ondelete,
                   xml_post_parse = self.org_organisation_organisation_type_xml_post_parse,
                   )
 
@@ -962,73 +971,10 @@ class OrgOrganisationModel(S3Model):
         db = current.db
         table = db.org_organisation
         deleted_row = db(table.id == row.id).select(table.logo,
-                                                    limitby=(0, 1)
+                                                    limitby = (0, 1)
                                                     ).first()
         if deleted_row and deleted_row.logo:
             current.s3db.pr_image_delete_all(deleted_row.logo)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def org_organisation_organisation_type_onaccept(form):
-        """
-            Update the realm entity of the organisation after changing the
-            organisation type (otherwise type-dependent realm rules won't
-            ever take effect since the org_organisation record is written
-            before the org_organisation_organisation_type)
-
-            @param form: the Form
-        """
-
-        # Get the type-link
-        try:
-            record_id = form.vars.id
-        except AttributeError:
-            return
-        table = current.s3db.org_organisation_organisation_type
-        row = current.db(table.id == record_id).select(table.organisation_id,
-                                                       limitby = (0, 1),
-                                                       ).first()
-
-        if row:
-            # Update the realm entity
-            current.auth.set_realm_entity("org_organisation",
-                                          row.organisation_id,
-                                          force_update = True,
-                                          )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def org_organisation_organisation_type_ondelete(row):
-        """
-            Update the realm entity of the organisation after removing an
-            organisation type (otherwise type-dependent realm rules won't
-            take effect)
-
-            @param form: the Row
-        """
-
-        # Get the type-link
-        try:
-            record_id = row.id
-        except AttributeError:
-            return
-        table = current.s3db.org_organisation_organisation_type
-        row = current.db(table.id == record_id).select(table.deleted_fk,
-                                                       limitby = (0, 1),
-                                                       ).first()
-        if row and row.deleted_fk:
-            # Find the organisation ID
-            try:
-                deleted_fk = json.loads(row.deleted_fk)
-            except ValueError:
-                return
-            organisation_id = deleted_fk.get("organisation_id")
-
-            # Update the realm entity
-            current.auth.set_realm_entity("org_organisation",
-                                          organisation_id,
-                                          force_update = True,
-                                          )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1046,17 +992,19 @@ class OrgOrganisationModel(S3Model):
             # These default mappings can be overridden per-deployment
             if org_type_default == "Donor":
                 row = db(table.name == "Bilateral").select(table.id,
-                                                           cache=current.s3db.cache,
-                                                           limitby=(0, 1)).first()
+                                                           cache = current.s3db.cache,
+                                                           limitby = (0, 1)
+                                                           ).first()
             elif org_type_default == "Partner":
                 row = db(table.name == "NGO").select(table.id,
-                                                     cache=current.s3db.cache,
-                                                     limitby=(0, 1)).first()
+                                                     cache = current.s3db.cache,
+                                                     limitby = (0, 1)
+                                                     ).first()
             elif org_type_default in ("Host National Society",
                                       "Partner National Society"):
                 row = db(table.name == "Red Cross / Red Crescent").select(table.id,
-                                                                          cache=current.s3db.cache,
-                                                                          limitby=(0, 1)
+                                                                          cache = current.s3db.cache,
+                                                                          limitby = (0, 1)
                                                                           ).first()
             if row:
                 # Note this sets only the default, so won't override existing or explicit values
@@ -1082,7 +1030,7 @@ class OrgOrganisationModel(S3Model):
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
-        value = s3_unicode(value).lower().strip()
+        value = s3_str(value).lower().strip()
 
         if not value:
             r.error(400, "Missing option! Require value")
@@ -1170,9 +1118,9 @@ class OrgOrganisationModel(S3Model):
                 # the acronym, or neither (e.g. input matching the
                 # parent organisation)
                 value_len = len(value)
-                name_match = s3_unicode(name)[:value_len].lower() == value
+                name_match = s3_str(name)[:value_len].lower() == value
                 acronym_match = acronym and \
-                                s3_unicode(acronym)[:value_len].lower() == value
+                                s3_str(acronym)[:value_len].lower() == value
                 if name_match:
                     nextString = name[value_len:]
                     if nextString != "":
@@ -1332,8 +1280,9 @@ class OrgOrganisationBranchModel(S3Model):
                                              ltable.deleted,
                                              ltable.deleted_fk,
                                              *ifields,
-                                             left=left,
-                                             limitby=(0, 1)).first()
+                                             left = left,
+                                             limitby = (0, 1)
+                                             ).first()
 
         if record:
             organisation = record.org_organisation
@@ -1387,7 +1336,7 @@ class OrgOrganisationBranchModel(S3Model):
                                             organisation_type_id = t,
                                             )
                     form = Storage(vars = Storage(id = link_id))
-                    OrgOrganisationModel.org_organisation_organisation_type_onaccept(link_id)
+                    org_organisation_organisation_type_onaccept(link_id)
 
                 # Inherit Org Sectors
                 ltable = s3db.org_sector_organisation
@@ -1431,7 +1380,8 @@ class OrgOrganisationBranchModel(S3Model):
         record = db(table.id == row.id).select(table.branch_id,
                                                table.deleted,
                                                table.deleted_fk,
-                                               limitby=(0, 1)).first()
+                                               limitby = (0, 1)
+                                               ).first()
         if record:
             org_update_affiliations("org_organisation_branch", record)
 
@@ -1506,9 +1456,10 @@ class OrgOrganisationCapacityModel(S3Model):
                            writable = False,
                            ),
                      Field("indicator_id", "reference org_capacity_indicator",
-                           represent = S3Represent(lookup="org_capacity_indicator",
-                                                   fields=["number", "name"],
-                                                   field_sep=". "),
+                           represent = S3Represent(lookup = "org_capacity_indicator",
+                                                   fields = ["number", "name"],
+                                                   field_sep = ". "
+                                                   ),
                            writable = False,
                            ),
                      Field("rating",
@@ -1648,8 +1599,8 @@ class OrgOrganisationGroupModel(S3Model):
                                    requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "org_group.id",
                                                           group_represent,
-                                                          sort=True,
-                                                          updateable=True,
+                                                          sort = True,
+                                                          updateable = True,
                                                           )),
                                    sortby = "name",
                                    )
@@ -1712,7 +1663,7 @@ class OrgOrganisationGroupModel(S3Model):
                                     requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "org_group_membership_status.id",
                                                           represent,
-                                                          sort=True,
+                                                          sort = True,
                                                           )),
                                     sortby = "name",
                                     )
@@ -1760,7 +1711,13 @@ class OrgOrganisationGroupModel(S3Model):
         mtable = db.org_group_membership
 
         if _id:
-            record = db(mtable.id == _id).select(limitby=(0, 1)).first()
+            record = db(mtable.id == _id).select(mtable.id,
+                                                 mtable.group_id,
+                                                 mtable.organisation_id,
+                                                 mtable.deleted,
+                                                 mtable.deleted_fk,
+                                                 limitby = (0, 1)
+                                                 ).first()
         else:
             return
         if record:
@@ -1907,8 +1864,6 @@ class OrgOrganisationGroupTeamModel(S3Model):
             Update affiliations
         """
 
-        from .pr import OU
-
         if hasattr(form, "vars"):
             _id = form.vars.id
         elif isinstance(form, Row) and "id" in form:
@@ -1924,13 +1879,15 @@ class OrgOrganisationGroupTeamModel(S3Model):
 
         record = db(table.id == _id).select(table.group_id,
                                             table.org_group_id,
-                                            limitby=(0, 1)).first()
+                                            limitby = (0, 1)
+                                            ).first()
         if record:
+            from .pr import OU
             org_group = ("org_group", record.org_group_id)
             pr_group = ("pr_group", record.group_id)
             current.s3db.pr_add_affiliation(org_group, pr_group,
-                                            role="Groups",
-                                            role_type=OU,
+                                            role = "Groups",
+                                            role_type = OU,
                                             )
 
 # =============================================================================
@@ -1993,7 +1950,8 @@ class OrgOrganisationOrganisationModel(S3Model):
         To report on the full hierarchy of branches, can use the root_organisation field
     """
 
-    names = ("org_organisation_organisation",)
+    names = ("org_organisation_organisation",
+             )
 
     def model(self):
 
@@ -2021,10 +1979,38 @@ class OrgOrganisationOrganisationModel(S3Model):
                                                             "parent_id",
                                                             ),
                                                  ),
+                       # Leave this to templates which need this
+                       # - RMS
+                       #onaccept = org_organisation_organisation_onaccept,
+                       #ondelete = org_organisation_organisation_ondelete,
+                       realm_entity = self.org_organisation_organisation_realm_entity,
                        )
 
         # Pass names back to global scope (s3.*)
         return {}
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def org_organisation_organisation_realm_entity(table, row):
+        """
+            Set the realm entity of Organisation<>Organisation records to the same as
+            that of the parent
+        """
+
+        # Find the Parent
+        s3db = current.s3db
+        otable = s3db.org_organisation
+        ltable = s3db.org_organisation_organisation
+        query = (ltable.id == row.id) & \
+                (ltable.parent_id == otable.id)
+        parent = current.db(query).select(otable.realm_entity,
+                                          limitby = (0, 1),
+                                          ).first()
+        try:
+            return parent.realm_entity
+        except AttributeError:
+            # => Set to default of None
+            return None
 
 # =============================================================================
 class OrgOrganisationResourceModel(S3Model):
@@ -2445,9 +2431,9 @@ class OrgOrganisationSectorModel(S3Model):
         name = data.get("name")
         table = item.table
         if abrv:
-            query = (table.abrv.lower() == s3_unicode(abrv).lower())
+            query = (table.abrv.lower() == s3_str(abrv).lower())
         elif name:
-            query = (table.name.lower() == s3_unicode(name).lower())
+            query = (table.name.lower() == s3_str(name).lower())
         else:
             return
         duplicate = current.db(query).select(table.id,
@@ -3742,7 +3728,7 @@ class OrgSiteModel(S3Model):
 
         # We want to do case-insensitive searches
         # (default anyway on MySQL/SQLite, but not PostgreSQL)
-        value = s3_unicode(value).lower().strip()
+        value = s3_str(value).lower().strip()
 
         if not value:
             r.error(400, "Missing option! Require value")
@@ -4533,12 +4519,13 @@ class OrgFacilityModel(S3Model):
                                 ))
 
         if settings.has_module("req"):
+            from .req import req_priority_opts
             # @ToDo: Report should show Total Open/Closed Requests
             report_fields.append((T("Highest Priority Open Requests"), "reqs"))
             filter_widgets.append(
                 S3OptionsFilter("reqs",
                                 label = T("Highest Priority Open Requests"),
-                                options = lambda: self.req_priority_opts,
+                                options = req_priority_opts,
                                 cols = 3,
                                 ))
 
@@ -4706,7 +4693,7 @@ class OrgFacilityModel(S3Model):
         #address = data.get("address")
 
         table = item.table
-        query = (table.name.lower() == s3_unicode(name).lower())
+        query = (table.name.lower() == s3_str(name).lower())
         if org:
             # Either same Org or no Org defined yet
             query = query & ((table.organisation_id == org) | \
@@ -5650,11 +5637,12 @@ class org_OrganisationRepresent(S3Represent):
             left = []
 
         if self.translate:
+            language = self.language
             ltable = s3db.org_organisation_name
 
             left.append(ltable.on((ltable.organisation_id == otable.id) & \
                                   (ltable.deleted != True) & \
-                                  (ltable.language == self.language)))
+                                  (ltable.language == language)))
 
             fields.extend([ltable.name_l10n, ltable.acronym_l10n])
 
@@ -5662,7 +5650,8 @@ class org_OrganisationRepresent(S3Represent):
                 lptable = ltable.with_alias("org_parent_organisation_name")
                 fields.append(lptable.name_l10n)
 
-                left.append(lptable.on(lptable.organisation_id == btable.organisation_id))
+                left.append(lptable.on((lptable.organisation_id == btable.organisation_id) & \
+                                       (lptable.language == language)))
 
         count = len(values)
         if count == 1:
@@ -5670,7 +5659,10 @@ class org_OrganisationRepresent(S3Represent):
         else:
             query = (otable.id.belongs(values))
 
-        rows = current.db(query).select(left=left, limitby=(0, count), *fields)
+        rows = current.db(query).select(left = left,
+                                        limitby = (0, count),
+                                        *fields
+                                        )
         self.queries += 1
 
         return rows
@@ -5752,6 +5744,8 @@ class org_SiteRepresent(S3Represent):
     def __init__(self,
                  show_link = False,
                  multiple = False,
+                 # @ToDo when-useful:
+                 #show_type = None,
                  show_type = True,
                  ):
 
@@ -5762,6 +5756,9 @@ class org_SiteRepresent(S3Represent):
         language = current.session.s3.language
         if language == settings.get_L10n_default_language():
             translate = False
+
+        #if show_type == None:
+        #    show_type = settings.get_org_site_show_type()
 
         if show_type or show_link or translate:
             # Need a custom lookup
@@ -5987,8 +5984,7 @@ class org_SiteRepresent(S3Represent):
             facility_types = row.get("facility_types")
 
             if facility_types:
-                ltable = current.s3db.org_site_facility_type
-                represent = ltable.facility_type_id.represent
+                represent = current.s3db.org_site_facility_type.facility_type_id.represent
                 type_names = represent.multiple(facility_types)
                 name = "%s (%s)" % (name, type_names)
             else:
@@ -6706,7 +6702,7 @@ def org_rheader(r, tabs=None):
                             ]
                 else:
                     if type_filter == "Training Center":
-                        # e.g.RMSAmericas
+                        # e.g.RMS
                         skip_branches = True
                     tabs = [(T("Basic Details"), None, {"native": 1}),
                             ]
@@ -7079,7 +7075,7 @@ def org_organisation_controller():
                                            )
 
                 if type_filter:
-                    type_names = [s3_unicode(name).lower().strip()
+                    type_names = [s3_str(name).lower().strip()
                                   for name in type_filter.split(",")]
                     field = s3db.org_organisation_organisation_type.organisation_type_id
                     field.comment = None # Don't want to create new types here
@@ -7263,6 +7259,148 @@ def org_organisation_controller():
                                      rheader = org_rheader,
                                      )
     return output
+
+
+
+
+
+# -----------------------------------------------------------------------------
+def org_organisation_organisation_onaccept(form):
+    """
+        Update the realm entity of the organisation after changing the
+        organisation link (otherwise link-dependent realm rules won't
+        ever take effect since the org_organisation record is written
+        before the org_organisation_organisation)
+
+        NB Not Active by Default
+        - activate for templates that need this:
+            * RMS
+
+        @param form: the Form
+    """
+
+    # Get the link
+    try:
+        record_id = form.vars.id
+    except AttributeError:
+        return
+    table = current.s3db.org_organisation_organisation
+    row = current.db(table.id == record_id).select(table.organisation_id,
+                                                   limitby = (0, 1),
+                                                   ).first()
+
+    if row:
+        # Update the realm entity
+        current.auth.set_realm_entity("org_organisation",
+                                      row.organisation_id,
+                                      force_update = True,
+                                      )
+
+# -----------------------------------------------------------------------------
+def org_organisation_organisation_ondelete(row):
+    """
+        Update the realm entity of the organisation after removing an
+        organisation link (otherwise link-dependent realm rules won't
+        take effect)
+
+        NB Not Active by Default
+        - activate for templates that need this:
+            * RMS
+
+        @param form: the Row
+    """
+
+    # Get the link
+    try:
+        record_id = row.id
+    except AttributeError:
+        return
+    table = current.s3db.org_organisation_organisation
+    row = current.db(table.id == record_id).select(table.deleted_fk,
+                                                   limitby = (0, 1),
+                                                   ).first()
+    if row and row.deleted_fk:
+        # Find the organisation ID
+        try:
+            deleted_fk = json.loads(row.deleted_fk)
+        except ValueError:
+            return
+        organisation_id = deleted_fk.get("organisation_id")
+
+        # Update the realm entity
+        current.auth.set_realm_entity("org_organisation",
+                                      organisation_id,
+                                      force_update = True,
+                                      )
+
+# -----------------------------------------------------------------------------
+def org_organisation_organisation_type_onaccept(form):
+    """
+        Update the realm entity of the organisation after changing the
+        organisation type (otherwise type-dependent realm rules won't
+        ever take effect since the org_organisation record is written
+        before the org_organisation_organisation_type)
+
+        NB Not Active by Default
+        - activate for templates that need this:
+            * RMS
+
+        @param form: the Form
+    """
+
+    # Get the link
+    try:
+        link_id = form.vars.id
+    except AttributeError:
+        return
+    table = current.s3db.org_organisation_organisation_type
+    row = current.db(table.id == link_id).select(table.organisation_id,
+                                                 limitby = (0, 1),
+                                                 ).first()
+
+    if row:
+        # Update the realm entity
+        current.auth.set_realm_entity("org_organisation",
+                                      row.organisation_id,
+                                      force_update = True,
+                                      )
+
+# -----------------------------------------------------------------------------
+def org_organisation_organisation_type_ondelete(row):
+    """
+        Update the realm entity of the organisation after removing an
+        organisation type (otherwise type-dependent realm rules won't
+        take effect)
+
+        NB Not Active by Default
+        - activate for templates that need this:
+            * RMS
+
+        @param form: the Row
+    """
+
+    # Get the link
+    try:
+        link_id = row.id
+    except AttributeError:
+        return
+    table = current.s3db.org_organisation_organisation_type
+    row = current.db(table.id == link_id).select(table.deleted_fk,
+                                                 limitby = (0, 1),
+                                                 ).first()
+    if row and row.deleted_fk:
+        # Find the organisation ID
+        try:
+            deleted_fk = json.loads(row.deleted_fk)
+        except ValueError:
+            return
+        organisation_id = deleted_fk.get("organisation_id")
+
+        # Update the realm entity
+        current.auth.set_realm_entity("org_organisation",
+                                      organisation_id,
+                                      force_update = True,
+                                      )
 
 # =============================================================================
 def org_site_staff_config(r):
@@ -7454,7 +7592,7 @@ def org_facility_controller():
                 get_vars = r.get_vars
                 type_filter = get_vars.get("facility_type.name", None)
                 if type_filter:
-                    type_names = [s3_unicode(name).lower().strip()
+                    type_names = [s3_str(name).lower().strip()
                                   for name in type_filter.split(",")]
                     field = s3db.org_site_facility_type.facility_type_id
                     field.comment = None # Don't want to create new types here
@@ -7713,8 +7851,10 @@ def org_update_affiliations(table, record):
 
         ltable = current.s3db.org_organisation_branch
         if not isinstance(record, Row):
-            record = current.db(ltable.id == record).select(ltable.ALL,
-                                                            limitby=(0, 1),
+            record = current.db(ltable.id == record).select(ltable.branch_id,
+                                                            ltable.deleted,
+                                                            ltable.deleted_fk,
+                                                            limitby = (0, 1),
                                                             ).first()
         if not record:
             return
@@ -7724,8 +7864,10 @@ def org_update_affiliations(table, record):
 
         mtable = current.s3db.org_group_membership
         if not isinstance(record, Row):
-            record = current.db(mtable.id == record).select(mtable.ALL,
-                                                            limitby=(0, 1),
+            record = current.db(mtable.id == record).select(mtable.organisation_id,
+                                                            mtable.deleted,
+                                                            mtable.deleted_fk,
+                                                            limitby = (0, 1),
                                                             ).first()
         if not record:
             return
@@ -7741,8 +7883,10 @@ def org_update_affiliations(table, record):
                 query = (rtable._id == record[rtable._id.name])
             except (KeyError, AttributeError):
                 return
-            record = current.db(query).select(rtable.ALL,
-                                              limitby=(0, 1)).first()
+            record = current.db(query).select(rtable.organisation_id,
+                                              rtable.pe_id,
+                                              limitby = (0, 1)
+                                              ).first()
 
         org_site_update_affiliations(record)
 
@@ -7755,7 +7899,7 @@ def org_update_affiliations(table, record):
                                                             ltable.group_id,
                                                             ltable.deleted,
                                                             ltable.deleted_fk,
-                                                            limitby=(0, 1),
+                                                            limitby = (0, 1),
                                                             ).first()
         if not record:
             return
@@ -7917,7 +8061,8 @@ def org_site_update_affiliations(record):
     organisation_id = record.get("organisation_id")
     if organisation_id:
         org = db(otable.id == organisation_id).select(otable.pe_id,
-                                                      limitby=(0, 1)).first()
+                                                      limitby = (0, 1)
+                                                      ).first()
         if org:
             o_pe_id = org.pe_id
     if s_pe_id:
@@ -8046,7 +8191,8 @@ def org_update_root_organisation(organisation_id, root_org=None):
                 (ltable.organisation_id == otable.id)
         parent_org = db(query).select(otable.id,
                                       otable.root_organisation,
-                                      limitby=(0, 1)).first()
+                                      limitby = (0, 1)
+                                      ).first()
         if not parent_org:
             # No parent organisation? => this is the root organisation
             root_org = organisation_id
@@ -8066,7 +8212,7 @@ def org_update_root_organisation(organisation_id, root_org=None):
         else:
             oquery = (otable.id == organisation_id)
             bquery = (ltable.organisation_id == organisation_id)
-        db(oquery).update(root_organisation=root_org)
+        db(oquery).update(root_organisation = root_org)
 
         # Propagate to all branches (explicit batch update)
         branches = db(bquery).select(ltable.branch_id)
@@ -8219,7 +8365,7 @@ class org_OrganisationDuplicate(object):
         table = item.table
 
         # Search by name
-        lower_name = s3_unicode(name).lower()
+        lower_name = s3_str(name).lower()
         query = (table.name.lower() == lower_name) & \
                 (table.deleted == False)
         rows = db(query).select(table.id, table.name)

@@ -40,9 +40,9 @@ def req_filter_widgets():
                    S3TextFilter, \
                    s3_get_filter_opts
 
-    s3db = current.s3db
+    from s3db.req import req_status_opts
 
-    req_status_opts = OrderedDict(sorted(s3db.req_status_opts.items(),
+    req_status_opts = OrderedDict(sorted(req_status_opts().items(),
                                          key = lambda i: i[0],
                                          ))
 
@@ -104,14 +104,14 @@ def send_filter_widgets():
                    S3OptionsFilter, \
                    S3TextFilter, \
                    s3_get_filter_opts
+    from s3db.inv import SHIP_STATUS_CANCEL, \
+                         SHIP_STATUS_RETURNING, \
+                         inv_shipment_status_labels
 
-    s3db = current.s3db
-
-    send_status_opts = OrderedDict(sorted(s3db.inv_shipment_status_labels.items(),
+    send_status_opts = OrderedDict(sorted(inv_shipment_status_labels().items(),
                                           key = lambda i: i[0],
                                           ))
     # We don't currently use these statuses
-    from s3db.inv import SHIP_STATUS_CANCEL, SHIP_STATUS_RETURNING
     del send_status_opts[SHIP_STATUS_CANCEL]
     del send_status_opts[SHIP_STATUS_RETURNING]
 
@@ -168,14 +168,14 @@ def recv_filter_widgets():
                    S3OptionsFilter, \
                    S3TextFilter, \
                    s3_get_filter_opts
+    from s3db.inv import SHIP_STATUS_CANCEL, \
+                         SHIP_STATUS_RETURNING, \
+                         inv_shipment_status_labels
 
-    s3db = current.s3db
-
-    recv_status_opts = OrderedDict(sorted(s3db.inv_shipment_status_labels.items(),
+    recv_status_opts = OrderedDict(sorted(inv_shipment_status_labels().items(),
                                           key = lambda i: i[0],
                                           ))
     # We don't currently use these statuses
-    from s3db.inv import SHIP_STATUS_CANCEL, SHIP_STATUS_RETURNING
     del recv_status_opts[SHIP_STATUS_CANCEL]
     del recv_status_opts[SHIP_STATUS_RETURNING]
 

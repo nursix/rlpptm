@@ -15,7 +15,8 @@ from gluon import current, Field, URL, \
 from s3 import ICON, IS_FLOAT_AMOUNT, JSONERRORS, S3DateTime, \
                S3Method, S3Represent, s3_fullname, s3_mark_required, s3_str
 
-from s3db.pr import pr_PersonRepresentContact
+from s3db.pr import pr_PersonRepresentContact, pr_default_realms
+
 # =============================================================================
 def get_role_realms(role):
     """
@@ -168,7 +169,8 @@ def get_role_users(role_uid, pe_id=None, organisation_id=None):
         pe_id = organisation.pe_id if organisation else None
 
     # Get all users with this realm as direct OU ancestor
-    users = s3db.pr_realm_users(pe_id) if pe_id else None
+    from s3db.pr import pr_realm_users
+    users = pr_realm_users(pe_id) if pe_id else None
     if users:
         # Look up those among the realm users who have
         # the role for either pe_id or for their default realm
@@ -433,7 +435,6 @@ def can_cancel_debit(debit):
     """
 
     auth = current.auth
-    s3db = current.s3db
 
     user = auth.user
     if user:
@@ -441,7 +442,7 @@ def can_cancel_debit(debit):
         gtable = auth.settings.table_group
         query = (gtable.uuid == "VOUCHER_PROVIDER")
         role = current.db(query).select(gtable.id,
-                                        cache = s3db.cache,
+                                        cache = current.s3db.cache,
                                         limitby = (0, 1),
                                         ).first()
         if not role:
@@ -459,7 +460,7 @@ def can_cancel_debit(debit):
             # User has a site-wide VOUCHER_PROVIDER role, however
             # for cancellation of debits they must be affiliated
             # with the debit owner organisation
-            role_realms = s3db.pr_realm(user["pe_id"])
+            role_realms = pr_default_realms(user["pe_id"])
 
         return debit.pe_id in role_realms
 
@@ -2290,7 +2291,8 @@ class TestFacilityInfo(S3Method):
                  "phone": "phone #",        - the facility phone number
                  "email": "email",          - the facility email address
                  "organisation":
-                    {"name": "ORG-NAME",    - the organisation name
+                    {"id": "ORG-ID",        - the organisation ID tag
+                     "name": "ORG-NAME",    - the organisation name
                      "type": "ORG-TYPE",    - the organisation type
                      "website": "URL"       - the organisation website URL
                      },
@@ -2378,22 +2380,29 @@ class TestFacilityInfo(S3Method):
         otable = s3db.org_organisation
         ttable = s3db.org_organisation_type
         ltable = s3db.org_organisation_organisation_type
+        ottable = s3db.org_organisation_tag
         left = [ttable.on((ltable.organisation_id == otable.id) & \
                           (ltable.deleted == False) & \
                           (ttable.id == ltable.organisation_type_id)),
+                ottable.on((ottable.organisation_id == otable.id) & \
+                           (ottable.tag == "OrgID") & \
+                           (ottable.deleted == False)),
                 ]
         query = (otable.id == facility.organisation_id) & \
                 (otable.deleted == False)
         row = db(query).select(otable.name,
                                otable.website,
                                ttable.name,
+                               ottable.value,
                                left = left,
                                limitby = (0, 1),
                                ).first()
         if row:
             organisation = row.org_organisation
             orgtype = row.org_organisation_type
-            orgdata = {"name": organisation.name,
+            orgid = row.org_organisation_tag
+            orgdata = {"id": orgid.value,
+                       "name": organisation.name,
                        "type": orgtype.name,
                        "website": organisation.website,
                        }

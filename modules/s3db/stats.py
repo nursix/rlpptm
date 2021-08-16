@@ -47,7 +47,6 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import basestring, xrange
 from s3layouts import S3PopupLink
 
 # =============================================================================
@@ -90,7 +89,6 @@ class S3StatsModel(S3Model):
                            vulnerability_indicator = T("Vulnerability Indicator"),
                            vulnerability_aggregated_indicator = T("Vulnerability Aggregated Indicator"),
                            #survey_question_type = T("Survey Question Type"),
-                           #climate_parameter = T("Climate Parameter"),
                            )
 
         tablename = "stats_parameter"
@@ -126,7 +124,6 @@ class S3StatsModel(S3Model):
                            supply_distribution = T("Distribution"),
                            vulnerability_data = T("Vulnerability Data"),
                            #survey_answer = T("Survey Answer"),
-                           #climate_data = T("Climate Data"),
                            )
 
         accuracy_opts = {1 : T("Official Measurement"),
@@ -555,10 +552,7 @@ class S3StatsDemographicModel(S3Model):
     def defaults(self):
         """ Safe defaults if module is disabled """
 
-        return {"stats_demographic_id": S3ReusableField("parameter_id", "integer",
-                                                        readable = False,
-                                                        writable = False,
-                                                        ),
+        return {"stats_demographic_id": S3ReusableField.dummy("parameter_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -685,7 +679,7 @@ class S3StatsDemographicModel(S3Model):
         (last_period, year_end) = aggregated_period(None)
 
         # Test to see which date format we have based on how we were called
-        if isinstance(records, basestring):
+        if isinstance(records, str):
             from_json = True
             from dateutil.parser import parse
             records = json.loads(records)
@@ -1596,7 +1590,7 @@ def stats_year(row, tablename):
     elif start_date is NOT_PRESENT or not start_date :
         return [end_date.year]
     else:
-        return list(xrange(start_date.year, end_date.year + 1))
+        return list(range(start_date.year, end_date.year + 1))
 
 # =============================================================================
 def stats_year_options(tablename):
@@ -1653,7 +1647,7 @@ def stats_year_options(tablename):
     if not start_year or not end_year:
         return {start_year:start_year} or {end_year:end_year}
     years = {}
-    for year in xrange(start_year, end_year + 1):
+    for year in range(start_year, end_year + 1):
         years[year] = year
     return years
 

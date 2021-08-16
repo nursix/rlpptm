@@ -52,7 +52,6 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..s3 import *
-from s3compat import xrange
 from s3dal import Row
 from s3layouts import S3PopupLink
 
@@ -959,15 +958,12 @@ $.filterOptionsS3({
     def defaults():
         """ Return safe defaults for names in case the model is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False,
-                                )
+        dummy = S3ReusableField.dummy
 
-        return {"supply_item_id": lambda **attr: dummy("item_id"),
-                "supply_item_category_id": lambda **attr: dummy("item_category_id"),
-                "supply_item_entity_id": lambda **attr: dummy("item_entity_id"),
-                "supply_item_pack_id": lambda **attr: dummy("item_pack_id"),
+        return {"supply_item_id": dummy("item_id"),
+                "supply_item_category_id": dummy("item_category_id"),
+                "supply_item_entity_id": dummy("item_entity_id"),
+                "supply_item_pack_id": dummy("item_pack_id"),
                 "supply_item_pack_quantity": lambda tablename: lambda row: 0,
                 }
 
@@ -1464,7 +1460,7 @@ class S3SupplyDistributionModel(S3Model):
             if not start_year or not end_year:
                 return {start_year:start_year} or {end_year:end_year}
             years = {}
-            for year in xrange(start_year, end_year + 1):
+            for year in range(start_year, end_year + 1):
                 years[year] = year
             return years
 
@@ -1642,13 +1638,7 @@ class S3SupplyDistributionModel(S3Model):
     def defaults():
         """ Safe defaults for names in case the module is disabled """
 
-        dummy = S3ReusableField("dummy_id", "integer",
-                                readable = False,
-                                writable = False,
-                                )
-
-        return {"supply_distribution_id": lambda name="distribution_id", **attr: \
-                                                 dummy(name, **attr),
+        return {"supply_distribution_id": S3ReusableField.dummy("distribution_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -1761,7 +1751,7 @@ class S3SupplyDistributionModel(S3Model):
         elif not date:
             return [end_date.year]
         else:
-            return list(xrange(date.year, end_date.year + 1))
+            return list(range(date.year, end_date.year + 1))
 
 # =============================================================================
 class S3SupplyDistributionDVRActivityModel(S3Model):
@@ -2158,7 +2148,7 @@ class supply_ItemCategoryRepresent(S3Represent):
             name = T(name)
 
         parent_name = row["supply_parent_item_category.name"]
-        parent_code = row["supply_parent_item_category.code"] 
+        parent_code = row["supply_parent_item_category.code"]
         if parent_name or parent_code:
             if use_code:
                 # Compact format

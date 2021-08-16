@@ -4,13 +4,13 @@ import json
 import os
 
 from collections import OrderedDict
+from io import BytesIO
 
 from gluon import current
 from gluon.html import *
 from gluon.storage import Storage
 from gluon.languages import lazyT
 
-from s3compat import BytesIO
 from s3 import FS, s3_str, s3_truncate, s3_utc
 
 def config(settings):
@@ -953,10 +953,6 @@ def config(settings):
             access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
             module_type = None  # This item is handled separately for the menu
         )),
-        #("tour", Storage(
-        #    name_nice = T("Guided Tour Functionality"),
-        #    module_type = None,
-        #)),
         ("translate", Storage(
             name_nice = T("Translation Functionality"),
             #description = "Selective translation of strings based on module.",

@@ -311,9 +311,9 @@ body.rtl {
 .auth_register,
 .result-register {
     .subheading,
-    .consent-widget,
-    .controls {
-        max-width: 48rem;
+    .form-row,
+    .consent-widget {
+        max-width: 48rem!important;
     }
     padding: 1rem!important;
 }
@@ -498,6 +498,17 @@ body.rtl {
     line-height: 3.5rem;
     font-weight: bold;
     color: #406080;
+}
+.olFramedCloudPopupContent ul {
+    list-style-type: disc;
+    list-style-position: outside;
+    .mpinfo {
+        font-size: 0.8rem;
+    }
+    .mptitle {
+        font-weight: bold;
+        font-size: 0.9rem;
+    }
 }
 
 // END ========================================================================

@@ -10,7 +10,7 @@ from gluon import Field, HTTP, SQLFORM, URL, current, redirect, \
 
 from gluon.storage import Storage
 
-from s3 import FS, IS_PHONE_NUMBER_MULTI, JSONERRORS, S3CRUD, S3CustomController, \
+from s3 import FS, ICON, IS_PHONE_NUMBER_MULTI, JSONERRORS, S3CRUD, S3CustomController, \
                S3GroupedOptionsWidget, S3LocationSelector, S3Represent, S3Request, \
                S3WithIntro, s3_comments_widget, s3_get_extension, s3_mark_required, \
                s3_str, s3_text_represent, s3_truncate
@@ -105,10 +105,29 @@ class index(S3CustomController):
             auth.messages.submit_button = T("Login")
             login_form = auth.login(inline=True)
 
+        buttons = UL(LI(A(ICON("organisation"), T("Test Stations"),
+                          _href = URL(c = "org",
+                                      f = "facility",
+                                      args = ["summary"],
+                                      vars = {"$$code": "TESTS-PUBLIC"},
+                                      ),
+                          _class="info button",
+                          ),
+                        ),
+                     LI(A(ICON("book"), T("Guides & Videos"),
+                          _href = URL(c="default", f="help"),
+                          _class="info button",
+                          ),
+                        ),
+                     _class="button-group even-2 stack-for-small",
+                     )
+
         output = {"login_div": login_div,
                   "login_form": login_form,
                   "announcements": announcements,
                   "announcements_title": announcements_title,
+                  "intro": self.get_cms_intro(("default", "index", "HomepageIntro"), cmsxml=True),
+                  "buttons": buttons,
                   }
 
         # Custom view and homepage styles
@@ -163,6 +182,38 @@ class index(S3CustomController):
                                  )
 
         return posts
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def get_cms_intro(intro, cmsxml=True):
+        """
+            Get intro from CMS
+
+            @param intro: the intro spec as tuple (module, resource, postname)
+        """
+
+        # Get intro text from CMS
+        db = current.db
+        s3db = current.s3db
+
+        ctable = s3db.cms_post
+        ltable = s3db.cms_post_module
+        join = ltable.on((ltable.post_id == ctable.id) & \
+                         (ltable.module == intro[0]) & \
+                         (ltable.resource == intro[1]) & \
+                         (ltable.deleted == False))
+
+        query = (ctable.name == intro[2]) & \
+                (ctable.deleted == False)
+        row = db(query).select(ctable.body,
+                               join = join,
+                               cache = s3db.cache,
+                               limitby = (0, 1),
+                               ).first()
+        if not row:
+            return ""
+
+        return XML(row.body) if cmsxml else row.body
 
 # =============================================================================
 class privacy(S3CustomController):
@@ -2357,7 +2408,8 @@ class ocert(S3CustomController):
             sr = auth.get_system_roles()
             realms = user.realms.get(sr.ORG_ADMIN)
             if not realms:
-                realms = s3db.pr_realm(user.pe_id)
+                from s3db.pr import pr_default_realms
+                realms = pr_default_realms(user.pe_id)
             if realms:
                 # Look up managed organisations
                 otable = s3db.org_organisation
@@ -2400,7 +2452,7 @@ class ocert(S3CustomController):
             # Generate verification hash
             vhash = self._vhash(organisation_id, purpose, token, appkey)
             if vhash:
-                from s3compat import urllib_quote
+                from urllib.parse import quote as urllib_quote
                 url = redirect_uri % {"token": urllib_quote(token),
                                       "vhash": urllib_quote(vhash),
                                       }

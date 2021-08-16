@@ -131,10 +131,6 @@ def config(settings):
         #    access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
         #    module_type = None  # This item is handled separately for the menu
         #)),
-        #("tour", Storage(
-        #    name_nice = T("Guided Tour Functionality"),
-        #    module_type = None,
-        #)),
         #("translate", Storage(
         #    name_nice = T("Translation Functionality"),
         #    #description = "Selective translation of strings based on module.",
@@ -327,13 +323,16 @@ def config(settings):
 
         #anonymous_email = uuid4().hex
 
+        from s3db.pr import pr_address_anonymise, \
+                            pr_person_obscure_dob
+
         rules = [{"name": "default",
                   "title": "Name, Contacts, Address, Additional Information",
                   "fields": {"first_name": ("set", ANONYMOUS),
                              "middle_name": ("set", ANONYMOUS),
                              "last_name": ("set", ANONYMOUS),
                              "pe_label": "remove",
-                             "date_of_birth": s3db.pr_person_obscure_dob,
+                             "date_of_birth": pr_person_obscure_dob,
                              "comments": "remove",
                              },
                   "cascade": [("pr_contact", {"key": "pe_id",
@@ -346,7 +345,7 @@ def config(settings):
                                               }),
                               ("pr_address", {"key": "pe_id",
                                               "match": "pe_id",
-                                              "fields": {"location_id": s3db.pr_address_anonymise,
+                                              "fields": {"location_id": pr_address_anonymise,
                                                          "comments": "remove",
                                                          },
                                               #"delete": True,
@@ -397,7 +396,7 @@ def config(settings):
                                                                                                              }),
                                                                                              ("pr_address", {"key": "pe_id",
                                                                                                              "match": "pe_id",
-                                                                                                             "fields": {"location_id": s3db.pr_address_anonymise,
+                                                                                                             "fields": {"location_id": pr_address_anonymise,
                                                                                                                         "comments": "remove",
                                                                                                                         },
                                                                                                              "delete": True,
@@ -881,7 +880,7 @@ def config(settings):
             current.log.error(error)
             raise HTTP(503, body=error)
 
-        from s3 import s3_format_fullname, s3_fullname, s3_unicode
+        from s3 import s3_format_fullname, s3_fullname, s3_str
 
         date_format = settings.get_L10n_date_format()
         date_format_str = str(date_format)
@@ -1103,7 +1102,7 @@ def config(settings):
 
             gender = row["gender"]
             if gender:
-                represent = s3_unicode(gender_represent(gender))
+                represent = s3_str(gender_represent(gender))
                 current_row.write(col_index, represent, style)
                 width = len(represent) * COL_WIDTH_MULTIPLIER
                 if width > column_widths[col_index]:
@@ -1116,7 +1115,7 @@ def config(settings):
 
             date_of_birth = row["date_of_birth"]
             if date_of_birth:
-                represent = s3_unicode(date_of_birth)
+                represent = s3_str(date_of_birth)
                 date_tuple = (date_of_birth.year,
                               date_of_birth.month,
                               date_of_birth.day)
@@ -1206,7 +1205,7 @@ def config(settings):
             col_index = 0
 
             date = row["date"]
-            represent = s3_unicode(date)
+            represent = s3_str(date)
             date_tuple = (date.year,
                           date.month,
                           date.day,
@@ -1238,7 +1237,7 @@ def config(settings):
 
             event = row["event"]
             if event:
-                represent = s3_unicode(event_represent(event))
+                represent = s3_str(event_represent(event))
                 current_row.write(col_index, represent, style)
                 width = len(represent) * COL_WIDTH_MULTIPLIER
                 if width > column_widths[col_index]:
@@ -1280,7 +1279,7 @@ def config(settings):
 
             status = row["status"]
             if status:
-                represent = s3_unicode(status_represent(status))
+                represent = s3_str(status_represent(status))
                 current_row.write(col_index, represent, style)
                 width = len(represent) * COL_WIDTH_MULTIPLIER
                 if width > column_widths[col_index]:
@@ -1294,7 +1293,7 @@ def config(settings):
             row_index += 1
 
         # Write output
-        from s3compat import BytesIO
+        from io import BytesIO
         output = BytesIO()
         book.save(output)
         output.seek(0)
@@ -1368,7 +1367,8 @@ def config(settings):
         # Now done centrally
         #if r.representation == "plain":
         #    # Don't have a clickable map in Popups
-        #    table.location_id.represent = s3db.gis_LocationRepresent(show_link = False)
+        #    from s3db.gis import gis_LocationRepresent
+        #    table.location_id.represent = gis_LocationRepresent(show_link = False)
 
         # Redefine as multiple=False
         s3db.add_components("cr_shelter",
@@ -1628,7 +1628,8 @@ def config(settings):
                                                                                        check_out_date = r.utcnow,
                                                                                        )
                 # Update Shelter Population
-                s3db.cr_update_shelter_population(r.id)
+                from s3db.cr import cr_update_shelter_population
+                cr_update_shelter_population(r.id)
                 # response.confirmation triggers the popup close (although not actually seen by user)
                 response.confirmation = T("Client checked-out successfully!")
 
@@ -1921,7 +1922,8 @@ def config(settings):
                     current.db(query).delete()
 
                     # Update Shelter Population
-                    s3db.cr_update_shelter_population(r.id)
+                    from s3db.cr import cr_update_shelter_population
+                    cr_update_shelter_population(r.id)
 
                     # Add Site Event Log
                     s3db.org_site_event.insert(site_id = site_id,
@@ -2139,7 +2141,8 @@ def config(settings):
                 current.db(query).delete()
 
                 # Update Shelter Population
-                s3db.cr_update_shelter_population(shelter_id)
+                from s3db.cr import cr_update_shelter_population
+                cr_update_shelter_population(shelter_id)
 
                 # Add Site Event Log
                 check_in_date = form_vars_get("check_in_date", r.utcnow)
@@ -2484,7 +2487,7 @@ def config(settings):
 
             import xlwt
 
-            from s3 import s3_unicode
+            from s3 import s3_str
 
             style = xlwt.XFStyle()
             style.font.bold = True
@@ -2498,9 +2501,9 @@ def config(settings):
             borders.bottom = 1
             style.borders = borders
 
-            labels = ((0, 8, s3_unicode(T("Client"))),
-                      (9, 12, s3_unicode(T("Shelter"))),
-                      (13, 17, s3_unicode(T("Next of Kin"))),
+            labels = ((0, 8, s3_str(T("Client"))),
+                      (9, 12, s3_str(T("Shelter"))),
+                      (13, 17, s3_str(T("Next of Kin"))),
                       )
 
             for start_col, end_col, label in labels:
@@ -3136,7 +3139,8 @@ def config(settings):
                 f = s3db.org_site_event.site_id
                 f.label = T("Shelter")
                 f.readable = True
-                f.represent = s3db.org_SiteRepresent(show_type = False)
+                from s3db.org import org_SiteRepresent
+                f.represent = org_SiteRepresent(show_type = False)
 
                 return result
 
@@ -3291,7 +3295,8 @@ def config(settings):
                                       )
 
                         # Update Shelter Population
-                        s3db.cr_update_shelter_population(shelter_id)
+                        from s3db.cr import cr_update_shelter_population
+                        cr_update_shelter_population(shelter_id)
 
                         # Add Site Event Log
                         s3db.org_site_event.insert(site_id = site_id,

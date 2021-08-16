@@ -778,6 +778,7 @@ def config(settings):
                        disease_id,
                        "probe_date",
                        "result",
+                       "device_id",
                        ]
 
         # Custom form (for read)
@@ -929,6 +930,17 @@ def config(settings):
         return attr
 
     settings.customise_disease_case_diagnostics_controller = customise_disease_case_diagnostics_controller
+
+    # -------------------------------------------------------------------------
+    def poll_dcc():
+        """
+            Scheduler task to poll for DCC requests
+        """
+
+        from .dcc import DCC
+        DCC.poll()
+
+    settings.tasks.poll_dcc = poll_dcc
 
     # -------------------------------------------------------------------------
     def customise_disease_testing_report_resource(r, tablename):
@@ -3324,7 +3336,8 @@ def config(settings):
         from s3 import S3PriorityRepresent
         field = table.status
         status_opts = s3db.inv_ship_status
-        status_labels = s3db.inv_shipment_status_labels
+        from s3db.inv import inv_shipment_status_labels
+        status_labels = inv_shipment_status_labels()
         field.represent = S3PriorityRepresent(status_labels,
                                               {status_opts["IN_PROCESS"]: "lightblue",
                                                status_opts["RECEIVED"]: "green",
@@ -3496,7 +3509,8 @@ def config(settings):
         from s3 import S3PriorityRepresent
         field = table.status
         status_opts = s3db.inv_ship_status
-        status_labels = s3db.inv_shipment_status_labels
+        from s3db.inv import inv_shipment_status_labels
+        status_labels = inv_shipment_status_labels()
         field.represent = S3PriorityRepresent(status_labels,
                                               {status_opts["IN_PROCESS"]: "lightblue",
                                                status_opts["RECEIVED"]: "green",

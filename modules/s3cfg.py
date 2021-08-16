@@ -36,7 +36,6 @@ from collections import OrderedDict
 from gluon import current, URL
 from gluon.storage import Storage
 
-from s3compat import basestring, INTEGER_TYPES
 from s3theme import FORMSTYLES
 
 class S3Config(Storage):
@@ -1078,10 +1077,6 @@ class S3Config(Storage):
         """For demo sites, which additional options to add to the list """
         return self.base.get("prepopulate_demo", 0)
 
-    def get_base_guided_tour(self):
-        """ Whether the guided tours are enabled """
-        return self.base.get("guided_tour", self.has_module("tour"))
-
     def get_base_public_url(self):
         """
             The Public URL for the site - for use in email links, etc
@@ -1964,7 +1959,7 @@ class S3Config(Storage):
             e.g. Apellido Paterno in Hispanic names
 
             Setting this means that auth_user.last_name matches with pr_person.middle_name
-            e.g. RMSAmericas
+            e.g. RMS
         """
         return self.__lazy("L10n", "mandatory_middlename", False)
 
@@ -2167,7 +2162,7 @@ class S3Config(Storage):
 
         setting = self.ui.get("formstyle", "default")
 
-        if isinstance(setting, basestring):
+        if isinstance(setting, str):
             # Try to find the corresponding _inline formstyle
             inline_formstyle_name = "%s_inline" % setting
             formstyle = FORMSTYLES.get(inline_formstyle_name)
@@ -2891,25 +2886,6 @@ class S3Config(Storage):
     # =========================================================================
     # Sync
     #
-    def get_sync_mcb_resource_identifiers(self):
-        """
-            Resource (=data type) identifiers for synchronization with
-            Mariner CommandBridge, a dict {tablename:id}
-        """
-
-        return self.sync.get("mcb_resource_identifiers", {})
-
-    def get_sync_mcb_domain_identifiers(self):
-        """
-            Domain (of origin) identifiers for synchronization with
-            Mariner CommandBridge, a dict {domain: id} where
-            "domain" means the domain prefix of the record UUID
-            (e.g. uuid "wrike/IKY0192834" => domain "wrike"),
-            default domain is "sahana"
-        """
-
-        return self.sync.get("mcb_domain_identifiers", {})
-
     def get_sync_upload_filename(self):
         """
             Filename for upload via FTP Sync
@@ -4957,7 +4933,7 @@ class S3Config(Storage):
         """
         default_organisation = self.__lazy("org", "default_organisation", default=None)
         if default_organisation:
-            if not isinstance(default_organisation, INTEGER_TYPES):
+            if not isinstance(default_organisation, int):
                 # Check Session cache
                 default_organisation_id = current.session.s3.default_organisation_id
                 if default_organisation_id:
@@ -4986,7 +4962,7 @@ class S3Config(Storage):
         """
         default_site = self.org.get("default_site", None)
         if default_site:
-            if not isinstance(default_site, INTEGER_TYPES):
+            if not isinstance(default_site, int):
                 # Check Session cache
                 default_site_id = current.session.s3.default_site_id
                 if default_site_id:
@@ -5202,6 +5178,12 @@ class S3Config(Storage):
             Whether to display the last_contacted field for a Site
         """
         return self.org.get("site_last_contacted", False)
+
+    #def get_org_site_show_type(self):
+    #    """
+    #        Whether to show the Type of Sites in Represents
+    #    """
+    #    return self.org.get("site_show_type", True)
 
     def get_org_site_volunteers(self):
         """

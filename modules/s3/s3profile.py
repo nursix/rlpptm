@@ -36,7 +36,6 @@ from gluon import current, redirect
 from gluon.html import *
 from gluon.storage import Storage
 
-from s3compat import basestring
 from .s3crud import S3CRUD
 from .s3report import S3Report
 from .s3query import FS
@@ -203,12 +202,12 @@ class S3Profile(S3CRUD):
                            ICON("down", _style=style_show),
                            ICON("up", _style=style_hide),
                            data = {"hidden": hidden},
-                           _class="form-toggle action-lnk",
+                           _class = "form-toggle action-lnk",
                            )
                 form.update(_style=style_hide)
                 output["form"] = DIV(toggle,
                                      form,
-                                     _class="profile-update",
+                                     _class = "profile-update",
                                      )
             else:
                 output["form"] = ""
@@ -335,7 +334,7 @@ class S3Profile(S3CRUD):
 
         label = widget.get("label", "")
         # Activate if-required
-        #if label and isinstance(label, basestring):
+        #if label and isinstance(label, str):
         if label:
             label = current.T(label)
         icon = widget.get("icon", "")
@@ -349,10 +348,13 @@ class S3Profile(S3CRUD):
         # Render the widget
         output = DIV(H4(icon,
                         label,
-                        _class="profile-sub-header"),
+                        _class = "profile-sub-header",
+                        ),
                      DIV(comments,
-                         _class="card-holder"),
-                     _class=_class)
+                         _class = "card-holder",
+                         ),
+                     _class = _class,
+                     )
 
         return output
 
@@ -368,7 +370,7 @@ class S3Profile(S3CRUD):
 
         label = widget.get("label", "")
         # Activate if-required
-        #if label and isinstance(label, basestring):
+        #if label and isinstance(label, str):
         if label:
             label = current.T(label)
         icon = widget.get("icon", "")
@@ -382,10 +384,13 @@ class S3Profile(S3CRUD):
         # Render the widget
         output = DIV(H4(icon,
                         label,
-                        _class="profile-sub-header"),
+                        _class = "profile-sub-header",
+                        ),
                      DIV(contents,
-                         _class="card-holder"),
-                     _class=_class)
+                         _class = "card-holder",
+                         ),
+                     _class = _class,
+                     )
 
         return output
 
@@ -473,14 +478,14 @@ class S3Profile(S3CRUD):
         # Render the list
         ajaxurl = r.url(vars={"update": widget["index"]},
                         representation="dl")
-        data = datalist.html(ajaxurl=ajaxurl,
-                             pagesize=pagesize,
+        data = datalist.html(ajaxurl = ajaxurl,
+                             pagesize = pagesize,
                              empty = P(ICON("folder-open-alt"),
                                        BR(),
                                        self.crud_string(tablename,
                                                         "msg_no_match"),
-                                       _class="empty_card-holder"
-                                      ),
+                                       _class = "empty_card-holder"
+                                       ),
                              )
 
         if representation == "dl":
@@ -491,7 +496,7 @@ class S3Profile(S3CRUD):
         # Interactive only below here
         label = widget_get("label", "")
         # Activate if-required
-        #if label and isinstance(label, basestring):
+        #if label and isinstance(label, str):
         if label:
             label = T(label)
         icon = widget_get("icon", "")
@@ -515,14 +520,15 @@ class S3Profile(S3CRUD):
             url = URL(c=c, f=f, args=["datalist.popup"],
                       vars=get_vars_new)
             more = DIV(A(BUTTON("%s (%s)" % (T("see more"), more),
-                                _class="btn btn-mini tiny button",
-                                _type="button",
+                                _class = "btn btn-mini tiny button",
+                                _type = "button",
                                 ),
-                         _class="s3_modal",
-                         _href=url,
-                         _title=label,
+                         _class = "s3_modal",
+                         _href = url,
+                         _title = label,
                          ),
-                       _class="more_profile")
+                       _class = "more_profile",
+                       )
         else:
             more = ""
 
@@ -540,11 +546,14 @@ class S3Profile(S3CRUD):
         output = DIV(create_popup,
                      H4(icon,
                         label,
-                        _class="profile-sub-header"),
+                        _class = "profile-sub-header",
+                        ),
                      DIV(data,
                          more,
-                         _class="card-holder"),
-                     _class=_class)
+                         _class = "card-holder",
+                         ),
+                     _class = _class,
+                     )
 
         return output
 
@@ -649,10 +658,10 @@ class S3Profile(S3CRUD):
                 dt_pagination = "false"
 
             # Get the data table
-            dt, totalrows = resource.datatable(fields=list_fields,
-                                               start=start,
-                                               limit=limit,
-                                               orderby=orderby,
+            dt, totalrows = resource.datatable(fields = list_fields,
+                                               start = start,
+                                               limit = limit,
+                                               orderby = orderby,
                                                )
             displayrows = totalrows
 
@@ -702,7 +711,7 @@ class S3Profile(S3CRUD):
             # Card holder label and icon
             label = widget_get("label", "")
             # Activate if-required
-            #if label and isinstance(label, basestring):
+            #if label and isinstance(label, str):
             if label:
                 label = current.T(label)
             else:
@@ -799,7 +808,7 @@ class S3Profile(S3CRUD):
 
         label = widget_get("label", "")
         # Activate if-required
-        #if label and isinstance(label, basestring):
+        #if label and isinstance(label, str):
         if label:
             label = current.T(label)
         icon = widget_get("icon", "")
@@ -887,7 +896,7 @@ class S3Profile(S3CRUD):
         widget_get = widget.get
 
         label = widget_get("label", "")
-        if label and isinstance(label, basestring):
+        if label and isinstance(label, str):
             label = T(label)
         icon = widget_get("icon", "")
         if icon:
@@ -933,12 +942,14 @@ class S3Profile(S3CRUD):
                 marker = db(mtable.name == marker).select(mtable.image,
                                                           mtable.height,
                                                           mtable.width,
-                                                          limitby=(0, 1)).first()
+                                                          limitby = (0, 1)
+                                                          ).first()
             layer_id = None
             layer_name = widget_get("layer", None)
             if layer_name:
                 row = db(ftable.name == layer_name).select(ftable.layer_id,
-                                                           limitby=(0, 1)).first()
+                                                           limitby = (0, 1)
+                                                           ).first()
                 if row:
                     layer_id = row.layer_id
             if layer_id:
@@ -998,22 +1009,22 @@ class S3Profile(S3CRUD):
         lat = widget_get("lat", None)
         lon = widget_get("lon", None)
 
-        map = current.gis.show_map(height=height,
-                                   lat=lat,
-                                   lon=lon,
-                                   width=width,
-                                   bbox=bbox,
-                                   collapsed=True,
-                                   feature_resources=feature_resources,
+        map = current.gis.show_map(height = height,
+                                   lat = lat,
+                                   lon = lon,
+                                   width = width,
+                                   bbox = bbox,
+                                   collapsed = True,
+                                   feature_resources = feature_resources,
                                    )
 
         # Button to go full-screen
         fullscreen = A(ICON("fullscreen"),
-                       _href=URL(c="gis", f="map_viewing_client"),
-                       _class="gis_fullscreen_map-btn",
+                       _href = URL(c="gis", f="map_viewing_client"),
+                       _class = "gis_fullscreen_map-btn",
                        # If we need to support multiple maps on a page
-                       #_map="default",
-                       _title=T("View full screen"),
+                       #_map = "default",
+                       _title = T("View full screen"),
                        )
         s3 = current.response.s3
         if s3.debug:
@@ -1026,10 +1037,13 @@ class S3Profile(S3CRUD):
         output = DIV(fullscreen,
                      H4(icon,
                         label,
-                        _class="profile-sub-header"),
+                        _class = "profile-sub-header",
+                        ),
                      DIV(map,
-                         _class="card-holder"),
-                     _class=_class)
+                         _class = "card-holder",
+                         ),
+                     _class = _class,
+                     )
 
         return output
 
@@ -1063,13 +1077,13 @@ class S3Profile(S3CRUD):
         report.resource = resource
         ajaxurl = widget_get("ajaxurl", None)
         contents = report.widget(r,
-                                 widget_id=widget_id,
-                                 ajaxurl=ajaxurl,
+                                 widget_id = widget_id,
+                                 ajaxurl = ajaxurl,
                                  **attr)
 
         # Card holder label and icon
         label = widget_get("label", "")
-        if label and isinstance(label, basestring):
+        if label and isinstance(label, str):
             label = current.T(label)
         icon = widget_get("icon", "")
         if icon:
@@ -1079,10 +1093,13 @@ class S3Profile(S3CRUD):
 
         # Render the widget
         output = DIV(H4(icon, label,
-                        _class="profile-sub-header"),
+                        _class = "profile-sub-header",
+                        ),
                      DIV(contents,
-                         _class="card-holder"),
-                     _class=_class)
+                         _class = "card-holder",
+                         ),
+                     _class = _class,
+                     )
 
         return output
 
@@ -1102,7 +1119,7 @@ class S3Profile(S3CRUD):
 
         # Card holder label and icon
         profile_label = widget_get("label", "")
-        if profile_label and isinstance(profile_label, basestring):
+        if profile_label and isinstance(profile_label, str):
             profile_label = current.T(profile_label)
         icon = widget_get("icon", "")
         if icon:
@@ -1117,9 +1134,12 @@ class S3Profile(S3CRUD):
         #   specify "master" and "component" (see further down)
         base_url = widget_get("url")
         if not base_url:
-            return DIV(H4(icon, profile_label, _class="profile-sub-header"),
+            return DIV(H4(icon,
+                          profile_label,
+                          _class = "profile-sub-header",
+                          ),
                        DIV(DIV("Error: missing widget URL", _class="error"),
-                           _class="card-holder",
+                           _class = "card-holder",
                            ),
                        _class = _class,
                        )
@@ -1208,8 +1228,13 @@ class S3Profile(S3CRUD):
                                   )
 
         # Render the widget
-        output = DIV(H4(icon, profile_label, _class="profile-sub-header"),
-                     DIV(contents, _class="card-holder profile-organizer"),
+        output = DIV(H4(icon,
+                        profile_label,
+                        _class = "profile-sub-header",
+                        ),
+                     DIV(contents,
+                         _class = "card-holder profile-organizer",
+                         ),
                      _class = _class,
                      )
 
@@ -1317,7 +1342,7 @@ class S3Profile(S3CRUD):
             # CRUD string
             label_create = widget_get("label_create", None)
             # Activate if-required
-            #if label_create and isinstance(label_create, basestring):
+            #if label_create and isinstance(label_create, str):
             if label_create:
                 label_create = current.T(label_create)
             else:
