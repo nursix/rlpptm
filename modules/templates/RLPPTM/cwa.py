@@ -22,6 +22,7 @@ from s3 import IS_ONE_OF, S3CustomController, S3Method, \
                s3_date, s3_mark_required, s3_qrcode_represent, \
                JSONERRORS
 
+from .dcc import DCC
 from .vouchers import RLPCardLayout
 
 CWA = {"system": "RKI / Corona-Warn-App",
@@ -292,7 +293,6 @@ class TestResultRegistration(S3Method):
                     # Store DCC data
                     if dcc_option:
                         cwa_data = cwa_report.data
-                        from .dcc import DCC
                         try:
                             hcert = DCC.from_result(cwa_data.get("hash"),
                                                     record_id,
@@ -434,7 +434,7 @@ class TestResultRegistration(S3Method):
                                   first_name = cwadata.get("fn"),
                                   last_name = cwadata.get("ln"),
                                   dob = cwadata.get("dob"),
-                                  dcc = cwadata.get("dcc", False),
+                                  dcc = post_vars.get("dcc") == "1",
                                   salt = cwadata.get("salt"),
                                   dhash = cwadata.get("hash"),
                                   )
@@ -533,7 +533,7 @@ class TestResultRegistration(S3Method):
                                   first_name = cwadata.get("fn"),
                                   last_name = cwadata.get("ln"),
                                   dob = cwadata.get("dob"),
-                                  dcc = cwadata.get("dgc", False),
+                                  dcc = options.get("dcc") == "1",
                                   salt = cwadata.get("salt"),
                                   dhash = cwadata.get("hash"),
                                   )
@@ -613,7 +613,7 @@ class CWAReport(object):
 
         # Determine the testid and timestamp
         testid = result.uuid
-        timestamp = int(result.probe_date.replace(microsecond=0).timestamp())
+        timestamp = int(DCC.utc_timestamp(result.probe_date))
 
         if not anonymous:
             if not all(value for value in (first_name, last_name, dob)):
@@ -651,7 +651,7 @@ class CWAReport(object):
 
             @returns: the token as str
         """
-        return secrets.token_hex(16)
+        return secrets.token_hex(16).upper()
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -829,6 +829,7 @@ class CWAReport(object):
                         ),
                     hidden = {"formurl": formurl,
                               "cwadata": json.dumps(self.data),
+                              "dcc": "1" if self.dcc else "0",
                               "_formkey": formkey,
                               },
                     )
@@ -905,7 +906,6 @@ class CWAReport(object):
         result_list = {"testResults": [testresult]}
         if self.dcc:
             # Look up the LabID
-            from .dcc import DCC
             lab_id = DCC.get_issuer_id(self.site_id)
             if not lab_id:
                 raise RuntimeError("Point-of-Care ID for test station not found")
