@@ -938,7 +938,7 @@ def config(settings):
         """
 
         from .dcc import DCC
-        DCC.poll()
+        return DCC.poll()
 
     settings.tasks.poll_dcc = poll_dcc
 
@@ -3587,6 +3587,8 @@ def config(settings):
         def prep(r):
             # Call standard prep
             result = standard_prep(r) if callable(standard_prep) else True
+
+            add_org_tags()
 
             resource = r.resource
             table = resource.table
