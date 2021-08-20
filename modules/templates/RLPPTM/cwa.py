@@ -609,7 +609,7 @@ class CWAReport(object):
         self.probe_date = result.probe_date
         self.result_date = result.result_date
         self.result = result.result
-        self.dcc = dcc
+        self.dcc = False
 
         # Determine the testid and timestamp
         testid = result.uuid
