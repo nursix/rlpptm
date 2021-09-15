@@ -5161,7 +5161,7 @@ def inv_send_process():
     auth = current.auth
     db = current.db
     s3db = current.s3db
-    stable = db.inv_send
+    stable = s3db.inv_send
 
     session = current.session
 
@@ -5184,7 +5184,7 @@ def inv_send_process():
     if send_record.status != SHIP_STATUS_IN_PROCESS:
         session.error = T("This shipment has already been sent.")
 
-    tracktable = db.inv_track_item
+    tracktable = s3db.inv_track_item
     siptable = s3db.supply_item_pack
     rrtable = s3db.req_req
     ritable = s3db.req_req_item
