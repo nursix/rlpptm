@@ -66,7 +66,7 @@ from collections import OrderedDict
 from gluon import *
 from gluon.storage import Messages, Storage
 
-from ..s3 import *
+from ..core import *
 #from s3layouts import S3PopupLink
 
 CASE_GROUP = 7
@@ -2179,6 +2179,13 @@ class BRAssistanceOfferModel(S3Model):
                            label = T("Chargeable"),
                            represent = s3_yes_no_represent,
                            ),
+                     Field("website",
+                           label = T("Website"),
+                           represent = s3_url_represent,
+                           requires = IS_EMPTY_OR(IS_URL(allowed_schemes = ["http", "https", None],
+                                                         prepend_scheme = "http",
+                                                         )),
+                           ),
                      self.gis_location_id(), # Location of the offer (if housing)
                      Field("contact_name",
                            label = T("Contact Name"),
@@ -4131,7 +4138,7 @@ def br_rheader(r, tabs=None):
                             )
 
             # Add profile picture
-            from s3 import s3_avatar_represent
+            from core import s3_avatar_represent
             rheader.insert(0, A(s3_avatar_represent(record_id,
                                                     "pr_person",
                                                     _class = "rheader-avatar",

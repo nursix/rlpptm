@@ -197,7 +197,6 @@ class S3Config(Storage):
         self.mobile = Storage()
         self.msg = Storage()
         self.org = Storage()
-        self.police = Storage()
         self.pr = Storage()
         self.proc = Storage()
         self.project = Storage()
@@ -212,7 +211,6 @@ class S3Config(Storage):
         self.tasks = Storage()
         self.transport = Storage()
         self.ui = Storage()
-        self.vulnerability = Storage()
         self.xforms = Storage()
 
         # Lazy property
@@ -484,7 +482,7 @@ class S3Config(Storage):
         else:
             return attr
 
-    def customise_home(self, module, alt_function):
+    def customise_home(self, module, alt_function=None):
         """
             Allow use of a Customised module Home page
             Fallback to cms_index if not configured
@@ -1058,8 +1056,20 @@ class S3Config(Storage):
         """
             Allow testing of Eden using EdenTest
         """
-
         return self.base.get("allow_testing", True)
+
+    def get_base_models(self):
+        """
+            Import path(s) for extension models (str or list|tuple of str)
+        """
+        return self.base.get("models")
+
+    def get_base_rest_controllers(self):
+        """
+            Re-routed RESTful CRUD controllers
+            - a dict {(controller, function): (prefix, name)}
+        """
+        return self.base.get("rest_controllers")
 
     def get_base_migrate(self):
         """ Whether to allow Web2Py to migrate the SQL database to the new structure """
@@ -2560,7 +2570,7 @@ class S3Config(Storage):
 
         layout = self.ui.get("inline_component_layout")
         if not layout:
-            from s3 import S3SQLSubFormLayout
+            from core import S3SQLSubFormLayout
             layout = S3SQLSubFormLayout()
         elif isinstance(layout, type):
             # Instantiate only now when it's actually requested
@@ -2668,7 +2678,7 @@ class S3Config(Storage):
             link alert_id in cap module to message_id in message module
             The function can be of form msg_send_postprocess(message_id, **data),
             where message_id is the msg_message_id and
-            **data is the additional arguments to pass to s3msg.send_by_pe_id
+            **data is the additional arguments to pass to S3Msg.send_by_pe_id
         """
 
         return self.msg.get("send_postprocess")
@@ -2776,7 +2786,7 @@ class S3Config(Storage):
             custom_msg_notify_attachment(resource, data, meta_data), where
             resource is the S3Resource, data: the data returned from
             S3Resource.select and meta_data: the meta data for the notification
-            (see s3notify for the metadata)
+            (see S3Notifications for the metadata)
         """
 
         return self.msg.get("notify_attachment")
@@ -2784,13 +2794,13 @@ class S3Config(Storage):
     def get_msg_notify_send_data(self):
         """
             Custom function that returns additional arguments to pass to
-            s3msg.send_by_pe_id
+            S3Msg.send_by_pe_id
 
             The function should be of the form:
             custom_msg_notify_send_data(resource, data, meta_data), where
             resource is the S3Resource, data: the data returned from
             S3Resource.select and meta_data: the meta data for the notification
-            (see s3notify for the metadata)
+            (see S3Notifications for the metadata)
         """
 
         return self.msg.get("notify_send_data")
@@ -4017,15 +4027,6 @@ class S3Config(Storage):
                self.__lazy("dvr", "response_activity_autolink", default=False)
 
     # -------------------------------------------------------------------------
-    # Education
-    #
-    def get_edu_school_code_unique(self):
-        """
-            Validate for Unique School Codes
-        """
-        return self.edu.get("school_code_unique", False)
-
-    # -------------------------------------------------------------------------
     # Events
     #
     def get_event_label(self):
@@ -5238,16 +5239,6 @@ class S3Config(Storage):
         return self.org.get("tags", False)
 
     # -------------------------------------------------------------------------
-    # Police
-    #
-
-    def get_police_station_code_unique(self):
-        """
-            Whether Police Station code is unique
-        """
-        return self.police.get("police_station_unique", False)
-
-    # -------------------------------------------------------------------------
     # Persons
     #
     def get_pr_age_group(self, age):
@@ -5986,12 +5977,6 @@ class S3Config(Storage):
             - function(prefix, site_id, field)
         """
         return self.supply.get("shipping_code")
-
-    # -------------------------------------------------------------------------
-    # Vulnerability
-    #
-    def get_vulnerability_indicator_hierarchical(self):
-        return self.vulnerability.get("indicator_hierarchical", False)
 
     # -------------------------------------------------------------------------
     # Transport

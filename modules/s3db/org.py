@@ -90,7 +90,7 @@ from io import BytesIO
 
 from gluon import *
 
-from ..s3 import *
+from ..core import *
 from s3dal import Row
 from s3layouts import S3PopupLink
 
@@ -815,15 +815,6 @@ class OrgOrganisationModel(S3Model):
                                             "autodelete": False,
                                             },
                                            ),
-
-                       # Population Outreach (referral agencies)
-                       po_area = {"link": "po_organisation_area",
-                                  "joinby": "organisation_id",
-                                  "key": "area_id",
-                                  },
-                       po_organisation_area = "organisation_id",
-                       po_organisation_household = "organisation_id",
-                       po_referral_organisation = "organisation_id",
                        )
 
         # Beneficiary/Case Management
@@ -6460,7 +6451,7 @@ class org_SiteCheckInMethod(S3Method):
             @param person: the person record
         """
 
-        from s3 import S3Trackable
+        from core.tools import S3Trackable
 
         s3db = current.s3db
 
@@ -6495,7 +6486,7 @@ class org_SiteCheckInMethod(S3Method):
             @param person: the person record
         """
 
-        from s3 import S3Trackable
+        from core.tools import S3Trackable
 
         s3db = current.s3db
 
@@ -6745,9 +6736,6 @@ def org_rheader(r, tabs=None):
                        settings.get_br_assistance_themes_org_specific():
                         append_tab((labels.THEMES, "assistance_theme"))
 
-                # Org Role Manager always last
-                append_tab((T("User Roles"), "roles"))
-
             if settings.get_L10n_translate_org_organisation():
                 tabs.insert(1, (T("Local Names"), "name"))
 
@@ -6864,9 +6852,7 @@ def org_rheader(r, tabs=None):
         if settings.has_module("asset"):
             append_tab((T("Assets"), "asset"))
 
-        tabs.extend(((T("Attachments"), "document"),
-                     (T("User Roles"), "roles"),
-                     ))
+        tabs.append((T("Attachments"), "document"))
 
         if tablename == "org_office":
             rheader_fields = [["name", "organisation_id", "email"],
@@ -8840,7 +8826,7 @@ class org_CapacityReport(S3Method):
         try:
             import xlwt
         except ImportError:
-            from s3.codecs.xls import S3XLS
+            from core.io.codecs.xls import S3XLS
             if current.auth.permission.format in S3Request.INTERACTIVE_FORMATS:
                 current.session.error = S3XLS.ERROR.XLWT_ERROR
                 redirect(URL(extension=""))

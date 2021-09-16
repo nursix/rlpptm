@@ -43,7 +43,7 @@ from uuid import uuid4
 from gluon import *
 from gluon.storage import Storage
 
-from ..s3 import *
+from ..core import *
 
 # =============================================================================
 class S3DocumentLibrary(S3Model):
@@ -101,9 +101,6 @@ class S3DocumentLibrary(S3Model):
                                inv_recv = T("Incoming Shipment"),
                                inv_send = T("Sent Shipment"),
                                inv_warehouse = T("Warehouse"),
-                               # @ToDo: Deprecate
-                               #irs_ireport = T("Incident Report"),
-                               police_station = T("Police Station"),
                                pr_group = T("Team"),
                                project_project = T("Project"),
                                project_activity = T("Project Activity"),
@@ -117,11 +114,6 @@ class S3DocumentLibrary(S3Model):
                                req_need_response = T("Activity Group"),
                                req_req = T("Request"),
                                security_seized_item = T("Seized Item"),
-                               # @ToDo: Deprecate
-                               #stats_people = T("People"),
-                               vulnerability_document = T("Vulnerability Document"),
-                               vulnerability_risk = T("Risk"),
-                               vulnerability_evac_route = T("Evacuation Route"),
                                )
 
         tablename = "doc_entity"

@@ -136,7 +136,7 @@ from gluon import current, redirect, URL, \
 from gluon.storage import Storage
 from gluon.sqlhtml import RadioWidget
 
-from ..s3 import *
+from ..core import *
 from s3dal import Field, Row
 from s3layouts import S3PopupLink
 
@@ -205,9 +205,6 @@ class PRPersonEntityModel(S3Model):
                            org_group = org_group_label,
                            org_facility = T("Facility"),
                            org_office = T("Office"),
-                           #po_area = T("Recovery Outreach Area"),
-                           po_household = T("Household"),
-                           police_station = T("Police Station"),
                            pr_person = T("Person"),
                            pr_forum = T("Forum"),
                            pr_group = T("Group"),
@@ -3652,7 +3649,7 @@ class PRForumModel(S3Model):
             message = current.T("Already a Member")
         else:
             # Send Notification to the Forum Admin(s)
-            from s3 import s3_str
+            from core import s3_str
 
             T = current.T
 

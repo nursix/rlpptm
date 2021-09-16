@@ -55,7 +55,7 @@ from gluon import *
 from gluon.sqlhtml import RadioWidget
 from gluon.storage import Storage
 
-from ..s3 import *
+from ..core import *
 from s3layouts import S3PopupLink
 
 # Compact JSON encoding
@@ -2268,7 +2268,7 @@ $.filterOptionsS3({
             list_fields.extend(("currency",
                                 "pack_value",
                                 ))
-        from s3.s3export import S3Exporter
+        from core import S3Exporter
         exporter = S3Exporter().pdf
         return exporter(r.resource,
                         request = r,
@@ -2424,7 +2424,7 @@ $.filterOptionsS3({
                        "pack_value",
                        "bin"
                        ]
-        from s3.s3export import S3Exporter
+        from core import S3Exporter
         exporter = S3Exporter().pdf
         return exporter(r.resource,
                         request = r,
@@ -2463,7 +2463,7 @@ $.filterOptionsS3({
         site_id = record.site_id
         site = field.represent(site_id, False)
 
-        from s3.s3export import S3Exporter
+        from core import S3Exporter
         exporter = S3Exporter().pdf
         return exporter(r.resource,
                         request = r,
@@ -3391,7 +3391,6 @@ def inv_rheader(r):
         if settings.has_module("req"):
             tabs = tabs + s3db.req_tabs(r)
         tabs.append((T("Attachments"), "document"))
-        tabs.append((T("User Roles"), "roles"))
 
         # Fields
         rheader_fields = [["name", "organisation_id", "email"],

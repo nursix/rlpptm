@@ -76,7 +76,7 @@ __all__ = ("RequestModel",
 from gluon import *
 from gluon.sqlhtml import StringWidget
 from gluon.storage import Storage
-from ..s3 import *
+from ..core import *
 from s3layouts import S3PopupLink
 
 from .pr import OU
@@ -1078,7 +1078,7 @@ class RequestModel(S3Model):
         else:
             filename = None
 
-        from s3.s3export import S3Exporter
+        from core import S3Exporter
         exporter = S3Exporter().pdf
         return exporter(r.resource,
                         request = r,
@@ -5332,9 +5332,6 @@ def req_match(rheader = None):
 
     # Pre-process
     def prep(r):
-        # Plugin OrgRoleManager when appropriate
-        S3OrgRoleManager.set_method(r, entity=tablename, record_id=record_id)
-
         if settings.get_req_workflow():
             # Only show Approved Requests
             r.resource.add_filter(FS("workflow_status") == 3)
