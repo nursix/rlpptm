@@ -51,9 +51,10 @@ from gluon.storage import Storage
 from gluon.tools import callback
 
 from ..io import S3Exporter
-from ..service import S3Method
 from ..tools import S3DateTime, s3_decode_iso_datetime, s3_str, s3_validate, s3_represent_value, s3_set_extension
 from ..ui import S3EmbeddedComponentWidget, S3Selector, ICON, S3SQLDefaultForm
+
+from .base import S3Method
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -3316,47 +3317,5 @@ class S3CRUD(S3Method):
                     end.field.default = s3_decode_iso_datetime(dates[1])
                 except ValueError:
                     pass
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _limits(get_vars, default_limit=0):
-        """
-            Extract page limits (start and limit) from GET vars
-
-            @param get_vars: the GET vars
-            @param default_limit: the default limit, explicit value or:
-                                  0 => response.s3.ROWSPERPAGE
-                                  None => no default limit
-        """
-
-        start = get_vars.get("start", None)
-        limit = get_vars.get("limit", default_limit)
-
-        # Deal with overrides (pagination limits come last)
-        if isinstance(start, list):
-            start = start[-1]
-        if isinstance(limit, list):
-            limit = limit[-1]
-
-        if limit:
-            # Ability to override default limit to "Show All"
-            if isinstance(limit, str) and limit.lower() == "none":
-                #start = None # needed?
-                limit = None
-            else:
-                try:
-                    start = int(start) if start is not None else None
-                    limit = int(limit)
-                except (ValueError, TypeError):
-                    # Fall back to defaults
-                    start, limit = None, default_limit
-
-        else:
-            # Use defaults, assume sspag because this is a
-            # pagination request by definition
-            start = None
-            limit = default_limit
-
-        return start, limit
 
 # END =========================================================================

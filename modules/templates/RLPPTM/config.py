@@ -145,8 +145,6 @@ def config(settings):
     # 5: Apply Controller, Function & Table ACLs
     # 6: Apply Controller, Function, Table ACLs and Entity Realm
     # 7: Apply Controller, Function, Table ACLs and Entity Realm + Hierarchy
-    # 8: Apply Controller, Function, Table ACLs, Entity Realm + Hierarchy and Delegations
-    #
     settings.security.policy = 7
 
     # -------------------------------------------------------------------------
@@ -155,6 +153,9 @@ def config(settings):
     settings.pr.name_format= "%(last_name)s, %(first_name)s"
 
     settings.pr.availability_json_rules = True
+
+    # -------------------------------------------------------------------------
+    settings.disease.testing_report_by_demographic = True
 
     # -------------------------------------------------------------------------
     settings.hrm.record_tab = True
@@ -221,6 +222,17 @@ def config(settings):
     settings.custom.test_station_registration = True
 
     # -------------------------------------------------------------------------
+    def poll_dcc():
+        """
+            Scheduler task to poll for DCC requests
+        """
+
+        from .dcc import DCC
+        return DCC.poll()
+
+    settings.tasks.poll_dcc = poll_dcc
+
+    # -------------------------------------------------------------------------
     # Realm Rules
     #
     def rlpptm_realm_entity(table, row):
@@ -285,19 +297,18 @@ def config(settings):
                                                      organisation_id,
                                                      )
 
-        elif tablename == "disease_testing_report":
-
-            # Daily reports inherit realm-entity from the testing site
+        elif tablename == "disease_testing_demographic":
+            # Demographics subtotals inherit the realm-entity from
+            # the main report
             table = s3db.table(tablename)
-            stable = s3db.org_site
+            rtable = s3db.disease_testing_report
             query = (table._id == row.id) & \
-                    (stable.site_id == table.site_id)
-            site = db(query).select(stable.realm_entity,
-                                    limitby = (0, 1),
-                                    ).first()
-            if site:
-                realm_entity = site.realm_entity
-
+                    (rtable.id == table.report_id)
+            report = db(query).select(rtable.realm_entity,
+                                      limitby = (0, 1),
+                                      ).first()
+            if report:
+                realm_entity = report.realm_entity
             else:
                 # Fall back to user organisation
                 user = current.auth.user
@@ -641,67 +652,24 @@ def config(settings):
         table = s3db.disease_case_diagnostics
         query = (table.id == record_id)
         record = db(query).select(table.site_id,
-                                  table.disease_id,
                                   table.result_date,
+                                  table.disease_id,
                                   limitby = (0, 1),
                                   ).first()
         if not record:
             return
 
         site_id = record.site_id
-        disease_id = record.disease_id
         result_date = record.result_date
+        disease_id = record.disease_id
 
         if site_id and disease_id and result_date:
-
-            # Count records grouped by result
-            query = (table.site_id == site_id) & \
-                    (table.disease_id == disease_id) & \
-                    (table.result_date == result_date) & \
-                    (table.deleted == False)
-            cnt = table.id.count()
-            rows = db(query).select(table.result,
-                                    cnt,
-                                    groupby = table.result,
-                                    )
-            total = positive = 0
-            for row in rows:
-                num = row[cnt]
-                total += num
-                if row.disease_case_diagnostics.result == "POS":
-                    positive += num
-
-            # Look up the daily report
-            rtable = s3db.disease_testing_report
-            query = (rtable.site_id == site_id) & \
-                    (rtable.disease_id == disease_id) & \
-                    (rtable.date == result_date) & \
-                    (rtable.deleted == False)
-            report = db(query).select(rtable.id,
-                                      rtable.tests_total,
-                                      rtable.tests_positive,
-                                      limitby = (0, 1),
-                                      ).first()
-
-            if report:
-                # Update report if actual numbers are greater
-                if report.tests_total < total or report.tests_positive < positive:
-                    report.update_record(tests_total = total,
-                                         tests_positive = positive,
-                                         )
+            # Update daily testing report
+            if settings.get_disease_testing_report_by_demographic():
+                from .helpers import update_daily_report_by_demographic as update_daily_report
             else:
-                # Create report
-                report = {"site_id": site_id,
-                          "disease_id": disease_id,
-                          "date": result_date,
-                          "tests_total": total,
-                          "tests_positive": positive,
-                          }
-                report_id = rtable.insert(**report)
-                if report_id:
-                    current.auth.s3_set_record_owner(rtable, report_id)
-                    report["id"] = report_id
-                    s3db.onaccept(rtable, report, method="create")
+                from .helpers import update_daily_report
+            update_daily_report(site_id, result_date, disease_id)
 
     # -------------------------------------------------------------------------
     def customise_disease_case_diagnostics_resource(r, tablename):
@@ -813,10 +781,17 @@ def config(settings):
             site_id = None
         disease_id = "disease_id" if not single_disease else None
 
+        if settings.get_disease_testing_report_by_demographic():
+            table.demographic_id.readable = True
+            demographic_id = "demographic_id"
+        else:
+            demographic_id = None
+
         # Custom list_fields
         list_fields = [site_id,
                        disease_id,
                        "probe_date",
+                       demographic_id,
                        "result",
                        "device_id",
                        ]
@@ -826,12 +801,13 @@ def config(settings):
         crud_form = S3SQLCustomForm(disease_id,
                                     site_id,
                                     "probe_date",
+                                    demographic_id,
                                     "result",
                                     "result_date",
                                     )
 
         # Filters
-        from core import S3DateFilter, S3OptionsFilter
+        from core import S3DateFilter, S3OptionsFilter, s3_get_filter_opts
         filter_widgets = [S3DateFilter("probe_date",
                                        label = T("Date"),
                                        hide_time = True,
@@ -850,7 +826,15 @@ def config(settings):
             # - better scalability, but cannot select multiple
             filter_widgets.append(S3OptionsFilter("site_id", hidden=True))
         if disease_id:
-            filter_widgets.append(S3OptionsFilter("disease_id", hidden=True))
+            filter_widgets.append(S3OptionsFilter("disease_id",
+                                                  options = lambda: s3_get_filter_opts("disease_disease"),
+                                                  hidden=True,
+                                                  ))
+        if demographic_id:
+            filter_widgets.append(S3OptionsFilter("demographic_id",
+                                                  options = lambda: s3_get_filter_opts("disease_demographic"),
+                                                  hidden=True,
+                                                  ))
 
         # Report options
         facts = ((T("Number of Tests"), "count(id)"),
@@ -972,17 +956,6 @@ def config(settings):
     settings.customise_disease_case_diagnostics_controller = customise_disease_case_diagnostics_controller
 
     # -------------------------------------------------------------------------
-    def poll_dcc():
-        """
-            Scheduler task to poll for DCC requests
-        """
-
-        from .dcc import DCC
-        return DCC.poll()
-
-    settings.tasks.poll_dcc = poll_dcc
-
-    # -------------------------------------------------------------------------
     def customise_disease_testing_report_resource(r, tablename):
 
         db = current.db
@@ -1013,6 +986,14 @@ def config(settings):
             field.readable = field.writable = False
         else:
             list_fields.insert(1, "disease_id")
+
+        if r.tablename == "disease_testing_report" and r.record and \
+           settings.get_disease_testing_report_by_demographic() and \
+           r.method != "read" and \
+           current.auth.s3_has_permission("update", table, record_id=r.record.id):
+            # Hide totals in create/update form
+            table.tests_total.readable = False
+            table.tests_positive.readable = False
 
         # If there is only one selectable site, set as default + make r/o
         field = table.site_id

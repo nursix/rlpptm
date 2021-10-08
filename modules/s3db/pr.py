@@ -62,7 +62,6 @@ __all__ = (# PR Base Entities
 
            # S3 Models
            "S3ImageLibraryModel",
-           "S3RoleDelegationModel",
            "S3SavedFilterModel",
            "S3SubscriptionModel",
 
@@ -6788,30 +6787,6 @@ class S3ImageLibraryModel(S3Model):
         dbset.delete()
 
 # =============================================================================
-class S3RoleDelegationModel(S3Model):
-    """ Organisation-based Authorization Model """
-
-    names = ("pr_delegation",)
-
-    def model(self):
-
-        # ---------------------------------------------------------------------
-        # Delegation: Role <-> Auth Group Link
-        # This "delegates" the permissions of a user group for the records
-        # owned by a person entity to a group of affiliated entities.
-        #
-        gtable = current.auth.settings.table_group
-        tablename = "pr_delegation"
-        self.define_table(tablename,
-                          self.pr_role_id(),
-                          Field("group_id", gtable,
-                                ondelete="CASCADE"),
-                          *s3_meta_fields())
-
-        # ---------------------------------------------------------------------
-        return {}
-
-# =============================================================================
 class S3SavedFilterModel(S3Model):
     """ Saved Filters """
 
@@ -9219,8 +9194,6 @@ def pr_human_resource_update_affiliations(person_id):
     h = htable._tablename
     s = stable._tablename
     o = otable._tablename
-    r = rtable._tablename
-    #e = etable._tablename
 
     # Get the PE ID for this person
     pe_id = pr_get_pe_id("pr_person", person_id)

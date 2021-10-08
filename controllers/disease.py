@@ -200,8 +200,29 @@ def tracing():
     return s3_rest_controller(rheader = s3db.disease_rheader)
 
 # -----------------------------------------------------------------------------
+def demographic():
+    """ Disease Demographic: RESTful CRUD Controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
 def testing_report():
     """ Testing Site Daily Summary Report: RESTful CRUD Controller """
+
+    return s3_rest_controller()
+
+# -----------------------------------------------------------------------------
+def testing_demographic():
+    """ Testing Reports by Demographic: RESTful CRUD Controller """
+
+    def prep(r):
+        r.resource.configure(# Only reporting in this controller
+                             insertable = False,
+                             editable = False,
+                             deletable = False,
+                             )
+        return True
+    s3.prep = prep
 
     return s3_rest_controller()
 
