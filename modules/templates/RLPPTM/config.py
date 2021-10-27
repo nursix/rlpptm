@@ -14,7 +14,7 @@ from gluon import current, URL, A, DIV, TAG, \
 
 from gluon.storage import Storage
 
-from core import FS, IS_FLOAT_AMOUNT, ICON, IS_ONE_OF, IS_UTC_DATE, S3Represent, s3_str
+from core import FS, IS_FLOAT_AMOUNT, ICON, IS_ONE_OF, IS_UTC_DATE, S3CRUD, S3Represent, s3_str
 from s3dal import original_tablename
 
 from .rlpgeonames import rlp_GeoNames
@@ -875,15 +875,15 @@ def config(settings):
 
         # Custom REST methods
         from .cwa import TestResultRegistration
-        s3db.set_method("disease", "case_diagnostics",
+        s3db.set_method("disease_case_diagnostics",
                         method = "register",
                         action = TestResultRegistration,
                         )
-        s3db.set_method("disease", "case_diagnostics",
+        s3db.set_method("disease_case_diagnostics",
                         method = "certify",
                         action = TestResultRegistration,
                         )
-        s3db.set_method("disease", "case_diagnostics",
+        s3db.set_method("disease_case_diagnostics",
                         method = "cwaretry",
                         action = TestResultRegistration,
                         )
@@ -942,10 +942,9 @@ def config(settings):
                     elif record and method in (None, "read"):
                         key, label = "list_btn", T("Register another test result")
                 if key:
-                    crud = r.resource.crud
-                    regbtn =  crud.crud_button(label = label,
-                                               _href = r.url(id="", method="register"),
-                                               )
+                    regbtn = S3CRUD.crud_button(label = label,
+                                                _href = r.url(id="", method="register"),
+                                                )
                     output["buttons"] = {key: regbtn}
 
             return output
@@ -995,14 +994,28 @@ def config(settings):
             table.tests_total.readable = False
             table.tests_positive.readable = False
 
-        # If there is only one selectable site, set as default + make r/o
+        # Order testing sites selector by obsolete-flag
         field = table.site_id
-        requires = field.requires
-        if hasattr(requires, "options"):
-            selectable = [o[0] for o in field.requires.options() if o[0]]
-            if len(selectable) == 1:
-                field.default = selectable[0]
-                field.writable = False
+        stable = current.s3db.org_site
+        field.requires = IS_ONE_OF(db, "org_site.site_id",
+                                   field.represent,
+                                   instance_types = ["org_facility"],
+                                   orderby = (stable.obsolete, stable.name),
+                                   sort = False,
+                                   )
+        # Check how many sites are selectable
+        selectable = [o[0] for o in field.requires.options() if o[0]]
+        if len(selectable) == 1:
+            # If only one selectable site, set as default + make r/o
+            field.default = selectable[0]
+            field.writable = False
+        else:
+            # If one active site, set it as default, but leave selectable
+            query = (stable.site_id.belongs(selectable)) & \
+                    (stable.obsolete == False)
+            active = db(query).select(stable.site_id, limitby = (0, 2))
+            if len(active) == 1:
+                field.default = active.first().site_id
 
         # Allow daily reports up to 3 months back in time (1st of month)
         field = table.date
@@ -1865,7 +1878,7 @@ def config(settings):
 
         # PDF export method
         from .helpers import ClaimPDF
-        s3db.set_method("fin", "voucher_claim",
+        s3db.set_method("fin_voucher_claim",
                         method = "record",
                         action = ClaimPDF,
                         )
@@ -2145,7 +2158,7 @@ def config(settings):
 
         # PDF export method
         from .helpers import InvoicePDF
-        s3db.set_method("fin", "voucher_invoice",
+        s3db.set_method("fin_voucher_invoice",
                         method = "record",
                         action = InvoicePDF,
                         )
@@ -2452,7 +2465,7 @@ def config(settings):
 
             # Add invite-method for ORG_GROUP_ADMIN role
             from .helpers import InviteUserOrg
-            s3db.set_method("org", "organisation",
+            s3db.set_method("org_organisation",
                             method = "invite",
                             action = InviteUserOrg,
                             )
@@ -3185,7 +3198,7 @@ def config(settings):
 
         # Custom method to produce KV report
         from .helpers import TestFacilityInfo
-        s3db.set_method("org", "facility",
+        s3db.set_method("org_facility",
                         method = "info",
                         action = TestFacilityInfo,
                         )
@@ -3329,7 +3342,6 @@ def config(settings):
                 # Override list-button to go to summary
                 buttons = output.get("buttons")
                 if isinstance(buttons, dict) and "list_btn" in buttons:
-                    from core import S3CRUD
                     summary = r.url(method="summary", id="", component="")
                     buttons["list_btn"] = S3CRUD.crud_button(label = T("List Facilities"),
                                                              _href = summary,
@@ -4405,7 +4417,7 @@ def config(settings):
         if auth.s3_has_role("SUPPLY_COORDINATOR"):
             # Custom method to register a shipment
             from .requests import RegisterShipment
-            s3db.set_method("req", "req",
+            s3db.set_method("req_req",
                             method = "ship",
                             action = RegisterShipment,
                             )
@@ -4714,7 +4726,6 @@ def config(settings):
                     stable = s3db.org_site
 
                     # Default action buttons (except delete)
-                    from core import S3CRUD
                     S3CRUD.action_buttons(r, deletable =False)
 
                     if has_role("SUPPLY_COORDINATOR"):
