@@ -162,15 +162,18 @@ if not failed:
         with open(filename, "r") as File:
             resource = s3db.resource("auth_processing_type")
             resource.configure(deduplicate=auth_processing_type_duplicate)
-            resource.import_xml(File, source_type="csv", stylesheet=stylesheet)
+            result = resource.import_xml(File,
+                                         source_type = "csv",
+                                         stylesheet = stylesheet,
+                                         )
     except:
         infoln("...failed")
         infoln(sys.exc_info()[1])
         failed = True
     else:
-        if resource.error:
+        if result.error:
             infoln("...failed")
-            infoln(resource.error)
+            infoln(result.error)
             failed = True
         else:
             infoln("...done")
