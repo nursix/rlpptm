@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
-
 """
-    Custom rheaders for DRKCM template
+    Custom rheaders for DRKCM
 
-    @license: MIT
+    License: MIT
 """
 
 from gluon import current, A, DIV, SPAN, URL
@@ -354,7 +352,9 @@ def drk_org_rheader(r, tabs=None):
                     (T("Counseling Themes"), "response_theme"),
                     ]
 
-            if is_admin or ui_options.get("response_themes_needs"):
+            if is_admin or \
+               ui_options.get("response_themes_needs") or \
+               ui_options.get("activity_use_need"):
                 # Ability to manage org-specific need types
                 # as they are used in themes:
                 tabs.append((T("Counseling Reasons"), "need"))

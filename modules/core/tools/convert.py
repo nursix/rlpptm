@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Type Conversion Utilities
 
-""" Type Conversion Utilities
-
-    @requires: U{B{I{gluon}} <http://web2py.com>}
-
-    @copyright: (c) 2010-2021 Sahana Software Foundation
-    @license: MIT
+    Copyright: (c) 2010-2021 Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -42,7 +38,7 @@ from gluon.languages import lazyT
 from .calendar import ISOFORMAT, s3_decode_iso_datetime, s3_relative_datetime
 
 # =============================================================================
-class S3TypeConverter(object):
+class S3TypeConverter:
     """ Universal data type converter """
 
     @classmethod
@@ -50,9 +46,10 @@ class S3TypeConverter(object):
         """
             Convert b into the data type of a
 
-            @raise TypeError: if any of the data types are not supported
-                              or the types are incompatible
-            @raise ValueError: if the value conversion fails
+            Raises:
+                TypeError: if any of the data types are not supported
+                           or the types are incompatible
+                ValueError: if the value conversion fails
         """
 
         if isinstance(a, lazyT):
@@ -247,8 +244,9 @@ def s3_str(s, encoding="utf-8"):
     """
         Convert an object into a str
 
-        @param s: the object
-        @param encoding: the character encoding
+        Args:
+            s: the object
+            encoding: the character encoding
     """
 
     if type(s) is str:

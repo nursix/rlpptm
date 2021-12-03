@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Notifications
 
-""" S3 Notifications
-
-    @copyright: 2011-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2011-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -43,10 +41,11 @@ from uuid import uuid4
 
 from gluon import current, TABLE, THEAD, TBODY, TR, TD, TH, XML
 
-from ..tools import s3_decode_iso_datetime, s3_encode_iso_datetime, s3_utc, s3_str, s3_truncate
+from ..tools import s3_decode_iso_datetime, s3_encode_iso_datetime, s3_utc, \
+                    s3_str, s3_truncate
 
 # =============================================================================
-class S3Notifications(object):
+class S3Notifications:
     """ Framework to send notifications about subscribed events """
 
     # -------------------------------------------------------------------------
@@ -85,7 +84,8 @@ class S3Notifications(object):
             controller which extracts the data and renders and sends
             the notification message (see send()).
 
-            @param resource_id: the pr_subscription_resource record ID
+            Args:
+                resource_id: the pr_subscription_resource record ID
         """
 
         _debug = current.log.debug
@@ -237,8 +237,9 @@ class S3Notifications(object):
             notification message and send it - responds to POST?format=msg
             requests to the respective resource.
 
-            @param r: the CRUDRequest
-            @param resource: the S3Resource
+            Args:
+                r: the CRUDRequest
+                resource: the CRUDResource
         """
 
         _debug = current.log.debug
@@ -472,11 +473,14 @@ class S3Notifications(object):
             Helper method to find all subscriptions which need to be
             notified now.
 
-            @param now: current datetime (UTC)
-            @return: joined Rows pr_subscription/pr_subscription_resource,
-                     or None if no due subscriptions could be found
+            Args:
+                now: current datetime (UTC)
 
-            @todo: take notify_on into account when checking
+            Returns:
+                joined Rows pr_subscription/pr_subscription_resource,
+                or None if no due subscriptions could be found
+
+            TODO take notify_on into account when checking
         """
 
         db = current.db
@@ -554,10 +558,11 @@ class S3Notifications(object):
         """
             Method to pre-render the contents for the message template
 
-            @param resource: the S3Resource
-            @param data: the data returned from S3Resource.select
-            @param meta_data: the meta data for the notification
-            @param format: the contents format ("text" or "html")
+            Args:
+                resource: the CRUDResource
+                data: the data returned from CRUDResource.select
+                meta_data: the meta data for the notification
+                format: the contents format ("text" or "html")
         """
 
         created_on_selector = resource.prefix_selector("created_on")

@@ -1,12 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Map Markers
 
-""" Map Markers
-
-    @requires: U{B{I{gluon}} <http://web2py.com>}
-    @requires: U{B{I{shapely}} <http://trac.gispython.org/lab/wiki/Shapely>}
-
-    @copyright: (c) 2010-2021 Sahana Software Foundation
-    @license: MIT
+    Copyright: (c) 2010-2021 Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -35,11 +30,11 @@ from gluon.storage import Storage
 from .base import GIS
 
 # =============================================================================
-class Marker(object):
+class Marker:
     """
         Represents a Map Marker
 
-        @ToDo: Support Markers in Themes
+        TODO Support Markers in Themes
     """
 
     def __init__(self,
@@ -48,10 +43,11 @@ class Marker(object):
                  layer_id=None,
                  tablename=None):
         """
-            @param marker: Storage object with image/height/width (looked-up in bulk)
-            @param marker_id: id of record in gis_marker
-            @param layer_id: layer_id to lookup marker in gis_style (unused)
-            @param tablename: used to identify whether to provide a default marker as fallback
+            Args:
+                marker: Storage object with image/height/width (looked-up in bulk)
+                marker_id: id of record in gis_marker
+                layer_id: layer_id to lookup marker in gis_style (unused)
+                tablename: used to identify whether to provide a default marker as fallback
         """
 
         no_default = False
@@ -148,7 +144,7 @@ class Marker(object):
     #                  h = self.height,
     #                  w = self.width,
     #                  )
-    #    return json.dumps(output, separators=SEPARATORS)
+    #    return json.dumps(output, separators=JSONSEPARATORS)
 
     # -------------------------------------------------------------------------
     def as_json_dict(self):

@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Interactive Spreadsheet Importer
 
-""" Spreadsheet Importer
-
-    @copyright: 2011-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2011-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -41,9 +39,9 @@ from gluon import current, redirect, URL, \
 
 from s3dal import Field
 
-from ..tools import s3_mark_required, s3_str, s3_addrow
+from ..tools import get_crud_string, s3_mark_required, s3_str, s3_addrow
 
-from .base import S3Method
+from .base import CRUDMethod
 
 # Supported spreadsheet formats {extension:format}
 FORMATS = {"csv": "csv",
@@ -53,37 +51,40 @@ FORMATS = {"csv": "csv",
            }
 
 # =============================================================================
-class SpreadsheetImporter(S3Method):
+class SpreadsheetImporter(CRUDMethod):
     """
         Interactive Spreadsheet Importer
     """
 
+    # -------------------------------------------------------------------------
     def apply_method(self, r, **attr):
         """
             Full-page method
 
-            @param r: the CRUDRequest
-            @param attr: controller parameters (see below)
+            Args:
+                r: the CRUDRequest
+                attr: controller parameters (see below)
 
-            @keyword csv_extra_fields: add values to each row in the CSV,
-                                       a list of dicts of one of these formats:
-                                       {label, field} - get the field value by adding
-                                                        adding the field to the upload
-                                                        form (a Field instance)
-                                       {label, value} - add a fixed value
-            @keyword csv_stylesheet: path to the XSLT transformation stylesheet,
-                                     - the stylesheet name (as string)
-                                       => static/formats/s3csv/<controller>/<name.xsl>
-                                     - a tuple to construct a path
-                                       => relative to static/formats/s3csv
-            @keyword csv_template: path elements to construct a link for download
-                                   of a CSV template, like
-                                   /static/formats/<format>/<prefix>/<name.ext>
-                                   - just "name.ext" (as string)
-                                     => format defaults to s3csv
-                                     => prefix defaults to current controller
-                                     => ext defaults to "csv" if omitted
-                                   - a tuple ("format", "prefix", "name.ext")
+            Keyword Args:
+                csv_extra_fields: add values to each row in the CSV,
+                                  a list of dicts of one of these formats:
+                                    {label, field} - get the field value by adding
+                                                    adding the field to the upload
+                                                    form (a Field instance)
+                                    {label, value} - add a fixed value
+                csv_stylesheet: path to the XSLT transformation stylesheet,
+                                    - the stylesheet name (as string)
+                                      => static/formats/s3csv/<controller>/<name.xsl>
+                                    - a tuple to construct a path
+                                      => relative to static/formats/s3csv
+                csv_template: path elements to construct a link for download
+                              of a CSV template, like
+                                /static/formats/<format>/<prefix>/<name.ext>
+                                - just "name.ext" (as string)
+                                  => format defaults to s3csv
+                                  => prefix defaults to current controller
+                                  => ext defaults to "csv" if omitted
+                                - a tuple ("format", "prefix", "name.ext")
         """
 
         # Target table for the data import
@@ -123,8 +124,9 @@ class SpreadsheetImporter(S3Method):
         """
             Request/submit upload form
 
-            @param r: the CRUDRequest
-            @param attr: controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: controller parameters
         """
 
         resource = self.resource
@@ -185,7 +187,7 @@ class SpreadsheetImporter(S3Method):
             output = self.select_items(job_id, r, **attr)
         else:
             output = {"form": form,
-                      "title": self.crud_string(self.tablename, "title_upload"),
+                      "title": get_crud_string(self.tablename, "title_upload"),
                       }
             current.response.view = self._view(r, "create.html")
 
@@ -195,13 +197,14 @@ class SpreadsheetImporter(S3Method):
     def select_items(self, job_id, r, **attr):
         """
             View a pending import job after trial phase and select items to commit
-            - provides a table of import items
-            - pre-selects all items without error
-            - submitting the selection goes to commit()
+                - provides a table of import items
+                - pre-selects all items without error
+                - submitting the selection goes to commit()
 
-            @param job_id: the import job UUID (or None to read from request vars)
-            @param r: the CRUDRequest
-            @param attr: controller parameters
+            Args:
+                job_id: the import job UUID (or None to read from request vars)
+                r: the CRUDRequest
+                attr: controller parameters
         """
 
         T = current.T
@@ -260,10 +263,8 @@ class SpreadsheetImporter(S3Method):
             start, limit = None, 0
 
         # How many records per page?
-        if s3.dataTable_pageLength:
-            display_length = s3.dataTable_pageLength
-        else:
-            display_length = 25
+        settings = current.deployment_settings
+        display_length = settings.get_ui_datatables_pagelength()
         if not limit:
             limit = 2 * display_length
 
@@ -273,9 +274,9 @@ class SpreadsheetImporter(S3Method):
                                             start = start,
                                             limit = limit,
                                             orderby = orderby,
+                                            list_id = "import-items",
                                             )
 
-        datatable_id = "import-items"
         dt_bulk_actions = [current.T("Import")]
 
         if representation == "aadata":
@@ -286,7 +287,6 @@ class SpreadsheetImporter(S3Method):
 
             output = dt.json(totalrows,
                              displayrows,
-                             datatable_id,
                              draw,
                              dt_bulk_actions = dt_bulk_actions,
                              )
@@ -310,9 +310,8 @@ class SpreadsheetImporter(S3Method):
 
             items =  dt.html(totalrows,
                              displayrows,
-                             id = datatable_id,
                              dt_formkey = formkey,
-                             dt_pagination = "true",
+                             dt_pagination = True,
                              dt_pageLength = display_length,
                              dt_base_url = r.url(method="import", vars={"job_id": job_id}),
                              dt_permalink = None,
@@ -328,9 +327,6 @@ class SpreadsheetImporter(S3Method):
                         _value = "%s" % job_id,
                         )
             items.append(job)
-
-            # Set global datatable ID
-            s3.dataTableID = [datatable_id]
 
             # Add toggle-button for item details
             SHOW = T("Display Details")
@@ -355,8 +351,9 @@ class SpreadsheetImporter(S3Method):
         """
             Commit the selected items (coming from select_items())
 
-            @param r: the CRUDRequest
-            @param attr: controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: controller parameters
         """
 
         T = current.T
@@ -431,10 +428,12 @@ class SpreadsheetImporter(S3Method):
         """
             Construct the upload form
 
-            @param r: the CRUDRequest
-            @param attr: controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: controller parameters
 
-            @returns: FORM
+            Returns:
+                FORM
         """
 
         T = current.T
@@ -514,10 +513,12 @@ class SpreadsheetImporter(S3Method):
         """
             Get a download URL for the CSV template
 
-            @param r: the CRUDRequest
-            @param attr: controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: controller parameters
 
-            @returns: URL (or None if no CSV template can be downloaded)
+            Returns:
+                URL (or None if no CSV template can be downloaded)
         """
 
         prefix, name = r.controller, r.function
@@ -560,10 +561,12 @@ class SpreadsheetImporter(S3Method):
         """
             Extract extra column data from the upload form
 
-            @param upload_form: the upload FORM
-            @param extra_fields: the extra-fields specification
+            Args:
+                upload_form: the upload FORM
+                extra_fields: the extra-fields specification
 
-            @returns: dict {column_label: value}
+            Returns:
+                dict {column_label: value}
         """
 
         form_vars = upload_form.vars
@@ -622,10 +625,12 @@ class SpreadsheetImporter(S3Method):
         """
             Get the XSLT transformation stylesheet
 
-            @param r: the CRUDRequest
-            @param attr: controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: controller parameters
 
-            @returns: the path to the XSLT stylesheet
+            Returns:
+                the path to the XSLT stylesheet
         """
 
         prefix, name = r.controller, r.function
@@ -663,14 +668,16 @@ class SpreadsheetImporter(S3Method):
         """
             Import spreadsheet data into a resource
 
-            @param resource: the target resource
-            @param source: the source (file-like object)
-            @param fmt: the source file format (in connection with source)
-            @param extra_data: extra data to add to source rows (in connection with source)
-            @param commit: whether to commit the import immediately (in connection with source)
-            @param args: additional stylesheet args
+            Args:
+                resource: the target resource
+                source: the source (file-like object)
+                fmt: the source file format (in connection with source)
+                extra_data: extra data to add to source rows (in connection with source)
+                commit: whether to commit the import immediately (in connection with source)
+                args: additional stylesheet args
 
-            @returns: import job UUID
+            Returns:
+                import job UUID
         """
 
         result = resource.import_xml(source,
@@ -693,9 +700,11 @@ class SpreadsheetImporter(S3Method):
             Represent the import item XML element as details in the import
             item datatable
 
-            @param value: the XML element (as string)
+            Args:
+                value: the XML element (as string)
 
-            @returns: DIV containing a representation of the element
+            Returns:
+                DIV containing a representation of the element
         """
 
         try:
@@ -754,11 +763,13 @@ class SpreadsheetImporter(S3Method):
         """
             Show details of an import item
 
-            @param table: the table
-            @param element: the S3XML resource-element
-            @param prefix: prefix field names with the table name
+            Args:
+                table: the table
+                element: the S3XML resource-element
+                prefix: prefix field names with the table name
 
-            @return: tuple (P(header), [TR(detail), ...])
+            Returns:
+                tuple (P(header), [TR(detail), ...])
         """
 
         header = None
@@ -812,12 +823,13 @@ class SpreadsheetImporter(S3Method):
         """
             Commit a pending import job
 
-            @param resource: the target resource
-            @param job_id: the import job ID
-            @param selected_items: IDs of selected item
+            Args:
+                resource: the target resource
+                job_id: the import job ID
+                selected_items: IDs of selected item
 
-            @returns: import statistics, a dict
-                      {total, imported, skipped, errors}
+            Returns:
+                import statistics, a dict {total, imported, skipped, errors}
         """
 
         db = current.db

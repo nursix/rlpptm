@@ -1,12 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Map View/Widget with Search Result Layer
 
-""" Map View/Widget with Search Result Layer
-
-    @requires: U{B{I{gluon}} <http://web2py.com>}
-    @requires: U{B{I{shapely}} <http://trac.gispython.org/lab/wiki/Shapely>}
-
-    @copyright: (c) 2010-2021 Sahana Software Foundation
-    @license: MIT
+    Copyright: (c) 2010-2021 Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -32,11 +27,12 @@
 from gluon import current, URL
 
 from ..filters import S3FilterForm
+from ..tools import get_crud_string
 
-from .base import S3Method
+from .base import CRUDMethod
 
 # =============================================================================
-class S3Map(S3Method):
+class S3Map(CRUDMethod):
     """
         Class to generate a Map linked to Search filters
     """
@@ -45,12 +41,14 @@ class S3Map(S3Method):
     def apply_method(self, r, **attr):
         """
             Entry point to apply map method to CRUDRequests
-            - produces a full page with S3FilterWidgets above a Map
+                - produces a full page with S3FilterWidgets above a Map
 
-            @param r: the CRUDRequest instance
-            @param attr: controller attributes for the request
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes for the request
 
-            @return: output object to send to the view
+            Returns:
+                output object to send to the view
         """
 
         output = None
@@ -69,8 +67,9 @@ class S3Map(S3Method):
         """
             Map page
 
-            @param r: the CRUDRequest instance
-            @param attr: controller attributes for the request
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes for the request
         """
 
         output = {}
@@ -84,7 +83,7 @@ class S3Map(S3Method):
 
             widget_id = "default_map"
 
-            title = self.crud_string(tablename, "title_map")
+            title = get_crud_string(tablename, "title_map")
             output["title"] = title
 
             # Filter widgets
@@ -144,13 +143,15 @@ class S3Map(S3Method):
             Render a Map widget suitable for use in an S3Filter-based page
             such as S3Summary
 
-            @param r: the CRUDRequest
-            @param method: the widget method
-            @param widget_id: the widget ID
-            @param visible: whether the widget is initially visible
-            @param attr: controller attributes
+            Args:
+                r: the CRUDRequest
+                method: the widget method
+                widget_id: the widget ID
+                visible: whether the widget is initially visible
+                attr: controller attributes
 
-            @keyword callback: callback to show the map:
+            Keyword Args:
+                callback: callback to show the map:
                         - "DEFAULT".............call show_map as soon as all
                                                 components are loaded and ready
                                                 (= use default show_map callback)

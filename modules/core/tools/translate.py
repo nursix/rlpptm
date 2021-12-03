@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    UI Translation Toolkit
 
-""" Translation API
-
-    @copyright: 2012-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2012-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -65,7 +63,7 @@ from gluon.storage import Storage
 """
 
 # =============================================================================
-class TranslateAPI(object):
+class TranslateAPI:
     """
         API class for the Translation module to get
         files, modules and strings individually
@@ -167,7 +165,7 @@ class TranslateAPI(object):
         return strings
 
 # =============================================================================
-class TranslateGetFiles(object):
+class TranslateGetFiles:
     """ Class to group files by modules """
 
     def __init__(self):
@@ -293,7 +291,7 @@ class TranslateGetFiles(object):
                     d["core"].append(curFile)
 
 # =============================================================================
-class TranslateParseFiles(object):
+class TranslateParseFiles:
     """
         Class to extract strings to translate from code files
     """
@@ -622,17 +620,20 @@ class TranslateParseFiles(object):
                             self.mflag = 0
 
 # =============================================================================
-class TranslateReadFiles(object):
+class TranslateReadFiles:
     """ Class to read code files """
 
     # ---------------------------------------------------------------------
     @staticmethod
     def findstr(fileName, spmod, modlist):
         """
-            Using the methods in TranslateParseFiles to extract the strings
-            fileName -> the file to be used for extraction
-            spmod -> the required module
-            modlist -> a list of all modules in Eden
+            Using the methods in TranslateParseFiles to extract the
+            strings
+
+            Args:
+                fileName: the file to be used for extraction
+                spmod: the required module
+                modlist: a list of all modules in Eden
         """
 
         try:
@@ -727,8 +728,8 @@ class TranslateReadFiles(object):
     @staticmethod
     def read_html_js(filename):
         """
-           Function to read and extract strings from html/js files
-           using regular expressions
+            Function to read and extract strings from html/js files
+            using regular expressions
         """
 
         html_js_file = open(filename, "rb")
@@ -950,7 +951,7 @@ class TranslateReadFiles(object):
         return database_strings
 
 # =============================================================================
-class Strings(object):
+class Strings:
     """ Class to manipulate strings and their files """
 
     # ---------------------------------------------------------------------
@@ -1326,7 +1327,7 @@ class Strings(object):
         return output.read()
 
 # =============================================================================
-class Pootle(object):
+class Pootle:
     """
         Class to synchronise a Pootle server's translation with the local
         one
@@ -1561,7 +1562,7 @@ class Pootle(object):
             os.unlink(pofilename)
 
 # =============================================================================
-class TranslateReportStatus(object):
+class TranslateReportStatus:
     """
         Class to report the percentage of translated strings for
         each module for a given language.
@@ -1695,7 +1696,8 @@ class TranslateReportStatus(object):
             Get the percentages of translated strings per module for
             the given language code.
 
-            @param lang_code: the language code
+            Args:
+                lang_code: the language code
         """
 
         pickle_file = os.path.join(current.request.folder,

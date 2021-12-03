@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
-
-""" Sahana Eden Setup Model:
+"""
+    Setup Model:
         * Installation of a Deployment
         * Configuration of a Deployment
         * Managing a Deployment (Start/Stop/Clean instances)
         * Monitoring of a Deployment
         * Upgrading a Deployment (tbc)
 
-    @copyright: 2015-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2015-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -32,17 +30,17 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("S3DNSModel",
-           "S3GandiDNSModel",
-           "S3GoDaddyDNSModel",
-           "S3CloudModel",
-           "S3AWSCloudModel",
-           "S3OpenStackCloudModel",
-           "S3EmailProviderModel",
-           "S3GoogleEmailModel",
-           "S3SMTPModel",
-           "S3SetupDeploymentModel",
-           "S3SetupMonitorModel",
+__all__ = ("SetupDNSModel",
+           "SetupGandiDNSModel",
+           "SetupGoDaddyDNSModel",
+           "SetupCloudModel",
+           "SetupAWSCloudModel",
+           "SetupOpenStackCloudModel",
+           "SetupEmailProviderModel",
+           "SetupGoogleEmailModel",
+           "SetupSMTPModel",
+           "SetupDeploymentModel",
+           "SetupMonitorModel",
            "setup_instance_deploy",
            "setup_instance_settings_read",
            "setup_monitor_run_task",
@@ -62,8 +60,6 @@ import random
 import string
 import sys
 import time
-
-from collections import OrderedDict
 
 from gluon import *
 
@@ -89,7 +85,7 @@ INSTANCE_TYPES = {1: "prod",
                   }
 
 # =============================================================================
-class S3DNSModel(DataModel):
+class SetupDNSModel(DataModel):
     """
         Domain Name System (DNS) Providers
         - super-entity
@@ -155,7 +151,7 @@ class S3DNSModel(DataModel):
                 }
 
 # =============================================================================
-class S3GandiDNSModel(S3DNSModel):
+class SetupGandiDNSModel(SetupDNSModel):
     """
         Gandi LiveDNS
         - DNS Provider Instance
@@ -205,7 +201,7 @@ class S3GandiDNSModel(S3DNSModel):
         return None
 
 # =============================================================================
-class S3GoDaddyDNSModel(S3DNSModel):
+class SetupGoDaddyDNSModel(SetupDNSModel):
     """
         GoDaddy DNS
         - DNS Provider Instance
@@ -254,7 +250,7 @@ class S3GoDaddyDNSModel(S3DNSModel):
         return None
 
 # =============================================================================
-class S3CloudModel(DataModel):
+class SetupCloudModel(DataModel):
     """
         Clouds
         - super-entity
@@ -320,7 +316,7 @@ class S3CloudModel(DataModel):
                 }
 
 # =============================================================================
-class S3AWSCloudModel(S3CloudModel):
+class SetupAWSCloudModel(SetupCloudModel):
     """
         Amazon Web Services
         - Cloud Instance
@@ -501,7 +497,7 @@ class S3AWSCloudModel(S3CloudModel):
                                      )
 
 # =============================================================================
-class S3OpenStackCloudModel(S3CloudModel):
+class SetupOpenStackCloudModel(SetupCloudModel):
     """
         OpenStack
         - Cloud Instance
@@ -679,7 +675,7 @@ class S3OpenStackCloudModel(S3CloudModel):
                                      )
 
 # =============================================================================
-class S3EmailProviderModel(DataModel):
+class SetupEmailProviderModel(DataModel):
     """
         Email Providers (we just use Groups currently)
         - super-entity
@@ -744,7 +740,7 @@ class S3EmailProviderModel(DataModel):
                 }
 
 # =============================================================================
-class S3GoogleEmailModel(S3EmailProviderModel):
+class SetupGoogleEmailModel(SetupEmailProviderModel):
     """
         Google
         - Email Group Provider Instance
@@ -883,7 +879,7 @@ class S3GoogleEmailModel(S3EmailProviderModel):
         os.unlink(creds_path)
 
 # =============================================================================
-class S3SMTPModel(DataModel):
+class SetupSMTPModel(DataModel):
     """
         SMTP Smart Hosts
         - tested with:
@@ -961,7 +957,7 @@ class S3SMTPModel(DataModel):
                 }
 
 # =============================================================================
-class S3SetupDeploymentModel(DataModel):
+class SetupDeploymentModel(DataModel):
 
     names = ("setup_deployment",
              "setup_deployment_id",
@@ -1778,7 +1774,7 @@ class S3SetupDeploymentModel(DataModel):
     @staticmethod
     def setup_server_wizard(r, **attr):
         """
-            Custom S3Method to select an Instance to Configure
+            Custom CRUD method to select an Instance to Configure
         """
 
         db = current.db
@@ -1820,7 +1816,7 @@ dropdown.change(function() {
     # -------------------------------------------------------------------------
     def setup_instance_wizard(self, r, **attr):
         """
-            Custom S3Method to Configure an Instance
+            Custom CRUD method to Configure an Instance
 
             @ToDo: Support remote servers/instances
             @ToDo: Option to Propagate settings from Prod to Demo &/or Test
@@ -1955,7 +1951,7 @@ dropdown.change(function() {
     @staticmethod
     def setup_instance_deploy(r, **attr):
         """
-            Custom S3Method to Deploy an Instance
+            Custom CRUD method to Deploy an Instance
         """
 
         instance_id = r.component_id
@@ -1972,7 +1968,7 @@ dropdown.change(function() {
     @staticmethod
     def setup_instance_settings(r, **attr):
         """
-            Custom interactive S3Method to Read the Settings for an instance
+            Custom interactive CRUD method to Read the Settings for an instance
             from models/000_config.py
         """
 
@@ -1990,7 +1986,7 @@ dropdown.change(function() {
     @staticmethod
     def setup_instance_start(r, **attr):
         """
-            Custom interactive S3Method to Start an Instance
+            Custom interactive CRUD method to Start an Instance
         """
 
         setup_instance_method(r.component_id)
@@ -2005,7 +2001,7 @@ dropdown.change(function() {
     @staticmethod
     def setup_instance_stop(r, **attr):
         """
-            Custom interactive S3Method to Stop an Instance
+            Custom interactive CRUD method to Stop an Instance
         """
 
         setup_instance_method(r.component_id, "stop")
@@ -2020,7 +2016,7 @@ dropdown.change(function() {
     @staticmethod
     def setup_instance_clean(r, **attr):
         """
-            Custom interactive S3Method to Clean an Instance
+            Custom interactive CRUD method to Clean an Instance
         """
 
         setup_instance_method(r.component_id, "clean")
@@ -2265,7 +2261,7 @@ dropdown.change(function() {
     @staticmethod
     def setup_setting_apply_interactive(r, **attr):
         """
-            Custom interactive S3Method to Apply a Setting to an instance
+            Custom interactive CRUD method to Apply a Setting to an instance
             via models/000_config.py
         """
 
@@ -2281,7 +2277,7 @@ dropdown.change(function() {
                      )
 
 # =============================================================================
-class S3SetupMonitorModel(DataModel):
+class SetupMonitorModel(DataModel):
 
     names = ("setup_monitor_server",
              "setup_monitor_check",
@@ -2684,7 +2680,7 @@ def setup_monitor_server_enable(monitor_server_id):
         Enable Monitoring for a Server
         - Schedule all enabled Tasks
 
-        CLI API for shell scripts & to be called by S3Method
+        CLI API for shell scripts & to be called by CRUDMethod
     """
 
     db = current.db
@@ -2738,7 +2734,7 @@ def setup_monitor_server_enable_interactive(r, **attr):
         Enable Monitoring for a Server
         - Schedule all enabled Tasks
 
-        S3Method for interactive requests
+        CRUD method for interactive requests
     """
 
     server_id = r.id
@@ -2761,7 +2757,7 @@ def setup_monitor_server_disable(monitor_server_id):
         Disable Monitoring for a Server
         - Remove all related Tasks
 
-        CLI API for shell scripts & to be called by S3Method
+        CLI API for shell scripts & to be called by CRUDMethod
     """
 
     db = current.db
@@ -2808,7 +2804,7 @@ def setup_monitor_server_disable_interactive(r, **attr):
         Disable Monitoring for a Server
         - Remove all related Tasks
 
-        S3Method for interactive requests
+        CRUD method for interactive requests
     """
 
     table = current.s3db.setup_monitor_server
@@ -2825,7 +2821,7 @@ def setup_monitor_server_check(r, **attr):
     """
         Run all enabled Tasks for this server
 
-        S3Method for interactive requests
+        CRUD method for interactive requests
     """
 
     server_id = r.id
@@ -2851,7 +2847,7 @@ def setup_monitor_task_enable(task_id):
         Enable a Task
         - Schedule Check (if server enabled)
 
-        CLI API for shell scripts & to be called by S3Method
+        CLI API for shell scripts & to be called by CRUDMethod
     """
 
     db = current.db
@@ -2903,7 +2899,7 @@ def setup_monitor_task_enable_interactive(r, **attr):
         Enable a Task
         - Schedule Check
 
-        S3Method for interactive requests
+        CRUD method for interactive requests
     """
 
     result = setup_monitor_task_enable(r.id)
@@ -2916,7 +2912,7 @@ def setup_monitor_task_disable(task_id):
         Disable a Check
         - Remove Schedule for Check
 
-        CLI API for shell scripts & to be called by S3Method
+        CLI API for shell scripts & to be called by CRUDMethod
     """
 
     db = current.db
@@ -2954,7 +2950,7 @@ def setup_monitor_task_disable_interactive(r, **attr):
         Disable a Task
         - Remove Schedule for Check
 
-        S3Method for interactive requests
+        CRUD method for interactive requests
     """
 
     result = setup_monitor_task_disable(r.id)
@@ -2966,7 +2962,7 @@ def setup_monitor_task_restart():
     """
         Restart all Enabled Monitor Tasks
 
-        CLI API for shell scripts & to be called by S3Method
+        CLI API for shell scripts & to be called by CRUDMethod
     """
 
     db = current.db
@@ -3007,7 +3003,7 @@ def setup_monitor_task_run(r, **attr):
     """
         Run a Task
 
-        S3Method for interactive requests
+        CRUD method for interactive requests
     """
 
     task_id = r.id
@@ -3635,7 +3631,7 @@ def setup_instance_deploy(deployment_id, instance_id, folder):
                                        left = left,
                                        )
         else:
-             raise NotImplementedError
+            raise NotImplementedError
     else:
         # Get Server(s) details
         servers = db(query).select(stable.name,
@@ -4600,7 +4596,7 @@ def setup_modules_apply(instance_id, modules):
             tappend({"name": "If we disabled the module, then remove the disabling",
                      "become": "yes",
                      "lineinfile": {"dest": dest,
-                                    "regexp": '^del settings.modules\["%s"\]' % module,
+                                    "regexp": r'^del settings.modules\["%s"\]' % module,
                                     "state": "absent",
                                     },
                      "register": "default",
@@ -4609,7 +4605,7 @@ def setup_modules_apply(instance_id, modules):
             tappend({"name": "Enable the Module",
                      "become": "yes",
                      "lineinfile": {"dest": dest,
-                                    "regexp": '^settings.modules\["%s"\]' % module,
+                                    "regexp": r'^settings.modules\["%s"\]' % module,
                                     "line": 'settings.modules["%s"] = {"name_nice": T("%s"), "module_type": 10}' % (module, label),
                                     },
                      "when": "not default.found",
@@ -4624,7 +4620,7 @@ def setup_modules_apply(instance_id, modules):
                 tappend({"name": "Handle Dependency: If we disabled the module, then remove the disabling",
                          "become": "yes",
                          "lineinfile": {"dest": dest,
-                                        "regexp": '^del settings.modules\["%s"\]' % m,
+                                        "regexp": r'^del settings.modules\["%s"\]' % m,
                                         "state": "absent",
                                         },
                          "register": "default",
@@ -4632,7 +4628,7 @@ def setup_modules_apply(instance_id, modules):
                 tappend({"name": "Handle Dependency: Enable the Module",
                          "become": "yes",
                          "lineinfile": {"dest": dest,
-                                        "regexp": '^settings.modules\["%s"\]' % module,
+                                        "regexp": r'^settings.modules\["%s"\]' % module,
                                         "line": 'settings.modules["%s"] = {"name_nice": T("%s"), "module_type": 10}' % (m, d.get("label")),
                                         },
                          "when": "not default.found",
@@ -4645,7 +4641,7 @@ def setup_modules_apply(instance_id, modules):
             tappend({"name": "If we enabled the module, then remove the enabling",
                      "become": "yes",
                      "lineinfile": {"dest": dest,
-                                    "regexp": '^settings.modules\["%s"\]' % module,
+                                    "regexp": r'^settings.modules\["%s"\]' % module,
                                     "state": "absent",
                                     },
                      "register": "default",
@@ -4653,7 +4649,7 @@ def setup_modules_apply(instance_id, modules):
             tappend({"name": "Disable the module",
                      "become": "yes",
                      "lineinfile": {"dest": dest,
-                                    "regexp": '^del settings.modules\["%s"\]' % module,
+                                    "regexp": r'^del settings.modules\["%s"\]' % module,
                                     "line": 'del settings.modules["%s"]' % module,
                                     },
                      "when": "not default.found",
@@ -4696,7 +4692,7 @@ def setup_setting_apply(setting_id):
     """
         Apply a Setting to an instance via models/000_config.py
 
-        CLI API for shell scripts & to be called by S3Method
+        CLI API for shell scripts & to be called by CRUDMethod
     """
 
     db = current.db
@@ -5027,9 +5023,6 @@ class Storage2(Storage):
 class setup_DeploymentRepresent(S3Represent):
 
     def __init__(self):
-        """
-            Constructor
-        """
 
         super(setup_DeploymentRepresent, self).__init__(lookup = "setup_deployment",
                                                         )
@@ -5039,9 +5032,10 @@ class setup_DeploymentRepresent(S3Represent):
         """
             Custom look-up of rows
 
-            @param key: the key field
-            @param values: the values to look up
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key field
+                values: the values to look up
+                fields: unused (retained for API compatibility)
         """
 
         dtable = self.table
@@ -5067,7 +5061,8 @@ class setup_DeploymentRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         if not hasattr(row, "setup_instance"):
@@ -5079,9 +5074,6 @@ class setup_DeploymentRepresent(S3Represent):
 class setup_MonitorTaskRepresent(S3Represent):
 
     def __init__(self):
-        """
-            Constructor
-        """
 
         super(setup_MonitorTaskRepresent, self).__init__(lookup = "setup_monitor_task",
                                                          )
@@ -5091,9 +5083,10 @@ class setup_MonitorTaskRepresent(S3Represent):
         """
             Custom look-up of rows
 
-            @param key: the key field
-            @param values: the values to look up
-            @param fields: unused (retained for API compatibility)
+            Args:
+                key: the key field
+                values: the values to look up
+                fields: unused (retained for API compatibility)
         """
 
         db = current.db
@@ -5126,7 +5119,8 @@ class setup_MonitorTaskRepresent(S3Represent):
         """
             Represent a row
 
-            @param row: the Row
+            Args:
+                row: the Row
         """
 
         #return "%s (%s): %s" % (row["setup_server.name"],

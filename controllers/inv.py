@@ -28,251 +28,6 @@ def index_alt():
     s3_redirect_default(URL(f="warehouse", args="summary"))
 
 # -----------------------------------------------------------------------------
-def index2():
-    """
-        Alternative Application Home page
-        - custom View
-    """
-
-    # Need CRUD String
-    table = s3db.table("cr_shelter", None)
-
-    module_name = settings.modules[module].get("name_nice")
-    response.title = module_name
-    response.view = "inv/index.html"
-    if s3.debug:
-        # Start of TEST CODE for multiple dataTables,
-        #this also required views/inv/index.html to be modified
-        representation = request.extension
-        if representation == "html" or get_vars.id == "warehouse_list_1":
-            resource = s3db.resource("inv_warehouse")
-            totalrows = resource.count()
-            list_fields = ["id",
-                           "name",
-                           "organisation_id",
-                           ]
-            orderby = "inv_warehouse.name asc"
-            if representation == "aadata":
-                query, orderby, left = resource.datatable_filter(list_fields, get_vars)
-                if orderby is None:
-                    orderby = default_orderby
-            start = int(get_vars.displayStart) if get_vars.displayStart else 0
-            limit = int(get_vars.pageLength) if get_vars.pageLength else s3.ROWSPERPAGE
-            data = resource.select(list_fields,
-                                   start = start,
-                                   limit = limit,
-                                   orderby = orderby,
-                                   count = True,
-                                   represent = True)
-            filteredrows = data["numrows"]
-            if totalrows is None:
-                totalrows = filteredrows
-            rfields = data["rfields"]
-            rows = data["rows"]
-            dt = s3base.S3DataTable(rfields, rows)
-            dt.defaultActionButtons(resource)
-            if representation == "html":
-                warehouses = dt.html(totalrows,
-                                     filteredrows,
-                                     "warehouse_list_1",
-                                     dt_ajax_url = URL(c = "inv",
-                                                       f = "index2",
-                                                       extension = "aadata",
-                                                       vars = {"id":"warehouse_list_1"},
-                                                       ),
-                                     dt_group = 2,
-                                     dt_searching = "true",
-                                     )
-            else:
-                warehouse = dt.json(totalrows,
-                                    filteredrows,
-                                    "warehouse_list_1",
-                                    int(get_vars.draw),
-                                    )
-                return warehouse
-        # Second Table
-        if representation == "html" or get_vars.id == "inventory_list_1":
-            if "Adjust" in request.post_vars:
-                if request.post_vars.selected == "":
-                    inventory = "Well you could have selected something :("
-                else:
-                    inventory = "Adjustment not currently supported... :-) you selected the following items: %s" % request.post_vars.selected
-            else:
-                resource = s3db.resource("inv_inv_item")
-                totalrows = resource.count()
-                table = resource.table
-                stable = s3db.supply_item
-                list_fields = ["id",
-                               "site_id",
-                               "item_id$name",
-                               "quantity",
-                               "pack_value",
-                               "total_value",
-                               ]
-                orderby = "inv_inv_item.site_id asc"
-                if representation == "aadata":
-                    query, orderby, left = resource.datatable_filter(list_fields, get_vars)
-                    if orderby is None:
-                        orderby = default_orderby
-                site_list = {}
-                data = resource.select(list_fields,
-                                       limit = None,
-                                       orderby = orderby,
-                                       count = True
-                                       )
-                filteredrows = data["numrows"]
-                if totalrows is None:
-                    totalrows = filteredrows
-                rows = data["rows"]
-                for row in rows:
-                    site_id = row["inv_inv_item.site_id"]
-                    if site_id not in site_list:
-                        site_list[site_id] = 1
-                    else:
-                        site_list[site_id] += 1
-                formatted_site_list = {}
-                repr = table.site_id.represent
-                for (key,value) in site_list.items():
-                    formatted_site_list[str(repr(key))] = value
-                if isinstance(orderby, bool):
-                    orderby = [table.site_id, stable.name, ~table.quantity]
-                start = int(get_vars.displayStart) if get_vars.displayStart else 0
-                limit = int(get_vars.pageLength) if get_vars.pageLength else s3.ROWSPERPAGE
-                data = resource.select(list_fields,
-                                       orderby = orderby,
-                                       start = start,
-                                       limit = limit,
-                                       represent = True)
-                rfields = data["rfields"]
-                rows = data["rows"]
-                dt = s3base.S3DataTable(rfields, rows, orderby = orderby)
-                custom_actions = [{"label": s3_str(T("Warehouse")),
-                                   "_class": "action-icon",
-                                   "img": "/%s/static/img/markers/gis_marker.image.Agri_Commercial_Food_Distribution_Center_S1.png" % appname,
-                                   "url": URL(c = "inv",
-                                              f = "warehouse",
-                                              args = ["[id]", "update"]
-                                              )
-                                   },
-                                  ]
-                dt.defaultActionButtons(resource, custom_actions)
-                if representation == "html":
-                    rows = current.db(table.quantity < 100.0).select(table.id, table.quantity)
-                    errorList = []
-                    warningList = []
-                    alertList = []
-                    for row in rows:
-                        if row.quantity < 0.0:
-                            errorList.append(row.id)
-                        elif row.quantity == 0.0:
-                            warningList.append(row.id)
-                        else:
-                            alertList.append(row.id)
-                    inventory = dt.html(totalrows,
-                                        filteredrows,
-                                        "inventory_list_1",
-                                        dt_action_col = -1,
-                                        dt_ajax_url = URL(c = "inv",
-                                                          f = "index2",
-                                                          extension = "aadata",
-                                                          vars = {"id":"inventory_list_1"},
-                                                          ),
-                                        dt_bulk_actions = "Adjust",
-                                        dt_group = [1, 2],
-                                        dt_group_totals = [formatted_site_list],
-                                        dt_searching = "true",
-                                        dt_styles = {"dtdisable": errorList,
-                                                     "dtwarning": warningList,
-                                                     "dtalert": alertList,
-                                                     },
-                                        #dt_text_maximum_len = 10,
-                                        #dt_text_condense_len = 8,
-                                        #dt_group_space = True,
-                                        dt_shrink_groups = "accordion",
-                                        #dt_shrink_groups = "individual",
-                                        )
-
-                    s3.actions = None
-                elif representation == "aadata":
-                    inventory = dt.json(totalrows,
-                                        filteredrows,
-                                        "inventory_list_1",
-                                        int(get_vars.draw),
-                                        dt_action_col = -1,
-                                        dt_bulk_actions = "Adjust",
-                                        dt_group_totals = [formatted_site_list],
-                                        )
-                    return inventory
-                else:
-                    # Probably not the way to do it.... but
-                    s3db.configure("inv_inv_item",
-                                   list_fields = list_fields,
-                                   report_groupby = "site_id",
-                                   pdf_groupby = "site_id",
-                                   )
-                    s3.filter = filter
-                    r = crud_request("inv", "inv_item", vars={"orderby" : orderby})
-                    r.resource = resource
-                    output = r(pdf_groupby = "site_id",
-                               dt_group = 1,
-                               )
-                    return output
-        # Third table
-        if representation == "html" or get_vars.id == "supply_list_1":
-            resource = s3db.resource("supply_item")
-            list_fields = ["id",
-                           "name",
-                           "um",
-                           "model",
-                           ]
-            orderby = "inv_inv_item.site_id asc"
-            if representation == "aadata":
-                query, orderby, left = resource.datatable_filter(list_fields, get_vars)
-                if orderby is None:
-                    orderby = default_orderby
-            data = resource.select(list_fields,
-                                   limit = None,
-                                   orderby = orderby,
-                                   count = True,
-                                   represent = True
-                                   )
-            rows = data["rows"]
-            rfields = data["rfields"]
-            numrows = data["numrows"]
-            dt = s3base.S3DataTable(rfields, rows)
-            dt.defaultActionButtons(resource)
-            if representation == "html":
-                supply_items = dt.html(numrows,
-                                       numrows,
-                                       "supply_list_1",
-                                       dt_action_col = 1,
-                                       dt_ajax_url = URL(c = "inv",
-                                                         f = "index2",
-                                                         extension = "aadata",
-                                                         vars = {"id": "supply_list_1"},
-                                                         ),
-                                       dt_pageLength = 10,
-                                       )
-            else:
-                supply_items = dt.json(numrows,
-                                       numrows,
-                                       "supply_list_1",
-                                       int(get_vars.draw),
-                                       dt_action_col = 1,
-                                       )
-                return supply_items
-        r = crud_request(prefix = "inv", name = "inv_item")
-        return {"module_name": module_name,
-                "warehouses": warehouses,
-                "inventory": inventory,
-                "supply_items": supply_items,
-                "r": r,
-                }
-        # End of TEST CODE
-    return {"module_name": module_name,
-            }
-
-# -----------------------------------------------------------------------------
 def warehouse():
     """
         RESTful CRUD controller
@@ -408,7 +163,6 @@ def warehouse():
     else:
         native = False
 
-    from s3db.inv import inv_rheader
     return crud_controller(module, resourcename,
                            #hide_filter = {"inv_item": False,
                            #               "_default": True,
@@ -421,7 +175,7 @@ def warehouse():
                            csv_stylesheet = csv_stylesheet,
                            csv_template = resourcename,
                            native = native,
-                           rheader = inv_rheader,
+                           rheader = s3db.inv_rheader,
                            )
 
 # -----------------------------------------------------------------------------
@@ -540,12 +294,6 @@ def inv_item():
     else:
         s3.filter = (table.quantity != 0)
 
-    def prep(r):
-        if r.method != "report":
-            s3.dataTable_group = 1
-        return True
-    s3.prep = prep
-
     # Import pre-process
     def import_prep(tree):
         """
@@ -592,6 +340,7 @@ def inv_item():
                              pdf_orderby = "expiry_date, supply_org_id",
                              replace_option = T("Remove existing data before import"),
                              rheader = s3db.inv_rheader,
+                             dtargs = {"dt_group": 1},
                              )
 
     if not settings.get_inv_direct_stock_edits() and \
@@ -694,8 +443,7 @@ def inv_item_packs():
 def send():
     """ RESTful CRUD controller """
 
-    from s3db.inv import inv_send_controller
-    return inv_send_controller()
+    return s3db.inv_send_controller()
 
 # ==============================================================================
 def send_commit():
@@ -703,15 +451,13 @@ def send_commit():
         Send a Shipment containing all items in a Commitment
     """
 
-    from s3db.req import req_send_commit
-    return req_send_commit()
+    return s3db.req_send_commit()
 
 # -----------------------------------------------------------------------------
 def send_process():
     """ Process a Shipment """
 
-    from s3db.inv import inv_send_process
-    return inv_send_process()
+    return s3db.inv_send_process()
 
 # -----------------------------------------------------------------------------
 def send_returns():
@@ -912,7 +658,7 @@ def set_recv_attr(status):
     recvtable.cert_status.readable = recvtable.cert_status.writable = False
     recvtable.eta.readable = False
     recvtable.req_ref.writable = True
-    from s3db.inv import inv_ship_status
+    inv_ship_status = s3db.inv_ship_status
     if status == inv_ship_status["IN_PROCESS"]:
         recvtable.send_ref.writable = True
         recvtable.recv_ref.readable = False
@@ -956,13 +702,13 @@ def recv():
         except:
             pass
 
-    from s3db.inv import inv_ship_status
+    inv_ship_status = s3db.inv_ship_status
     SHIP_STATUS_IN_PROCESS = inv_ship_status["IN_PROCESS"]
     SHIP_STATUS_SENT = inv_ship_status["SENT"]
     SHIP_STATUS_RECEIVED = inv_ship_status["RECEIVED"]
     SHIP_STATUS_CANCEL = inv_ship_status["CANCEL"]
 
-    from s3db.inv import inv_tracking_status
+    inv_tracking_status = s3db.inv_tracking_status
     TRACK_STATUS_UNKNOWN    = inv_tracking_status["UNKNOWN"]
     TRACK_STATUS_PREPARING  = inv_tracking_status["IN_PROCESS"]
     TRACK_STATUS_TRANSIT    = inv_tracking_status["SENT"]
@@ -1127,8 +873,7 @@ def recv():
                            listadd = False,
                            )
 
-    from s3db.inv import inv_recv_rheader
-    return crud_controller(rheader=inv_recv_rheader)
+    return crud_controller(rheader=s3db.inv_recv_rheader)
 
 # -----------------------------------------------------------------------------
 def req_items_for_inv(site_id, quantity_type):
@@ -1247,7 +992,7 @@ def recv_process():
 
     # Check status
     status = recv_record.status
-    from s3db.inv import inv_ship_status
+    inv_ship_status = s3db.inv_ship_status
     if status == inv_ship_status["RECEIVED"]:
         session.error = T("This shipment has already been received.")
         redirect(URL(c="inv", f="recv", args=[recv_id]))
@@ -1335,7 +1080,7 @@ def recv_cancel():
                                                   limitby = (0, 1)
                                                   ).first()
 
-    from s3db.inv import inv_ship_status
+    inv_ship_status = s3db.inv_ship_status
     if recv_record.status != inv_ship_status["RECEIVED"]:
         session.error = T("This shipment has not been received - it has NOT been canceled because it can still be edited.")
         redirect(URL(c="inv", f="recv", args=[recv_id]))
@@ -1524,8 +1269,7 @@ def track_item():
                        )
         s3.filter = (FS("expiry_date") != None)
 
-    from s3db.inv import inv_rheader
-    return crud_controller(rheader=inv_rheader)
+    return crud_controller(rheader=s3db.inv_rheader)
 
 # =============================================================================
 def adj():
@@ -1625,8 +1369,7 @@ def adj():
                        listadd = False,
                        )
 
-    from s3db.inv import inv_adj_rheader
-    return crud_controller(rheader=inv_adj_rheader)
+    return crud_controller(rheader=s3db.inv_adj_rheader)
 
 # -----------------------------------------------------------------------------
 def adj_close():
@@ -1721,7 +1464,7 @@ def recv_item_json():
     except:
         raise HTTP(400, current.xml.json_message(False, 400, "No value provided!"))
 
-    from s3db.inv import inv_ship_status
+    inv_ship_status = s3db.inv_ship_status
     stable = s3db.org_site
     rtable = s3db.inv_recv
     ittable = s3db.inv_track_item
@@ -1760,7 +1503,7 @@ def send_item_json():
     except:
         raise HTTP(400, current.xml.json_message(False, 400, "No value provided!"))
 
-    from s3db.inv import inv_ship_status
+    inv_ship_status = s3db.inv_ship_status
     stable = s3db.org_site
     istable = s3db.inv_send
     ittable = s3db.inv_track_item
@@ -1791,8 +1534,7 @@ def send_item_json():
 # -----------------------------------------------------------------------------
 def kitting():
 
-    from s3db.inv import inv_rheader
-    return crud_controller(rheader=inv_rheader)
+    return crud_controller(rheader=s3db.inv_rheader)
 
 # -----------------------------------------------------------------------------
 def facility():
@@ -1846,14 +1588,12 @@ def incoming():
     """
 
     # @ToDo: Create this function!
-    from s3db.inv import inv_incoming
-    return inv_incoming()
+    return s3db.inv_incoming()
 
 # -----------------------------------------------------------------------------
 def req_match():
     """ Match Requests """
 
-    from s3db.req import req_match
-    return req_match()
+    return s3db.req_match()
 
 # END =========================================================================

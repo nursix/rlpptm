@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Grouped Items Report
 
-""" S3 Grouped Items Report Method
-
-    @copyright: 2015-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2015-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -38,17 +36,14 @@ import math
 
 from gluon import current, DIV, H2, INPUT, SPAN, TABLE, TBODY, TD, TFOOT, TH, THEAD, TR
 
-from ..tools import s3_strip_markup, s3_str
+from ..tools import JSONSEPARATORS, get_crud_string, s3_strip_markup, s3_str
 
-from .base import S3Method
-
-# Compact JSON encoding
-SEPARATORS = (",", ":")
+from .base import CRUDMethod
 
 DEFAULT = lambda: None
 
 # =============================================================================
-class S3GroupedItemsReport(S3Method):
+class S3GroupedItemsReport(CRUDMethod):
     """
         REST Method Handler for Grouped Items Reports
 
@@ -60,8 +55,9 @@ class S3GroupedItemsReport(S3Method):
         """
             Page-render entry point for REST interface.
 
-            @param r: the CRUDRequest instance
-            @param attr: controller attributes
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes
         """
 
         output = {}
@@ -76,11 +72,12 @@ class S3GroupedItemsReport(S3Method):
         """
             Summary widget method
 
-            @param r: the CRUDRequest
-            @param method: the widget method
-            @param widget_id: the widget ID
-            @param visible: whether the widget is initially visible
-            @param attr: controller attributes
+            Args:
+                r: the CRUDRequest
+                method: the widget method
+                widget_id: the widget ID
+                visible: whether the widget is initially visible
+                attr: controller attributes
         """
 
         output = {}
@@ -95,8 +92,9 @@ class S3GroupedItemsReport(S3Method):
         """
             Report generator
 
-            @param r: the CRUDRequest instance
-            @param attr: controller attributes
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes
         """
 
         T = current.T
@@ -144,7 +142,7 @@ class S3GroupedItemsReport(S3Method):
         # Report title
         title = report_config.get("title")
         if title is None:
-            title = self.crud_string(tablename, "title_report")
+            title = get_crud_string(tablename, "title_report")
 
         # Generate JSON data
         display_cols = report_config.get("display_cols")
@@ -318,11 +316,13 @@ class S3GroupedItemsReport(S3Method):
             Get all field selectors for the report, and resolve them
             against the resource
 
-            @param resource: the resource
-            @param config: the report config (will be updated)
+            Args:
+                resource: the resource
+                config: the report config (will be updated)
 
-            @return: a dict {selector: rfield}, where rfield can be None
-                     if the selector does not resolve against the resource
+            Returns:
+                a dict {selector: rfield}, where rfield can be None
+                if the selector does not resolve against the resource
         """
 
         resource = self.resource
@@ -453,11 +453,12 @@ class S3GroupedItemsReport(S3Method):
             Extract the data from the resource (default method, can be
             overridden in report config)
 
-            @param resource: the resource
-            @param selectors: the field selectors
+            Args:
+                resource: the resource
+                selectors: the field selectors
 
-            @returns: list of dicts {colname: value} including
-                      raw data (_row)
+            Returns:
+                list of dicts {colname: value} including raw data (_row)
         """
 
         data = resource.select(selectors,
@@ -474,7 +475,8 @@ class S3GroupedItemsReport(S3Method):
         """
             Render export links for the report
 
-            @param r: the CRUDRequest
+            Args:
+                r: the CRUDRequest
         """
 
         T = current.T
@@ -506,10 +508,12 @@ class S3GroupedItemsReport(S3Method):
         """
             Inject the groupedItems script and bind it to the container
 
-            @param widget_id: the widget container DOM ID
-            @param options: dict with options for the widget
+            Args:
+                widget_id: the widget container DOM ID
+                options: dict with options for the widget
 
-            @note: options dict must be JSON-serializable
+            Note:
+                Options dict must be JSON-serializable
         """
 
         s3 = current.response.s3
@@ -537,7 +541,7 @@ class S3GroupedItemsReport(S3Method):
         s3.jquery_ready.append(script)
 
 # =============================================================================
-class S3GroupedItemsTable(object):
+class S3GroupedItemsTable:
     """
         Helper class to render representations of a grouped items report
     """
@@ -554,21 +558,20 @@ class S3GroupedItemsTable(object):
                  pdf_footer = None,
                  ):
         """
-            Constructor
-
-            @param resource: the resource
-            @param title: the report title
-            @param data: the JSON data (as dict)
-            @param aggregate: the aggregation functions as list of tuples
-                              (method, colname)
-            @param field_types: the field types as dict {colname: type}
-            @param group_headers: render group header rows
-            @param totals_label: the label for the aggregated rows
-                                 (default: "Total")
-            @param pdf_header: callable or static HTML to use as
-                               document header, function(r, title=title)
-            @param pdf_footer: callable or static HTML to use as
-                               document footer, function(r)
+            Args:
+                resource: the resource
+                title: the report title
+                data: the JSON data (as dict)
+                aggregate: the aggregation functions as list of tuples
+                            (method, colname)
+                field_types: the field types as dict {colname: type}
+                group_headers: render group header rows
+                totals_label: the label for the aggregated rows
+                              (default: "Total")
+                pdf_header: callable or static HTML to use as
+                            document header, function(r, title=title)
+                pdf_footer: callable or static HTML to use as
+                            document footer, function(r)
         """
 
         self.resource = resource
@@ -593,7 +596,8 @@ class S3GroupedItemsTable(object):
         """
             Produce a HTML representation of the grouped table
 
-            @return: a TABLE instance
+            Returns:
+                a TABLE instance
         """
 
         table = TABLE()
@@ -613,8 +617,11 @@ class S3GroupedItemsTable(object):
         """
             Produce a PDF representation of the grouped table
 
-            @param r: the CRUDRequest
-            @return: the PDF document
+            Args:
+                r: the CRUDRequest
+
+            Returns:
+                the PDF document
         """
 
         # Styles for totals and group totals rows
@@ -658,8 +665,11 @@ class S3GroupedItemsTable(object):
         """
             Produce an XLS sheet of the grouped table
 
-            @param r: the CRUDRequest
-            @return: the XLS document
+            Args:
+                r: the CRUDRequest
+
+            Returns:
+                the XLS document
         """
 
         # Prepare the XLS data array
@@ -715,9 +725,10 @@ class S3GroupedItemsTable(object):
         """
             Append a group to the XLS data
 
-            @param rows: the XLS rows array to append to
-            @param group: the group dict
-            @param level: the grouping level
+            Args:
+                rows: the XLS rows array to append to
+                group: the group dict
+                level: the grouping level
         """
 
         subgroups = group.get("d")
@@ -741,9 +752,10 @@ class S3GroupedItemsTable(object):
         """
             Render the group header (=group label)
 
-            @param row: the XLS rows array to append to
-            @param group: the group dict
-            @param level: the grouping level
+            Args:
+                row: the XLS rows array to append to
+                group: the group dict
+                level: the grouping level
         """
 
         columns = self.data.get("c")
@@ -764,9 +776,10 @@ class S3GroupedItemsTable(object):
         """
             Append a group footer to the XLS data
 
-            @param rows: the XLS rows array to append to
-            @param group: the group dict
-            @param level: the grouping level
+            Args:
+                rows: the XLS rows array to append to
+                group: the group dict
+                level: the grouping level
         """
 
         columns = self.data.get("c")
@@ -813,7 +826,8 @@ class S3GroupedItemsTable(object):
         """
             Render the table footer
 
-            @param table: the TABLE instance
+            Args:
+                table: the TABLE instance
         """
 
         data = self.data
@@ -849,9 +863,10 @@ class S3GroupedItemsTable(object):
         """
             Append an item to the XLS data
 
-            @param rows: the XLS rows array to append to
-            @param item: the item dict
-            @param level: the grouping level
+            Args:
+                rows: the XLS rows array to append to
+                item: the item dict
+                level: the grouping level
         """
 
         columns = self.data["c"]
@@ -867,7 +882,8 @@ class S3GroupedItemsTable(object):
         """
             Render the table header
 
-            @param table: the TABLE instance
+            Args:
+                table: the TABLE instance
         """
 
         data = self.data
@@ -887,7 +903,8 @@ class S3GroupedItemsTable(object):
         """
             Render the table footer
 
-            @param table: the TABLE instance
+            Args:
+                table: the TABLE instance
         """
 
         data = self.data
@@ -923,9 +940,10 @@ class S3GroupedItemsTable(object):
         """
             Render a group of rows
 
-            @param tbody: the TBODY or TABLE to append to
-            @param group: the group dict
-            @param level: the grouping level
+            Args:
+                tbody: the TBODY or TABLE to append to
+                group: the group dict
+                level: the grouping level
         """
 
         if self.group_headers and level > 0:
@@ -951,9 +969,10 @@ class S3GroupedItemsTable(object):
         """
             Render the group header (=group label)
 
-            @param tbody: the TBODY or TABLE to append to
-            @param group: the group dict
-            @param level: the grouping level
+            Args:
+                tbody: the TBODY or TABLE to append to
+                group: the group dict
+                level: the grouping level
         """
 
         data = self.data
@@ -976,9 +995,10 @@ class S3GroupedItemsTable(object):
         """
             Render the group footer (=group totals)
 
-            @param tbody: the TBODY or TABLE to append to
-            @param group: the group dict
-            @param level: the grouping level
+            Args:
+                tbody: the TBODY or TABLE to append to
+                group: the group dict
+                level: the grouping level
         """
 
         columns = self.data.get("c")
@@ -1024,9 +1044,10 @@ class S3GroupedItemsTable(object):
         """
             Render an item
 
-            @param tbody: the TBODY or TABLE to append to
-            @param item: the item dict
-            @param level: the grouping level
+            Args:
+                tbody: the TBODY or TABLE to append to
+                item: the item dict
+                level: the grouping level
         """
 
         columns = self.data["c"]
@@ -1046,7 +1067,7 @@ class S3GroupedItemsTable(object):
         return H2(title)
 
 # =============================================================================
-class S3GroupedItems(object):
+class S3GroupedItems:
     """
         Helper class representing dict-like items grouped by
         attribute values, used by S3GroupedItemsReport
@@ -1054,18 +1075,17 @@ class S3GroupedItems(object):
 
     def __init__(self, items, groupby=None, aggregate=None, values=None):
         """
-            Constructor
-
-            @param items: ordered iterable of items (e.g. list, tuple,
-                          iterator, Rows), grouping tries to maintain
-                          the original item order
-            @param groupby: attribute key or ordered iterable of
-                            attribute keys (e.g. list, tuple, iterator)
-                            for the items to be grouped by; grouping
-                            happens in order of appearance of the keys
-            @param aggregate: aggregates to compute, list of tuples
-                              (method, key)
-            @param value: the grouping values for this group (internal)
+            Args:
+                items: ordered iterable of items (e.g. list, tuple,
+                       iterator, Rows), grouping tries to maintain
+                       the original item order
+                groupby: attribute key or ordered iterable of
+                         attribute keys (e.g. list, tuple, iterator)
+                         for the items to be grouped by; grouping
+                         happens in order of appearance of the keys
+                aggregate: aggregates to compute, list of tuples
+                           (method, key)
+                value: the grouping values for this group (internal)
         """
 
         self._groups_dict = {}
@@ -1112,8 +1132,8 @@ class S3GroupedItems(object):
         """
             Getter for the grouping values dict
 
-            @param key: the grouping key
-
+            Args:
+                key: the grouping key
         """
 
         if type(key) is tuple:
@@ -1126,7 +1146,8 @@ class S3GroupedItems(object):
         """
             Add a new item, either to this group or to a subgroup
 
-            @param item: the item
+            Args:
+                item: the item
         """
 
         # Remove all aggregates
@@ -1164,9 +1185,10 @@ class S3GroupedItems(object):
             Add an item to a subgroup. Create that subgroup if it does not
             yet exist.
 
-            @param key: the grouping key
-            @param value: the grouping value for the subgroup
-            @param item: the item to add to the subgroup
+            Args:
+                key: the grouping key
+                value: the grouping value for the subgroup
+                item: the item to add to the subgroup
         """
 
         groups = self._groups_dict
@@ -1189,8 +1211,11 @@ class S3GroupedItems(object):
         """
             Get a list of attribute values for the items in this group
 
-            @param key: the attribute key
-            @return: the list of values
+            Args:
+                key: the attribute key
+
+            Returns:
+                the list of values
         """
 
         if self.items is None:
@@ -1224,10 +1249,12 @@ class S3GroupedItems(object):
         """
             Aggregate item attribute values (recursively over subgroups)
 
-            @param method: the aggregation method
-            @param key: the attribute key
+            Args:
+                method: the aggregation method
+                key: the attribute key
 
-            @return: an S3GroupAggregate instance
+            Returns:
+                an S3GroupAggregate instance
         """
 
         aggregates = self._aggregates
@@ -1261,7 +1288,8 @@ class S3GroupedItems(object):
         """
             Represent this group and all its subgroups as string
 
-            @param level: the hierarchy level of this group (for indentation)
+            Args:
+                level: the hierarchy level of this group (for indentation)
         """
 
         output = ""
@@ -1306,13 +1334,14 @@ class S3GroupedItems(object):
         """
             Serialize this group as JSON
 
-            @param fields: the columns to include for each item
-            @param labels: columns labels as dict {key: label},
-                           including the labels for grouping axes
-            @param represent: dict of representation methods for grouping
-                              axis values {colname: function}
-            @param as_dict: return output as dict rather than JSON string
-            @param master: this is the top-level group (internal)
+            Args:
+                fields: the columns to include for each item
+                labels: columns labels as dict {key: label},
+                       including the labels for grouping axes
+                represent: dict of representation methods for grouping
+                           axis values {colname: function}
+                as_dict: return output as dict rather than JSON string
+                master: this is the top-level group (internal)
 
             JSON Format:
 
@@ -1452,20 +1481,19 @@ class S3GroupedItems(object):
 
         # Convert to JSON unless requested otherwise
         if master and not as_dict:
-            output = json.dumps(output, separators=SEPARATORS)
+            output = json.dumps(output, separators=JSONSEPARATORS)
         return output
 
 # =============================================================================
-class S3GroupAggregate(object):
+class S3GroupAggregate:
     """ Class representing aggregated values """
 
     def __init__(self, method, key, values):
         """
-            Constructor
-
-            @param method: the aggregation method (count, sum, min, max, avg)
-            @param key: the attribute key
-            @param values: the attribute values
+            Args:
+                method: the aggregation method (count, sum, min, max, avg)
+                key: the attribute key
+                values: the attribute values
         """
 
         self.method = method
@@ -1480,10 +1508,12 @@ class S3GroupAggregate(object):
         """
             Compute the aggregated value
 
-            @param method: the aggregation method
-            @param values: the values
+            Args:
+                method: the aggregation method
+                values: the values
 
-            @return: the aggregated value
+            Returns:
+                the aggregated value
         """
 
         if values is None:
@@ -1533,9 +1563,11 @@ class S3GroupAggregate(object):
         """
             Combine sub-aggregates
 
-            @param items: iterable of sub-aggregates
+            Args:
+                items: iterable of sub-aggregates
 
-            @return: an S3GroupAggregate instance
+            Returns:
+                an S3GroupAggregate instance
         """
 
         method = None

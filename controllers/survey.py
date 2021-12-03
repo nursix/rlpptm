@@ -58,26 +58,30 @@ def template():
                 s3db.configure("survey_translate",
                                deletable=False)
         else:
-            table = r.table
             s3_action_buttons(r)
-            # Status of Pending
-            rows = db(table.status == 1).select(table.id)
+
+            # Rows by status
+            table = r.table
+            rows = db(table.status.belongs((1, 3, 4))).select(table.id,
+                                                              table.status,
+                                                              )
+            pending_rows = [str(row.id) for row in rows if row.status == 1]
+            closed_rows = [str(row.id) for row in rows if row.status == 3]
+            master_rows = [str(row.id) for row in rows if row.status == 4]
+
             try:
-                s3.actions[1]["restrict"].extend(str(row.id) for row in rows)
+                s3.actions[1]["restrict"].extend(pending_rows)
             except KeyError: # the restrict key doesn't exist
-                s3.actions[1]["restrict"] = [str(row.id) for row in rows]
+                s3.actions[1]["restrict"] = pending_rows
             except IndexError: # the delete buttons doesn't exist
                 pass
+
             # Add some highlighting to the rows
-            # Status of Pending
-            s3.dataTableStyleAlert = [str(row.id) for row in rows]
-            # Status of closed
-            rows = db(table.status == 3).select(table.id)
-            s3.dataTableStyleDisabled = [str(row.id) for row in rows]
-            s3.dataTableStyleWarning = [str(row.id) for row in rows]
-            # Status of Master
-            rows = db(table.status == 4).select(table.id)
-            s3.dataTableStyleWarning.extend(str(row.id) for row in rows)
+            s3.dataTableStyle = {
+                "dtalert": pending_rows,
+                "dtdisable": closed_rows,
+                "dtwarning": closed_rows + master_rows,
+                }
             s3db.configure("survey_template",
                            orderby = "survey_template.status",
                            create_next = URL(c="survey", f="template"),
@@ -295,7 +299,7 @@ def series():
 def series_export_formatted():
     """
         Download a Spreadsheet which can be filled-in offline & uploaded
-        @ToDo: rewrite as S3Method handler
+        @ToDo: rewrite as CRUDMethod handler
     """
 
     try:
@@ -448,7 +452,7 @@ def series_prepare_matrix(series_id, series, logo, lang_dict, justified=False):
 def series_export_word(widget_list, lang_dict, title, logo):
     """
         Export a Series in RTF Format
-        @ToDo: rewrite as S3Method handler
+        @ToDo: rewrite as CRUDMethod handler
     """
 
     import gluon.contrib.pyrtf as pyrtf

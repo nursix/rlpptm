@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
+"""
+    Data Collection Models
+    - a front-end UI to manage Assessments which uses the
+      Dynamic Tables back-end
 
-""" Sahana Eden Data Collection Models
-    - a front-end UI to manage Assessments which uses the Dynamic Tables
-      back-end
-
-    @copyright: 2014-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2014-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -1526,7 +1524,7 @@ class DataCollectionModel(DataModel):
                 s3.scripts.append("/%s/static/scripts/S3/s3.dc_answer.min.js" % r.application)
 
 # =============================================================================
-class dc_TargetReport(S3Method):
+class dc_TargetReport(CRUDMethod):
     """
         Display a Summary of the Target (i.e. collection of Responses)
 
@@ -1541,10 +1539,11 @@ class dc_TargetReport(S3Method):
     # -------------------------------------------------------------------------
     def apply_method(self, r, **attr):
         """
-            Entry point for REST API
+            Applies the method (controller entry point).
 
-            @param r: the CRUDRequest
-            @param attr: controller arguments
+            Args:
+                r: the CRUDRequest
+                attr: controller arguments
         """
 
         if r.name == "target":
@@ -1884,8 +1883,9 @@ class dc_TargetReport(S3Method):
         return doc.output.getvalue()
 
 # =============================================================================
-class dc_TargetXLS(S3Method):
+class dc_TargetXLS(CRUDMethod):
 
+    # -------------------------------------------------------------------------
     def apply_method(self, r, **attr):
 
         from core.resource.codecs.xls import S3XLS

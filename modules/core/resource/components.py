@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Lazy Components Loader
 
-""" Lazy Components Loader
-
-    @copyright: 2009-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2009-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -39,18 +37,17 @@ from .query import FS
 DEFAULT = lambda: None
 
 # =============================================================================
-class S3Components(object):
+class S3Components:
     """
         Lazy component loader
     """
 
     def __init__(self, master, expose=None):
         """
-            Constructor
-
-            @param master: the master resource (S3Resource)
-            @param expose: aliases of components to expose, defaults to
-                           all configured components
+            Args:
+                master: the master resource (CRUDResource)
+                expose: aliases of components to expose, defaults to
+                        all configured components
         """
 
         self.master = master
@@ -75,10 +72,12 @@ class S3Components(object):
             Access a component resource by its alias; will load the
             component if not loaded yet
 
-            @param alias: the component alias
-            @param default: default to return if the alias is not defined
+            Args:
+                alias: the component alias
+                default: default to return if the alias is not defined
 
-            @return: the component resource (S3Resource)
+            Returns:
+                the component resource (CRUDResource)
         """
 
         components = self._components
@@ -100,11 +99,14 @@ class S3Components(object):
             Access a component by its alias in key notation; will load the
             component if not loaded yet
 
-            @param alias: the component alias
+            Args:
+                alias: the component alias
 
-            @return: the component resource (S3Resource)
+            Returns:
+                the component resource (CRUDResource)
 
-            @raises: KeyError if the component is not defined
+            Raises:
+                KeyError: if the component is not defined
         """
 
         component = self.get(alias)
@@ -118,9 +120,11 @@ class S3Components(object):
         """
             Check if a component is defined for this resource
 
-            @param alias: the alias to check
+            Args:
+                alias: the alias to check
 
-            @return: True|False whether the component is defined
+            Returns:
+                True|False whether the component is defined
         """
 
         return bool(self.get(alias))
@@ -131,7 +135,8 @@ class S3Components(object):
         """
             Get all currently loaded components
 
-            @return: dict {alias: resource} with loaded components
+            Returns:
+                dict {alias: resource} with loaded components
         """
         return self._components
 
@@ -141,7 +146,8 @@ class S3Components(object):
         """
             Get all exposed components (=> will thus load them all)
 
-            @return: dict {alias: resource} with exposed components
+            Returns:
+                dict {alias: resource} with exposed components
         """
 
         loaded = self._components
@@ -188,10 +194,12 @@ class S3Components(object):
         """
             Instantiate component resources
 
-            @param aliases: iterable of aliases of components to instantiate
-            @param force: forced reload of components
+            Args:
+                aliases: iterable of aliases of components to instantiate
+                force: forced reload of components
 
-            @return: dict of loaded components {alias: resource}
+            Returns:
+                dict of loaded components {alias: resource}
         """
 
         s3db = current.s3db
@@ -232,15 +240,15 @@ class S3Components(object):
                 table = hook.table
 
             # Instantiate component resource
-            from .resource import S3Resource
-            component = S3Resource(table,
-                                   parent = master,
-                                   alias = alias,
-                                   linktable = hook.linktable,
-                                   include_deleted = master.include_deleted,
-                                   approved = master._approved,
-                                   unapproved = master._unapproved,
-                                   )
+            from .resource import CRUDResource
+            component = CRUDResource(table,
+                                     parent = master,
+                                     alias = alias,
+                                     linktable = hook.linktable,
+                                     include_deleted = master.include_deleted,
+                                     approved = master._approved,
+                                     unapproved = master._unapproved,
+                                     )
 
             if table_alias:
                 component.tablename = hook.tablename
@@ -346,10 +354,11 @@ class S3Components(object):
         """
             Detach currently loaded components, e.g. to force a reload
 
-            @param aliases: aliases to remove, None for all
-            @param expose: aliases of components to expose (default:
-                           keep previously exposed aliases), None for
-                           all configured components
+            Args:
+                aliases: aliases to remove, None for all
+                expose: aliases of components to expose (default:
+                        keep previously exposed aliases), None for
+                        all configured components
         """
 
         if expose is not DEFAULT:

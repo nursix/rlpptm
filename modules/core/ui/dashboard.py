@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Dashboards
 
-""" Dashboards
-
-    @copyright: 2016-2021 (c) Sahana Software Foundation
-    @license: MIT
-
-    @requires: U{B{I{gluon}} <http://web2py.com>}
+    Copyright: 2016-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -27,8 +23,6 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
-
-    @status: experimental, work in progress
 """
 
 __all__ = ("S3Dashboard",
@@ -49,15 +43,14 @@ DEFAULT = lambda: None
 DEFAULT_FORMAT = "html"
 
 # =============================================================================
-class S3DashboardContext(object):
+class S3DashboardContext:
     """ Context data for a dashboard """
 
     def __init__(self, r=None, dashboard=None):
         """
-            Constructor
-
-            @param r: the request object (defaults to current.request)
-            @param dashboard: the dashboard (S3Dashboard)
+            Args:
+                r: the request object (defaults to current.request)
+                dashboard: the dashboard (S3Dashboard)
         """
 
         # @todo: add request owner info (to select the active config)
@@ -78,10 +71,11 @@ class S3DashboardContext(object):
         """
             Action upon error
 
-            @param status: HTTP status code
-            @param message: the error message
-            @param _next: destination URL for redirection upon error
-                          (defaults to the index page of the module)
+            Args:
+                status: HTTP status code
+                message: the error message
+                _next: destination URL for redirection upon error
+                       (defaults to the index page of the module)
         """
 
         if self.representation == "html":
@@ -154,7 +148,8 @@ class S3DashboardContext(object):
             attribute. Falls back to current.request if the attribute is
             not defined in this context.
 
-            @param key: the key to lookup
+            Args:
+                key: the key to lookup
         """
 
         if key in self.__dict__:
@@ -171,7 +166,8 @@ class S3DashboardContext(object):
         """
             Parse the request info
 
-            @param r: the web2py Request, falls back to current.request
+            Args:
+                r: the web2py Request, falls back to current.request
         """
 
         request = current.request if r is None else r
@@ -213,7 +209,7 @@ class S3DashboardContext(object):
         self.representation = s3_get_extension(request) or DEFAULT_FORMAT
 
 # =============================================================================
-class S3DashboardConfig(object):
+class S3DashboardConfig:
     """
         Dashboard Configuration
     """
@@ -227,12 +223,11 @@ class S3DashboardConfig(object):
                  configurable=False,
                  ):
         """
-            Constructor
-
-            @param layout: the layout, or the config dict
-            @param widgets: the available widgets as dict {name: widget}
-            @param default: the default configuration (=list of widget configs)
-            @param configurable: whether this dashboard is user-configurable
+            Args:
+                layout: the layout, or the config dict
+                widgets: the available widgets as dict {name: widget}
+                default: the default configuration (=list of widget configs)
+                configurable: whether this dashboard is user-configurable
         """
 
         if isinstance(layout, dict):
@@ -277,7 +272,8 @@ class S3DashboardConfig(object):
         """
             Load the current active configuration for the context
 
-            @param context: the current S3DashboardContext
+            Args:
+                context: the current S3DashboardContext
         """
 
         if not self.configurable:
@@ -323,11 +319,13 @@ class S3DashboardConfig(object):
         """
             Save this configuration in the database
 
-            @param context: the current S3DashboardContext
-            @param update: widget configurations to update, as dict
-                           {widget_id: {config-dict}}
+            Args:
+                context: the current S3DashboardContext
+                update: widget configurations to update, as dict
+                        {widget_id: {config-dict}}
 
-            @return: the new version key, or None if not successful
+            Returns:
+                the new version key, or None if not successful
         """
 
         # Must be configurable and loaded
@@ -385,16 +383,13 @@ class S3DashboardConfig(object):
         return version
 
 # =============================================================================
-class S3DashboardChannel(object):
+class S3DashboardChannel:
     """
         A dashboard channel
         (=a section of the dashboard where widgets can be added)
     """
 
     def __init__(self):
-        """
-            Constructor
-        """
 
         self.widgets = {}
 
@@ -403,9 +398,10 @@ class S3DashboardChannel(object):
         """
             Add XML for a widget to this channel
 
-            @param widget: the widget XML (e.g. DIV instance)
-            @param position: the position of the widget in the channel,
-                             if there are multiple widgets in the channel
+            Args:
+                widget: the widget XML (e.g. DIV instance)
+                position: the position of the widget in the channel,
+                          if there are multiple widgets in the channel
         """
 
         widgets = self.widgets
@@ -420,9 +416,10 @@ class S3DashboardChannel(object):
             Iterate over the widgets in this channel, in order of their
             positions; used in layouts to build the channel contents.
 
-            @note: Widgets without explicit position (=None), or multiple
-                   widgets at the same position, will be returned in the
-                   order in which they have been added to the channel.
+            Note:
+                Widgets without explicit position (=None), or multiple
+                widgets at the same position, will be returned in the
+                order in which they have been added to the channel.
         """
 
         widgets = self.widgets
@@ -441,7 +438,6 @@ class S3DashboardChannel(object):
         """
             Number of widgets in this channel, useful for sizing of
             container elements in layouts:
-
                 - number_of_widgets = len(channel)
         """
 
@@ -449,7 +445,7 @@ class S3DashboardChannel(object):
         return total
 
 # =============================================================================
-class S3DashboardLayout(object):
+class S3DashboardLayout:
     """
         Base class for dashboard layouts, can be subclassed
         to implement custom layouts
@@ -470,14 +466,16 @@ class S3DashboardLayout(object):
             Build the layout with the contents added by agents
             - to be implemented in subclasses
 
-            @param context: the current S3DashboardContext
+            Args:
+                context: the current S3DashboardContext
 
-            @return: the dashboard contents, usually a TAG instance,
-                     alternatively a dict for the view (for custom
-                     views)
+            Returns:
+                the dashboard contents, usually a TAG instance,
+                alternatively a dict for the view (for custom views)
 
-            @note: can override current.response.view to use a
-                   specific view template (default is dashboard.html)
+            Note:
+                Can override current.response.view to use a
+                specific view template (default is dashboard.html)
         """
 
         return ""
@@ -489,11 +487,12 @@ class S3DashboardLayout(object):
             - can be overwritten in subclasses (e.g. to dynamically
               create channels)
 
-            @param contents: the contents to insert
-            @param channel: the channel where to insert the contents,
-                            using the default channel if None
-            @param position: the position within the channel (numeric),
-                             append to channel if None
+            Args:
+                contents: the contents to insert
+                channel: the channel where to insert the contents,
+                         using the default channel if None
+                position: the position within the channel (numeric),
+                          append to channel if None
         """
 
         # Fall back to default channel
@@ -515,10 +514,12 @@ class S3DashboardLayout(object):
         """
             Build a single channel, usually called by build()
 
-            @param key: the channel key
-            @param attr: HTML attributes for the channel
+            Args:
+                key: the channel key
+                attr: HTML attributes for the channel
 
-            @return: the XML for the channel, usually a DIV instance
+            Returns:
+                the XML for the channel, usually a DIV instance
         """
 
         widgets = default = XML("&nbsp;")
@@ -536,9 +537,8 @@ class S3DashboardLayout(object):
     # -------------------------------------------------------------------------
     def __init__(self, config):
         """
-            Constructor
-
-            @param config: the active S3DashboardConfig
+            Args:
+                config: the active S3DashboardConfig
         """
 
         self.config = config
@@ -575,9 +575,11 @@ class S3DashboardBoxesLayout(S3DashboardLayout):
         """
             Build the layout with the contents added by agents
 
-            @param context: the current S3DashboardContext
+            Args:
+                context: the current S3DashboardContext
 
-            @return: the dashboard contents (TAG)
+            Returns:
+                the dashboard contents (TAG)
         """
 
         #T = current.T
@@ -622,7 +624,7 @@ class S3DashboardGridLayout(S3DashboardLayout):
     pass
 
 # =============================================================================
-class S3Dashboard(object):
+class S3Dashboard:
     """
         Class to build and manage dashboards
 
@@ -658,11 +660,10 @@ class S3Dashboard(object):
     # -------------------------------------------------------------------------
     def __init__(self, config, layouts=None):
         """
-            Initializes the dashboard
-
-            @param config: the default configuration for this dashboard
-            @param layouts: custom layouts to override/extend the available
-                            layouts, as dict {name: (label, class)}
+            Args:
+                config: the default configuration for this dashboard
+                layouts: custom layouts to override/extend the available
+                         layouts, as dict {name: (label, class)}
         """
 
         if not isinstance(config, S3DashboardConfig):
@@ -684,7 +685,8 @@ class S3Dashboard(object):
         """
             Lazy property to load the current configuration from the database
 
-            @return: the S3DashboardConfig
+            Returns:
+                the S3DashboardConfig
         """
 
         config = self._config
@@ -699,7 +701,8 @@ class S3Dashboard(object):
         """
             Lazy property to instantiate the dashboard agents
 
-            @return: a dict {agent_id: agent}
+            Returns:
+                a dict {agent_id: agent}
         """
 
         agents = self._agents
@@ -759,11 +762,14 @@ class S3Dashboard(object):
         """
             Dispatch requests - this method is called by the controller.
 
-            @param attr: keyword arguments from the controller
+            Args:
+                attr: keyword arguments from the controller
 
-            @keyword _id: the node ID for the dashboard (default: "dashboard")
+            Keyword Args:
+                _id: the node ID for the dashboard (default: "dashboard")
 
-            @return: the output for the view
+            Returns:
+                the output for the view
         """
 
         # @todo: handle the side menu (if any)
@@ -841,9 +847,11 @@ class S3Dashboard(object):
         """
             Build the dashboard and all its contents
 
-            @param attr: keyword arguments from the controller
+            Args:
+                attr: keyword arguments from the controller
 
-            @return: the output dict for the view
+            Returns:
+                the output dict for the view
         """
 
         config = self.config
@@ -904,10 +912,11 @@ class S3Dashboard(object):
         """
             Execute a dashboard global command
 
-            @param command: the command
-            @param context: the current S3DashboardContext
+            Args:
+                command: the command
+                context: the current S3DashboardContext
 
-            @todo: implement global commands
+            TODO implement global commands
         """
 
         output = None
@@ -920,8 +929,11 @@ class S3Dashboard(object):
         """
             Get the active layout
 
-            @param config: the active dashboard configuration
-            @return: an instance of the active layout
+            Args:
+                config: the active dashboard configuration
+
+            Returns:
+                an instance of the active layout
         """
 
         layout = self.available_layouts.get(config.layout)
@@ -940,8 +952,9 @@ class S3Dashboard(object):
         """
             Inject the JS to instantiate the client-side widget controller
 
-            @param dashboard_id: the dashboard DOM node ID
-            @param options: JSON-serializable dict with script options
+            Args:
+                dashboard_id: the dashboard DOM node ID
+                options: JSON-serializable dict with script options
         """
 
         s3 = current.response.s3
@@ -970,7 +983,7 @@ class S3Dashboard(object):
 
 
 # =============================================================================
-class delegated(object):
+class delegated:
     """
         Decorator for widget methods that shall be exposed in the web API.
 
@@ -1018,7 +1031,7 @@ class delegated(object):
         return output
 
 # =============================================================================
-class S3DashboardAgent(object):
+class S3DashboardAgent:
     """
         Object serving a dashboard widget
 
@@ -1029,13 +1042,12 @@ class S3DashboardAgent(object):
 
     def __init__(self, agent_id, widget=None, config=None, version=None):
         """
-            Initialize the agent
-
-            @param agent_id: the agent ID (string), a unique XML
-                             identifier for the widget configuration
-            @param widget: the widget (S3DashboardWidget instance)
-            @param config: the widget configuration (dict)
-            @param version: the config version
+            Args:
+                agent_id: the agent ID (string), a unique XML
+                          identifier for the widget configuration
+                widget: the widget (S3DashboardWidget instance)
+                config: the widget configuration (dict)
+                version: the config version
         """
 
         self.agent_id = agent_id
@@ -1049,12 +1061,14 @@ class S3DashboardAgent(object):
         """
             Dispatch Ajax requests
 
-            @param dashboard: the calling S3Dashboard instance
-            @param context: the current S3DashboardContext
+            Args:
+                dashboard: the calling S3Dashboard instance
+                context: the current S3DashboardContext
 
-            @return: tuple (output, error), where:
-                     - "output" is the output of the command execution
-                     - "error" is a tuple (http_status, message), or None
+            Returns:
+                tuple (output, error), where:
+                    - "output" is the output of the command execution
+                    - "error" is a tuple (http_status, message), or None
         """
 
         command = context.command
@@ -1099,8 +1113,9 @@ class S3DashboardAgent(object):
         """
             Execute a delegated widget method
 
-            @param command: the name of the delegated widget method
-            @param context: the S3DashboardContext
+            Args:
+                command: the name of the delegated widget method
+                context: the S3DashboardContext
         """
 
         widget = self.widget
@@ -1162,10 +1177,12 @@ class S3DashboardAgent(object):
         """
             Controller for the widget configuration dialog
 
-            @param dashboard: the calling S3Dashboard instance
-            @param context: the S3DashboardContext
+            Args:
+                dashboard: the calling S3Dashboard instance
+                context: the S3DashboardContext
 
-            @return: output dict for the view
+            Returns:
+                output dict for the view
         """
 
         response = current.response
@@ -1245,7 +1262,7 @@ class S3DashboardAgent(object):
                 }
 
 # =============================================================================
-class S3DashboardWidget(object):
+class S3DashboardWidget:
     """
         Base class for dashboard widgets
     """
@@ -1259,14 +1276,16 @@ class S3DashboardWidget(object):
         """
             Construct the XML for this widget
 
-            @param agent_id: the agent ID (same as the DOM node ID of the
-                             outer wrapper DIV, to attach scripts)
-            @param config: the active widget configuration
-            @param version: the config version key
-            @param context: the S3DashboardContext
+            Args:
+                agent_id: the agent ID (same as the DOM node ID of the
+                          outer wrapper DIV, to attach scripts)
+                config: the active widget configuration
+                version: the config version key
+                context: the S3DashboardContext
 
-            @return: an XmlComponent with the widget contents,
-                     the outer DIV will be added by the agent
+            Returns:
+                an XmlComponent with the widget contents,
+                the outer DIV will be added by the agent
         """
 
         # Base class just renders some static XML
@@ -1283,10 +1302,12 @@ class S3DashboardWidget(object):
             Get the path to the script file for this widget, can be
             implemented in subclasses to override the default.
 
-            @param debug: whether running in debug mode or not
+            Args:
+                debug: whether running in debug mode or not
 
-            @return: path relative to static/scripts,
-                     None if no separate script file required
+            Returns:
+                path relative to static/scripts,
+                None if no separate script file required
         """
 
         #if debug:
@@ -1302,9 +1323,11 @@ class S3DashboardWidget(object):
         """
             Get widget-specific configuration form fields
 
-            @param agent: the agent
+            Args:
+                agent: the agent
 
-            @return: a list of Fields for the form construction
+            Returns:
+                a list of Fields for the form construction
         """
 
         # Generic widget allows configuration of XML
@@ -1321,12 +1344,15 @@ class S3DashboardWidget(object):
             Extract the new config settings from the form and
             update the config dict
 
-            @param config: the config dict
-            @param form: the configuration form
+            Args:
+                config: the config dict
+                form: the configuration form
 
-            @return: the updated config dict (can be a replacement)
+            Returns:
+                the updated config dict (can be a replacement)
 
-            NB config must remain JSON-serializable
+            Note:
+                config must remain JSON-serializable
         """
 
         formvars = form.vars
@@ -1359,11 +1385,12 @@ class S3DashboardWidget(object):
             Helper method to inject the init script for a particular agent,
             usually called by widget() method.
 
-            @param agent_id: the agent ID
-            @param version: the config version key
-            @param widget_class: the widget class to instantiate
-            @param options: JSON-serializable dict of options to pass
-                            to the widget instance
+            Args:
+                agent_id: the agent ID
+                version: the config version key
+                widget_class: the widget class to instantiate
+                options: JSON-serializable dict of options to pass
+                         to the widget instance
         """
 
         s3 = current.response.s3
@@ -1398,7 +1425,8 @@ class S3DashboardWidget(object):
         """
             Build the widget configuration task bar
 
-            @return: the XML for the task bar
+            Returns:
+                the XML for the task bar
         """
 
         return DIV(SPAN(ICON("move", _class="db-task-move"),
@@ -1424,14 +1452,15 @@ class S3DashboardWidget(object):
             Initialize the widget, called when configuring an available
             widget for the dashboard.
 
-            @param label: a label for this widget type, used in the widget
-                          selector in the configuration GUI; if left empty,
-                          then the widget type will not appear in the selector
-            @param defaults: the default configuration for this widget
-            @param on_create_agent: callback, invoked when an agent is created
-                                    for this widget:
-                                        - on_create_agent(agent, context)
-            @param **options: type-specific options
+            Args:
+                label: a label for this widget type, used in the widget
+                       selector in the configuration GUI; if left empty,
+                       then the widget type will not appear in the selector
+                defaults: the default configuration for this widget
+                on_create_agent: callback, invoked when an agent is created
+                                 for this widget:
+                                    - on_create_agent(agent, context)
+                options: type-specific options
         """
 
         self.label = label
@@ -1455,10 +1484,11 @@ class S3DashboardWidget(object):
         """
             Create an agent for this widget
 
-            @param agent_id: the agent ID
-            @param config: the agent configuration dict
-            @param version: the config version key
-            @param context: the current S3DashboardContext
+            Args:
+                agent_id: the agent ID
+                config: the agent configuration dict
+                version: the config version key
+                context: the current S3DashboardContext
         """
 
         # Add widget defaults to configuration

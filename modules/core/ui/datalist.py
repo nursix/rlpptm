@@ -1,10 +1,7 @@
-# -*- coding: utf-8 -*-
-
 """
     Data Card List
 
-    @copyright: 2009-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2009-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -36,8 +33,10 @@ from itertools import islice
 
 from gluon import current, A, DIV, INPUT, LABEL, SPAN, TAG
 
+from ..tools import get_crud_string
+
 # =============================================================================
-class S3DataList(object):
+class S3DataList:
     """
         Class representing a list of data cards
         - client-side implementation in static/scripts/S3/s3.dataLists.js
@@ -58,20 +57,19 @@ class S3DataList(object):
                  row_layout = None,
                  ):
         """
-            Constructor
-
-            @param resource: the S3Resource
-            @param list_fields: the list fields
-                                (list of field selector strings)
-            @param records: the records
-            @param start: index of the first item
-            @param limit: maximum number of items
-            @param total: total number of available items
-            @param list_id: the HTML ID for this list
-            @param layout: item renderer (optional) as function
-                           (list_id, item_id, resource, rfields, record)
-            @param row_layout: row renderer (optional) as
-                               function(list_id, resource, rowsize, items)
+            Args:
+                resource: the CRUDResource
+                list_fields: the list fields
+                             (list of field selector strings)
+                records: the records
+                start: index of the first item
+                limit: maximum number of items
+                total: total number of available items
+                list_id: the HTML ID for this list
+                layout: item renderer (optional) as function
+                        (list_id, item_id, resource, rfields, record)
+                row_layout: row renderer (optional) as
+                            function(list_id, resource, rowsize, items)
         """
 
         self.resource = resource
@@ -107,15 +105,16 @@ class S3DataList(object):
         """
             Render list data as HTML (nested DIVs)
 
-            @param start: index of the first item (in this page)
-            @param limit: total number of available items
-            @param pagesize: maximum number of items per page
-            @param rowsize: number of items per row
-            @param ajaxurl: the URL to Ajax-update the datalist
-            @param empty: message to display if the list is empty
-            @param popup_url: the URL for the modal used for the 'more'
-                              button (=> we deactivate InfiniteScroll)
-            @param popup_title: the title for the modal
+            Args:
+                start: index of the first item (in this page)
+                limit: total number of available items
+                pagesize: maximum number of items per page
+                rowsize: number of items per row
+                ajaxurl: the URL to Ajax-update the datalist
+                empty: message to display if the list is empty
+                popup_url: the URL for the modal used for the 'more'
+                           button (=> we deactivate InfiniteScroll)
+                popup_title: the title for the modal
         """
 
         T = current.T
@@ -150,8 +149,7 @@ class S3DataList(object):
                          ]
 
             if empty is None:
-                from ..methods import S3Method
-                empty = S3Method.crud_string(resource.tablename, "msg_no_match")
+                empty = get_crud_string(resource.tablename, "msg_no_match")
             empty = DIV(empty, _class="dl-empty")
             if self.total > 0:
                 empty.update(_style="display:none")
@@ -239,8 +237,9 @@ class S3DataList(object):
         """
             Iterator to group data list items into rows
 
-            @param iterable: the items iterable
-            @param length: the number of items per row
+            Args:
+                iterable: the items iterable
+                length: the number of items per row
         """
 
         iterable = iter(iterable)
@@ -251,7 +250,7 @@ class S3DataList(object):
         return
 
 # =============================================================================
-class S3DataListLayout(object):
+class S3DataListLayout:
     """ DataList default layout """
 
     item_class = "thumbnail"
@@ -259,12 +258,11 @@ class S3DataListLayout(object):
     # ---------------------------------------------------------------------
     def __init__(self, profile=None):
         """
-            Constructor
-
-            @param profile: table name of the master resource of the
-                            profile page (if used for a profile), can be
-                            used in popup URLs to indicate the master
-                            resource
+            Args:
+                profile: table name of the master resource of the
+                         profile page (if used for a profile), can be
+                         used in popup URLs to indicate the master
+                         resource
         """
 
         self.profile = profile
@@ -274,11 +272,12 @@ class S3DataListLayout(object):
         """
             Wrapper for render_item.
 
-            @param list_id: the HTML ID of the list
-            @param item_id: the HTML ID of the item
-            @param resource: the S3Resource to render
-            @param rfields: the S3ResourceFields to render
-            @param record: the record as dict
+            Args:
+                list_id: the HTML ID of the list
+                item_id: the HTML ID of the item
+                resource: the CRUDResource to render
+                rfields: the S3ResourceFields to render
+                record: the record as dict
         """
 
         # Render the item
@@ -305,13 +304,14 @@ class S3DataListLayout(object):
     # ---------------------------------------------------------------------
     def render_header(self, list_id, item_id, resource, rfields, record):
         """
-            @todo: Render the card header
+            Render the card header
 
-            @param list_id: the HTML ID of the list
-            @param item_id: the HTML ID of the item
-            @param resource: the S3Resource to render
-            @param rfields: the S3ResourceFields to render
-            @param record: the record as dict
+            Args:
+                list_id: the HTML ID of the list
+                item_id: the HTML ID of the item
+                resource: the CRUDResource to render
+                rfields: the S3ResourceFields to render
+                record: the record as dict
         """
 
         #DIV(
@@ -327,11 +327,12 @@ class S3DataListLayout(object):
         """
             Render the card body
 
-            @param list_id: the HTML ID of the list
-            @param item_id: the HTML ID of the item
-            @param resource: the S3Resource to render
-            @param rfields: the S3ResourceFields to render
-            @param record: the record as dict
+            Args:
+                list_id: the HTML ID of the list
+                item_id: the HTML ID of the item
+                resource: the CRUDResource to render
+                rfields: the S3ResourceFields to render
+                record: the record as dict
         """
 
         pkey = str(resource._id)
@@ -356,10 +357,11 @@ class S3DataListLayout(object):
     # ---------------------------------------------------------------------
     def render_icon(self, list_id, resource):
         """
-            @todo: Render a body icon
+            Render a body icon
 
-            @param list_id: the HTML ID of the list
-            @param resource: the S3Resource to render
+            Args:
+                list_id: the HTML ID of the list
+                resource: the CRUDResource to render
         """
 
         return None
@@ -367,11 +369,12 @@ class S3DataListLayout(object):
     # ---------------------------------------------------------------------
     def render_toolbox(self, list_id, resource, record):
         """
-            @todo: Render the toolbox
+            Render the toolbox
 
-            @param list_id: the HTML ID of the list
-            @param resource: the S3Resource to render
-            @param record: the record as dict
+            Args:
+                list_id: the HTML ID of the list
+                resource: the CRUDResource to render
+                record: the record as dict
         """
 
         return None
@@ -381,9 +384,10 @@ class S3DataListLayout(object):
         """
             Render a data column.
 
-            @param item_id: the HTML element ID of the item
-            @param rfield: the S3ResourceField for the column
-            @param record: the record (from S3Resource.select)
+            Args:
+                item_id: the HTML element ID of the item
+                rfield: the S3ResourceField for the column
+                record: the record (from CRUDResource.select)
         """
 
         colname = rfield.colname

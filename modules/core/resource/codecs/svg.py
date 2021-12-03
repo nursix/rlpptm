@@ -1,10 +1,7 @@
-# -*- coding: utf-8 -*-
-
 """
-    S3 SVG codec
+    SVG codec
 
-    @copyright: 2013-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2013-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -32,12 +29,12 @@ __all__ = ("S3SVG",)
 
 import os
 
-from io import StringIO
-
 from gluon import *
 from gluon.contenttype import contenttype
 from gluon.storage import Storage
 from gluon.streamer import DEFAULT_CHUNK_SIZE
+
+from ...tools import get_crud_string
 
 from ..codec import S3Codec
 
@@ -48,23 +45,16 @@ class S3SVG(S3Codec):
     """
 
     # -------------------------------------------------------------------------
-    def __init__(self):
-        """
-            Constructor
-        """
-
-        pass
-
-    # -------------------------------------------------------------------------
     def extractResource(self, resource, list_fields):
         """
             Extract the items from the resource
 
-            @param resource: the resource
-            @param list_fields: fields to include in list views
+            Args:
+                resource: the resource
+                list_fields: fields to include in list views
         """
 
-        title = self.crud_string(resource.tablename, "title_list")
+        title = get_crud_string(resource.tablename, "title_list")
 
         get_vars = Storage(current.request.get_vars)
         get_vars["iColumns"] = len(list_fields)
@@ -100,15 +90,17 @@ class S3SVG(S3Codec):
         """
             Export data as a Scalable Vector Graphic
 
-            @param resource: the source of the data that is to be encoded
-                                as an SVG. This may be:
-                                resource: the resource
-                                item:     a list of pre-fetched values
-                                          the headings are in the first row
-                                          the data types are in the second row
-            @param attr: dictionary of parameters:
-                 * title:          The export filename
-                 * list_fields:    Fields to include in list views
+            Args:
+                resource: the source of the data that is to be encoded
+                          as an SVG. This may be:
+                            - resource: the resource
+                            - item:     a list of pre-fetched values
+                                        the headings are in the first row
+                                        the data types are in the second row
+
+            Keyword Args:
+                title: The export filename
+                list_fields: Fields to include in list views
         """
 
         # Get the attributes
@@ -252,12 +244,14 @@ class S3SVG(S3Codec):
         """
             Import data from a Scalable Vector Graphic
 
-            @param resource: the S3Resource
-            @param source: the source
+            Args:
+                resource: the CRUDResource
+                source: the source
 
-            @return: an S3XML ElementTree
+            Returns:
+                an S3XML ElementTree
 
-            @ToDo: Handle encodings within SVG other than UTF-8
+            TODO Handle encodings within SVG other than UTF-8
         """
 
         # @ToDo: Complete this!

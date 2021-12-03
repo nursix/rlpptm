@@ -1,18 +1,12 @@
-# -*- coding: utf-8 -*-
-
-""" S3 Framework Extensions for web2py
+"""
+    Framework Extensions for web2py
 
     This package is loaded in models/000_1st_run.py as "s3base",
     this namespace can be used to access all S3 classes, e.g.::
 
-        s3base.S3Resource()
+        s3base.CRUDResource()
 
-    @see: U{B{I{S3 Developer Guidelines}} <http://eden.sahanafoundation.org/wiki/DeveloperGuidelinesS3>}
-
-    @requires: U{B{I{gluon}} <http://web2py.com>}
-
-    @copyright: 2009-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2009-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -36,7 +30,7 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-from .auth import *
+from .aaa import *
 from .controller import *
 from .errors import *
 from .filters import *

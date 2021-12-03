@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Reusable fields
 
-""" S3 Extensions for gluon.dal.Field, reusable fields
-
-    @requires: U{B{I{gluon}} <http://web2py.com>}
-
-    @copyright: 2009-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2009-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -53,8 +49,8 @@ from gluon.storage import Storage
 
 from s3dal import SQLCustomType
 
-from ..tools import S3DateTime, s3_str, IS_ISO639_2_LANGUAGE_CODE, \
-                    IS_ONE_OF, IS_UTC_DATE, IS_UTC_DATETIME, S3Represent
+from ..tools import IS_ISO639_2_LANGUAGE_CODE, IS_ONE_OF, IS_UTC_DATE, \
+                    IS_UTC_DATETIME, S3DateTime, S3Represent, s3_str
 from ..ui import S3ScriptItem, S3CalendarWidget, S3DateWidget
 
 # =============================================================================
@@ -62,19 +58,20 @@ def s3_fieldmethod(name, f, represent=None, search_field=None):
     """
         Helper to attach a representation method to a Field.Method.
 
-        @param name: the field name
-        @param f: the field method
-        @param represent: the representation function
-        @param search_field: the field to use for searches
-               - only used by datatable_filter currently
-               - can only be a single field in the same table currently
+        Args:
+            name: the field name
+            f: the field method
+            represent: the representation function
+            search_field: the field to use for searches
+                          - only used by datatable_filter currently
+                          - can only be a single field in the same table currently
     """
 
     if represent is None and search_field is None:
         fieldmethod = Field.Method(name, f)
 
     else:
-        class Handler(object):
+        class Handler:
             def __init__(self, method, row):
                 self.method=method
                 self.row=row
@@ -95,7 +92,7 @@ def s3_fieldmethod(name, f, represent=None, search_field=None):
     return fieldmethod
 
 # =============================================================================
-class S3ReusableField(object):
+class S3ReusableField:
     """
         DRY Helper for reusable fields:
 
@@ -168,10 +165,12 @@ class S3ReusableField(object):
         """
             Provide a dummy reusable field; for safe defaults in models
 
-            @param fname: the dummy field name
-            @param ftype: the dummy field type
+            Args:
+                fname: the dummy field name
+                ftype: the dummy field type
 
-            @returns: a lambda with the same signature as a reusable field
+            Returns:
+                a lambda with the same signature as a reusable field
         """
 
         return lambda name=fname, **attr: Field(name,
@@ -210,7 +209,7 @@ ALL_META_FIELD_NAMES = ("uuid",
                         )
 
 # -----------------------------------------------------------------------------
-class S3MetaFields(object):
+class S3MetaFields:
     """ Class to standardize meta-fields """
 
     # -------------------------------------------------------------------------
@@ -417,7 +416,8 @@ class S3MetaFields(object):
         """
             Standard meta fields for all tables
 
-            @return: tuple of Fields
+            Returns:
+                tuple of Fields
         """
 
         return (cls.uuid(),
@@ -441,7 +441,8 @@ class S3MetaFields(object):
         """
             Meta-fields required for sync
 
-            @return: tuple of Fields
+            Returns:
+                tuple of Fields
         """
 
         return (cls.uuid(),
@@ -459,7 +460,8 @@ class S3MetaFields(object):
         """
             Record ownership meta-fields
 
-            @return: tuple of Fields
+            Returns:
+                tuple of Fields
         """
 
         return (cls.owned_by_user(),
@@ -473,7 +475,8 @@ class S3MetaFields(object):
         """
             Timestamp meta-fields
 
-            @return: tuple of Fields
+            Returns:
+                tuple of Fields
         """
 
         return (cls.created_on(),
@@ -486,7 +489,8 @@ class S3MetaFields(object):
         """
             Get the user ID of the currently logged-in user
 
-            @return: auth_user ID
+            Returns:
+                auth_user ID
         """
 
         if current.auth.is_logged_in():
@@ -501,7 +505,8 @@ class S3MetaFields(object):
         """
             Representation method for auth_user IDs
 
-            @return: representation function
+            Returns:
+                representation function
         """
 
         return current.auth.user_represent
@@ -511,7 +516,8 @@ def s3_meta_fields():
     """
         Shortcut commonly used in table definitions: *s3_meta_fields()
 
-        @return: tuple of Field instances
+        Returns:
+            tuple of Field instances
     """
 
     return S3MetaFields.all_meta_fields()
@@ -520,7 +526,8 @@ def s3_all_meta_field_names():
     """
         Shortcut commonly used to include/exclude meta fields
 
-        @return: tuple of field names
+        Returns:
+            tuple of field names
     """
 
     return ALL_META_FIELD_NAMES
@@ -642,21 +649,22 @@ def s3_language(name="language", **attr):
     """
         Return a standard Language field
 
-        @param name: the Field name
-        @param attr: Field parameters, as well as keywords:
-            @keyword empty: allow the field to remain empty:
-                            None: accept empty, don't show empty-option (default)
-                            True: accept empty, show empty-option
-                            False: reject empty, don't show empty-option
-                            (keyword ignored if a "requires" is passed)
-            @keyword translate: translate the language names into
-                                current UI language (not recommended for
-                                selector to choose that UI language)
+        Args:
+            name: the Field name
+            attr: Field parameters, as well as keywords:
 
-            @keyword select: which languages to show in the selector:
-                             - a dict of {lang_code: lang_name}
-                             - None to expose all languages
-                             - False (or omit) to use L10n_languages setting (default)
+        Keyword Args:
+            empty: allow the field to remain empty:
+                    - None: accept empty, don't show empty-option (default)
+                    - True: accept empty, show empty-option
+                    - False: reject empty, don't show empty-option
+                    (keyword ignored if a "requires" is passed)
+            translate: translate the language names into current UI language
+                       (not recommended for selector to choose that UI language)
+            select: which languages to show in the selector:
+                    - a dict of {lang_code: lang_name}
+                    - None to expose all languages
+                    - False (or omit) to use L10n_languages setting (default)
     """
 
     if "label" not in attr:
@@ -700,54 +708,50 @@ def s3_date(name="date", **attr):
     """
         Return a standard date-field
 
-        @param name: the field name
+        Args:
+            name: the field name
 
-        @keyword default: the field default, can be specified as "now" for
-                          current date, or as Python date
-        @keyword past: number of selectable past months
-        @keyword future: number of selectable future months
-        @keyword widget: the form widget for the field, can be specified
-                         as "date" for S3DateWidget, "calendar" for
-                         S3CalendarWidget, or as a web2py FormWidget,
-                         defaults to "calendar"
-        @keyword calendar: the calendar to use for this widget, defaults
-                           to current.calendar
-        @keyword start_field: CSS selector for the start field for interval
-                              selection
-        @keyword default_interval: the default interval
-        @keyword default_explicit: whether the user must click the field
-                                   to set the default, or whether it will
-                                   automatically be set when the value for
-                                   start_field is set
-        @keyword set_min: CSS selector for another date/time widget to
-                          dynamically set the minimum selectable date/time to
-                          the value selected in this widget
-        @keyword set_max: CSS selector for another date/time widget to
-                          dynamically set the maximum selectable date/time to
-                          the value selected in this widget
-        @keyword month_selector: allow direct selection of month
+        Keyword Args:
+            default: the field default, can be specified as "now" for
+                     current date, or as Python date
+            past: number of selectable past months
+            future: number of selectable future months
+            widget: the form widget for the field, can be specified
+                    as "date" for S3DateWidget, "calendar" for
+                    S3CalendarWidget, or as a web2py FormWidget,
+                    defaults to "calendar"
+            calendar: the calendar to use for this widget, defaults
+                      to current.calendar
+            start_field: CSS selector for the start field for interval
+                         selection
+            default_interval: the default interval
+            default_explicit: whether the user must click the field
+                              to set the default, or whether it will
+                              automatically be set when the value for
+                              start_field is set
+            set_min: CSS selector for another date/time widget to
+                     dynamically set the minimum selectable date/time to
+                     the value selected in this widget
+            set_max: CSS selector for another date/time widget to
+                     dynamically set the maximum selectable date/time to
+                     the value selected in this widget
+            month_selector: allow direct selection of month
 
-        @note: other S3ReusableField keywords are also supported (in addition
-               to the above)
-
-        @note: calendar-option requires widget="calendar" (default), otherwise
-               Gregorian calendar is enforced for the field
-
-        @note: set_min/set_max only supported for widget="calendar" (default)
-
-        @note: interval options currently not supported by S3CalendarWidget,
-               only available with widget="date"
-        @note: start_field and default_interval should be given together
-
-        @note: sets a default field label "Date" => use label-keyword to
-               override if necessary
-        @note: sets a default validator IS_UTC_DATE => use requires-keyword
-               to override if necessary
-        @note: sets a default representation S3DateTime.date_represent => use
-               represent-keyword to override if necessary
-
-        @ToDo: Different default field name in case we need to start supporting
-               Oracle, where 'date' is a reserved word
+        Notes:
+            - other S3ReusableField keywords are also supported (in addition
+              to the above)
+            - calendar-option requires widget="calendar" (default), otherwise
+              Gregorian calendar is enforced for the field
+            - set_min/set_max only supported for widget="calendar" (default)
+            - interval options currently not supported by S3CalendarWidget,
+              only available with widget="date"
+            - start_field and default_interval should be given together
+            - sets a default field label "Date" => use label-keyword to
+              override if necessary
+            - sets a default validator IS_UTC_DATE => use requires-keyword
+              to override if necessary
+            - sets a default representation S3DateTime.date_represent => use
+              represent-keyword to override if necessary
     """
 
     attributes = dict(attr)
@@ -876,39 +880,36 @@ def s3_datetime(name="date", **attr):
     """
         Return a standard datetime field
 
-        @param name: the field name
+        Args:
+            name: the field name
 
-        @keyword default: the field default, can be specified as "now" for
-                          current date/time, or as Python date
+        Keyword Args:
+            default: the field default, can be specified as "now" for
+                     current date/time, or as Python date
+            past: number of selectable past hours
+            future: number of selectable future hours
+            widget: form widget option, can be specified as "date"
+                    for date-only, or "datetime" for date+time (default),
+                    or as a web2py FormWidget
+            calendar: the calendar to use for this field, defaults
+                      to current.calendar
+            set_min: CSS selector for another date/time widget to
+                     dynamically set the minimum selectable date/time to
+                     the value selected in this widget
+            set_max: CSS selector for another date/time widget to
+                     dynamically set the maximum selectable date/time to
+                     the value selected in this widget
 
-        @keyword past: number of selectable past hours
-        @keyword future: number of selectable future hours
-
-        @keyword widget: form widget option, can be specified as "date"
-                         for date-only, or "datetime" for date+time (default),
-                         or as a web2py FormWidget
-        @keyword calendar: the calendar to use for this field, defaults
-                           to current.calendar
-        @keyword set_min: CSS selector for another date/time widget to
-                          dynamically set the minimum selectable date/time to
-                          the value selected in this widget
-        @keyword set_max: CSS selector for another date/time widget to
-                          dynamically set the maximum selectable date/time to
-                          the value selected in this widget
-
-        @note: other S3ReusableField keywords are also supported (in addition
+        Notes:
+            - other S3ReusableField keywords are also supported (in addition
                to the above)
-
-        @note: sets a default field label "Date" => use label-keyword to
-               override if necessary
-        @note: sets a default validator IS_UTC_DATE/IS_UTC_DATETIME => use
-               requires-keyword to override if necessary
-        @note: sets a default representation S3DateTime.date_represent or
-               S3DateTime.datetime_represent respectively => use the
-               represent-keyword to override if necessary
-
-        @ToDo: Different default field name in case we need to start supporting
-               Oracle, where 'date' is a reserved word
+            - sets a default field label "Date" => use label-keyword to
+              override if necessary
+            - sets a default validator IS_UTC_DATE/IS_UTC_DATETIME => use
+              requires-keyword to override if necessary
+            - sets a default representation S3DateTime.date_represent or
+              S3DateTime.datetime_represent respectively => use the
+              represent-keyword to override if necessary
     """
 
     attributes = dict(attr)
@@ -1031,9 +1032,10 @@ def s3_time(name="time_of_day", **attr):
     """
         Return a standard time field
 
-        @param name: the field name
+        Args:
+            name: the field name
 
-        @ToDo: Support minTime/maxTime options for fgtimepicker
+        TODO Support minTime/maxTime options for fgtimepicker
     """
 
     attributes = dict(attr)

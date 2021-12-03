@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Mobile Forms API
 
-""" S3 Mobile Forms API
-
-    @copyright: 2016-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2016-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -25,8 +23,6 @@
     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
-
-    @todo: integrate S3XForms API
 """
 
 __all__ = ("S3MobileFormList",
@@ -40,12 +36,12 @@ import json
 from gluon import IS_EMPTY_OR, IS_IN_SET, current
 
 from ..resource import S3ResourceTree
-from ..tools import s3_get_foreign_key, s3_str, SEPARATORS, s3_parse_datetime, \
-                    S3Represent
+from ..tools import S3Represent, JSONSEPARATORS, s3_get_foreign_key, \
+                    s3_parse_datetime, s3_str
 from ..ui import S3SQLCustomForm, S3SQLDummyField, S3SQLField, \
                  S3SQLForm, S3SQLInlineInstruction, S3SQLSectionBreak
 
-from .base import S3Method
+from .base import CRUDMethod
 
 DEFAULT = lambda: None
 
@@ -56,17 +52,16 @@ DEFAULT = lambda: None
 PREPROCESS_OPTS = []
 
 # =============================================================================
-class S3MobileFormList(object):
+class S3MobileFormList:
     """
         Form List Generator
     """
 
     def __init__(self, masterkey_id=None):
         """
-            Constructor
-
-            @param masterkey_id: auth_masterkey record ID to filter the form
-                                 list by
+            Args:
+                masterkey_id: auth_masterkey record ID to filter the form
+                              list by
         """
 
         T = current.T
@@ -209,13 +204,14 @@ class S3MobileFormList(object):
         """
             Serialize the form list as JSON (EdenMobile)
 
-            @returns: a JSON string
+            Returns:
+                a JSON string
         """
 
-        return json.dumps(self.formlist, separators=SEPARATORS)
+        return json.dumps(self.formlist, separators=JSONSEPARATORS)
 
 # =============================================================================
-class S3MobileSchema(object):
+class S3MobileSchema:
     """
         Table schema for a mobile resource
     """
@@ -238,9 +234,8 @@ class S3MobileSchema(object):
     # -------------------------------------------------------------------------
     def __init__(self, resource):
         """
-            Constructor
-
-            @param resource - the S3Resource
+            Args:
+                resource - the CRUDResource
         """
 
         self.resource = resource
@@ -269,7 +264,8 @@ class S3MobileSchema(object):
         """
             Serialize the table schema
 
-            @return: a JSON-serializable dict containing the table schema
+            Returns:
+                a JSON-serializable dict containing the table schema
         """
 
         schema = self._schema
@@ -298,8 +294,9 @@ class S3MobileSchema(object):
         """
             Tables (and records) referenced in this schema (lazy property)
 
-            @return: a dict {tablename: [recordID, ...]} of all
-                     referenced tables and records
+            Returns:
+                a dict {tablename: [recordID, ...]} of all referenced
+                tables and records
         """
 
         if self._references is None:
@@ -364,9 +361,11 @@ class S3MobileSchema(object):
         """
             Construct a field description for the schema
 
-            @param field: a Field instance
+            Args:
+                field: a Field instance
 
-            @return: the field description as JSON-serializable dict
+            Returns:
+                the field description as JSON-serializable dict
         """
 
         if not field:
@@ -481,9 +480,11 @@ class S3MobileSchema(object):
         """
             Determine whether a value is required for a field
 
-            @param field: the Field
+            Args:
+                field: the Field
 
-            @return: True|False
+            Returns:
+                True|False
         """
 
         required = field.notnull
@@ -501,10 +502,12 @@ class S3MobileSchema(object):
         """
             Get the options for a field with IS_IN_SET
 
-            @param field: the Field
-            @param lookup: the name of the lookup table
+            Args:
+                field: the Field
+                lookup: the name of the lookup table
 
-            @return: a list of tuples (key, label) with the field options
+            Returns:
+                a list of tuples (key, label) with the field options
         """
 
         requires = field.requires
@@ -547,11 +550,13 @@ class S3MobileSchema(object):
         """
             Get the default value for a field
 
-            @param field: the Field
-            @param lookup: the name of the lookup table
-            @param superkey: lookup table is a super-entity
+            Args:
+                field: the Field
+                lookup: the name of the lookup table
+                superkey: lookup table is a super-entity
 
-            @returns: the default value for the field
+            Returns:
+                the default value for the field
         """
 
         default = field.default
@@ -613,7 +618,8 @@ class S3MobileSchema(object):
         """
             Determine which fields need to be included in the schema
 
-            @returns: a list of Field instances
+            Returns:
+                a list of Field instances
         """
 
         resource = self.resource
@@ -716,14 +722,16 @@ class S3MobileSchema(object):
     def get_other_field(table, field):
         """
             Check for an "other"-field
-            - additional input for option-widgets when the user chooses
-              the "other"-option
-            - other-field must be in the schema, but not in the mobile_form
+                - additional input for option-widgets when the user chooses
+                  the "other"-option
+                - other-field must be in the schema, but not in the mobile_form
 
-            @param table: the table
-            @param field: the option-field
+            Args:
+                table: the table
+                field: the option-field
 
-            @returns: the name of the other-field, or None
+            Returns:
+                the name of the other-field, or None
         """
 
         other = None
@@ -744,9 +752,11 @@ class S3MobileSchema(object):
         """
             Check whether a table exposes a mobile form
 
-            @param tablename: the table name
+            Args:
+                tablename: the table name
 
-            @return: True|False
+            Returns:
+                True|False
         """
 
         from ..model import DYNAMIC_PREFIX
@@ -783,8 +793,11 @@ class S3MobileSchema(object):
         """
             Get the mobile form for a resource
 
-            @param resource: the S3Resource
-            @returns: an S3SQLForm instance
+            Args:
+                resource: the CRUDResource
+
+            Returns:
+                a S3SQLForm instance
         """
 
         # Get the form definition from "mobile_form" table setting
@@ -847,11 +860,13 @@ class S3MobileSchema(object):
         """
             Look up the UUID of a record
 
-            @param tablename: the table name
-            @param record_id: the record ID
+            Args:
+                tablename: the table name
+                record_id: the record ID
 
-            @return: the UUID of the specified record, or None if
-                     the record does not exist or has no UUID
+            Returns:
+                the UUID of the specified record, or None if the record
+                does not exist or has no UUID
         """
 
         table = current.s3db.table(tablename)
@@ -869,17 +884,16 @@ class S3MobileSchema(object):
         return row.uuid or None if row else None
 
 # =============================================================================
-class S3MobileForm(object):
+class S3MobileForm:
     """
         Mobile representation of an S3SQLForm
     """
 
     def __init__(self, resource, form=None):
         """
-            Constructor
-
-            @param resource: the S3Resource
-            @param form: an S3SQLForm instance to override settings
+            Args:
+                resource: the CRUDResource
+                form: an S3SQLForm instance to override settings
         """
 
         self.resource = resource
@@ -893,7 +907,8 @@ class S3MobileForm(object):
         """
             The mobile form configuration (lazy property)
 
-            @returns: a dict {tablename, title, options}
+            Returns:
+                a dict {tablename, title, options}
         """
 
         config = self._config
@@ -938,11 +953,13 @@ class S3MobileForm(object):
         """
             Serialize the mobile form configuration for the target resource
 
-            @param msince: include look-up records only if modified
-                           after this datetime ("modified since")
+            Args:
+                msince: include look-up records only if modified after this
+                        datetime ("modified since")
 
-            @return: a JSON-serialiable dict containing the mobile form
-                     configuration for export to the mobile client
+            Returns:
+                a JSON-serialiable dict containing the mobile form
+                configuration for export to the mobile client
         """
 
         s3db = current.s3db
@@ -1083,7 +1100,8 @@ class S3MobileForm(object):
         """
             Add CRUD strings for mobile form
 
-            @return: a dict with CRUD strings for the resource
+            Returns:
+                a dict with CRUD strings for the resource
         """
 
         tablename = self.resource.tablename
@@ -1126,7 +1144,8 @@ class S3MobileForm(object):
         """
             Add component declarations to the mobile form
 
-            @return: a dict with component declarations for the resource
+            Returns:
+                a dict with component declarations for the resource
         """
 
         resource = self.resource
@@ -1226,9 +1245,11 @@ class S3MobileForm(object):
         """
             Helper method to determine the super entities of a table
 
-            @param tablename: the table name
+            Args:
+                tablename: the table name
 
-            @return: a dict {super-table: super-key}
+            Returns:
+                a dict {super-table: super-key}
         """
 
         s3db = current.s3db
@@ -1248,11 +1269,10 @@ class S3MobileForm(object):
         return super_entities
 
 # =============================================================================
-class S3MobileCRUD(S3Method):
+class S3MobileCRUD(CRUDMethod):
     """
         Mobile Data Handler
-
-        responds to GET /prefix/name/mform.json     (Schema download)
+            - responds to GET /prefix/name/mform.json (Schema download)
     """
 
     # -------------------------------------------------------------------------
@@ -1260,8 +1280,9 @@ class S3MobileCRUD(S3Method):
         """
             Entry point for REST interface.
 
-            @param r: the CRUDRequest instance
-            @param attr: controller attributes
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes
         """
 
         http = r.http
@@ -1288,10 +1309,12 @@ class S3MobileCRUD(S3Method):
         """
             Get the mobile form for the target resource
 
-            @param r: the CRUDRequest instance
-            @param attr: controller attributes
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes
 
-            @returns: a JSON string
+            Returns:
+                a JSON string
         """
 
         resource = self.resource
@@ -1308,7 +1331,7 @@ class S3MobileCRUD(S3Method):
         mform["function"] = r.function
 
         # Convert to JSON
-        output = json.dumps(mform, separators=SEPARATORS)
+        output = json.dumps(mform, separators=JSONSEPARATORS)
 
         current.response.headers = {"Content-Type": "application/json"}
         return output

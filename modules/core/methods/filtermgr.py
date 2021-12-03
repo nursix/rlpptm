@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Saved Filters Manager
 
-""" Framework for filtered REST requests
-
-    @copyright: 2013-2021 (c) Sahana Software Foundation
-    @license: MIT
-
-    @requires: U{B{I{gluon}} <http://web2py.com>}
+    Copyright: 2013-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -38,20 +34,22 @@ from gluon import current
 from gluon.storage import Storage
 from gluon.tools import callback
 
-from ..tools import SEPARATORS
+from ..tools import JSONSEPARATORS
 
-from .base import S3Method
+from .base import CRUDMethod
 
 # =============================================================================
-class S3Filter(S3Method):
+class S3Filter(CRUDMethod):
     """ Back-end for filter forms """
 
+    # -------------------------------------------------------------------------
     def apply_method(self, r, **attr):
         """
             Entry point for REST interface
 
-            @param r: the CRUDRequest
-            @param attr: additional controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: additional controller parameters
         """
 
         representation = r.representation
@@ -87,11 +85,11 @@ class S3Filter(S3Method):
     def _form(self, r, **attr):
         """
             Get the filter form for the target resource as HTML snippet
+                - GET filter.html
 
-            GET filter.html
-
-            @param r: the CRUDRequest
-            @param attr: additional controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: additional controller parameters
         """
 
         r.error(501, current.ERROR.NOT_IMPLEMENTED)
@@ -101,15 +99,17 @@ class S3Filter(S3Method):
         """
             Get the updated options for the filter form for the target
             resource as JSON.
-            NB These use a fresh resource, so filter vars are not respected.
-            s3.filter if respected, so if you need to filter the options, then
-            can apply filter vars to s3.filter in customise() if the controller
-            is not the same as the calling one!
+                - GET filter.options
 
-            GET filter.options
+            Args:
+                r: the CRUDRequest
+                attr: additional controller parameters (ignored currently)
 
-            @param r: the CRUDRequest
-            @param attr: additional controller parameters (ignored currently)
+            Note:
+                These use a fresh resource, so filter vars are not respected.
+                s3.filter if respected, so if you need to filter the options, then
+                can apply filter vars to s3.filter in customise() if the controller
+                is not the same as the calling one!
         """
 
         resource = self.resource
@@ -128,7 +128,7 @@ class S3Filter(S3Method):
                     if opts and isinstance(opts, dict):
                         options.update(opts)
 
-        options = json.dumps(options, separators=SEPARATORS)
+        options = json.dumps(options, separators=JSONSEPARATORS)
         current.response.headers["Content-Type"] = "application/json"
         return options
 
@@ -138,8 +138,9 @@ class S3Filter(S3Method):
         """
             Delete a filter, responds to POST filter.json?delete=
 
-            @param r: the CRUDRequest
-            @param attr: additional controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: additional controller parameters
         """
 
         # Authorization, get pe_id
@@ -191,8 +192,9 @@ class S3Filter(S3Method):
         """
             Save a filter, responds to POST filter.json
 
-            @param r: the CRUDRequest
-            @param attr: additional controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: additional controller parameters
         """
 
         # Authorization, get pe_id
@@ -290,11 +292,11 @@ class S3Filter(S3Method):
     def _load(self, r, **attr):
         """
             Load filters
+                - GET filter.json or GET filter.json?load=<id>
 
-            GET filter.json or GET filter.json?load=<id>
-
-            @param r: the CRUDRequest
-            @param attr: additional controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: additional controller parameters
         """
 
         db = current.db
@@ -345,6 +347,6 @@ class S3Filter(S3Method):
 
         # JSON response
         current.response.headers["Content-Type"] = "application/json"
-        return json.dumps(filters, separators=SEPARATORS)
+        return json.dumps(filters, separators=JSONSEPARATORS)
 
 # END =========================================================================

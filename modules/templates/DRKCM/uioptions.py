@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
-
 """
-    Org-specific UI Options for DRKCM template
+    Org-specific UI Options for DRKCM
 
-    @license: MIT
+    License: MIT
 """
 
 from gluon import current
@@ -12,7 +10,7 @@ from gluon import current
 # Default UI options
 #
 UI_DEFAULTS = {#"case_arrival_date_label": "Date of Entry",
-               "case_collaboration": False,
+               "case_collaboration": True,
                "case_document_templates": False,
                "case_header_protection_themes": False,
                "case_hide_default_org": False,
@@ -25,13 +23,13 @@ UI_DEFAULTS = {#"case_arrival_date_label": "Date of Entry",
                "case_use_flags": False,
                "case_use_notes": False,
                "case_use_occupation": True,
-               "case_use_pe_label": False,
+               "case_use_pe_label": True,
                "case_use_place_of_birth": False,
                "case_use_residence_status": True,
                "case_use_referral": True,
                "case_use_service_contacts": False,
-               "case_lodging": None, # "site"|"text"|None
-               "case_lodging_dates": False,
+               "case_lodging": "site", # "site"|"text"|None
+               "case_lodging_dates": True,
                "case_nationality_mandatory": False,
                "case_show_total_consultations": True,
                "activity_closure": True,
@@ -40,8 +38,8 @@ UI_DEFAULTS = {#"case_arrival_date_label": "Date of Entry",
                "activity_need_details": True,
                "activity_follow_up": False,
                "activity_priority": False,
-               "activity_pss_vulnerability": True,
-               "activity_use_need": False,
+               "activity_pss_vulnerability": False,
+               "activity_use_need": True,
                #"activity_tab_label": "Counseling Reasons",
                "appointments_staff_link": False,
                "appointments_use_organizer": False,

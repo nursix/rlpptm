@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Default REST API
 
-""" REST API
-
-    @copyright: 2009-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2009-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -39,10 +37,10 @@ from gluon.storage import Storage
 
 from ..tools import s3_parse_datetime
 
-from .base import S3Method
+from .base import CRUDMethod
 
 # =============================================================================
-class RESTful(S3Method):
+class RESTful(CRUDMethod):
     """ REST API """
 
     # -------------------------------------------------------------------------
@@ -50,8 +48,9 @@ class RESTful(S3Method):
         """
             Apply methods
 
-            :param r: the CRUDRequest
-            :param attr: controller parameters
+            Args:
+                r: the CRUDRequest
+                attr: controller parameters
         """
 
         http, method = r.http, r.method
@@ -91,8 +90,9 @@ class RESTful(S3Method):
         """
             XML Element tree export method
 
-            :param r: the CRUDRequest instance
-            :param attr: controller attributes
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes
         """
 
         get_vars = r.get_vars
@@ -246,8 +246,9 @@ class RESTful(S3Method):
         """
             XML Element tree import method
 
-            :param r: the CRUDRequest method
-            :param attr: controller attributes
+            Args:
+                r: the CRUDRequest method
+                attr: controller attributes
         """
 
         get_vars = r.get_vars
@@ -371,8 +372,9 @@ class RESTful(S3Method):
         """
             Resource structure introspection method
 
-            :param r: the CRUDRequest instance
-            :param attr: controller attributes
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes
         """
 
         response = current.response
@@ -411,8 +413,9 @@ class RESTful(S3Method):
         """
             Resource structure introspection method (single table)
 
-            :param r: the CRUDRequest instance
-            :param attr: controller attributes
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes
         """
 
         representation = r.representation
@@ -437,8 +440,9 @@ class RESTful(S3Method):
         """
             Export field options for the table
 
-            :param r: the CRUDRequest instance
-            :param attr: controller attributes
+            Args:
+                r: the CRUDRequest instance
+                attr: controller attributes
         """
 
         get_vars = r.get_vars

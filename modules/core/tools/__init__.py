@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from .calendar import *
 from .convert import *
 from .hierarchy import *
@@ -7,6 +5,7 @@ from .includes import *
 from .multipath import *
 from .represent import *
 from .tasks import *
+from .timeseries import *
 from .tracking import *
 #from .translate import *
 from .utils import *

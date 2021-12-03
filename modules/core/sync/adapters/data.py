@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+    Synchronization: Peer Repository Adapter
 
-""" S3 Synchronization: Peer Repository Adapter
-
-    @copyright: 2011-2021 (c) Sahana Software Foundation
-    @license: MIT
+    Copyright: 2011-2021 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -52,8 +50,9 @@ class S3SyncAdapter(S3SyncEdenAdapter):
         """
             Register this site at the peer repository
 
-            @return: True|False to indicate success|failure,
-                     or None if registration is not required
+            Returns:
+                True|False to indicate success|failure,
+                or None if registration is not required
         """
 
         # No registration required
@@ -64,8 +63,9 @@ class S3SyncAdapter(S3SyncEdenAdapter):
         """
             Refresh sync tasks from peer
 
-            @return: True|False to indicate success|failure,
-                     or None if registration is not required
+            Returns:
+                True|False to indicate success|failure,
+                or None if refresh is not required
         """
 
         db = current.db
@@ -216,10 +216,11 @@ class S3SyncAdapter(S3SyncEdenAdapter):
         """
             Fetch sync task updates from the repository
 
-            @param update: the update dict containing:
-                           {"url": the url to fetch,
-                            }
-            @return: error message if there was an error, otherwise None
+            Args:
+                update: the update dict containing {"url": the url to fetch}
+
+            Returns:
+                error message if there was an error, otherwise None
         """
 
         log = self.repository.log
@@ -289,11 +290,14 @@ class S3SyncAdapter(S3SyncEdenAdapter):
         """
             Import sync task updates
 
-            @param update: the update dict containing:
-                           {"response": the response from _fetch,
-                            "strategy": the import strategy,
-                            }
-            @return: error message if there was an error, otherwise None
+            Args:
+                update: the update dict containing:
+                        {"response": the response from _fetch,
+                         "strategy": the import strategy,
+                         }
+
+            Returns:
+                error message if there was an error, otherwise None
         """
 
 
