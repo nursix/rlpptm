@@ -2268,7 +2268,7 @@ class S3Config(Storage):
             Render clear-button for calendar inputs just as an icon
             (S3CalendarWidget, requires Foundation + font-awesome)
         """
-        return self.ui.get("calendar_clear_icon", False)
+        return self.ui.get("calendar_clear_icon", True)
 
     # -------------------------------------------------------------------------
     def get_ui_auto_keyvalue(self):
@@ -2426,13 +2426,6 @@ class S3Config(Storage):
             Class for submit buttons in search views
         """
         return self.ui.get("search_submit_button", "search-button")
-
-    def get_ui_social_buttons(self):
-        """
-            Display social media Buttons in the footer?
-            - requires support in the Theme
-        """
-        return self.ui.get("social_buttons", False)
 
     def get_ui_summary(self):
         """
@@ -2633,7 +2626,7 @@ class S3Config(Storage):
         return self.__lazy("ui", "menu_logo",
                            URL(c = "static",
                                f = "img",
-                               args = ["S3menu_logo.png"],
+                               args = ["eden_asp_small.png"],
                                )
                            )
 
@@ -3488,6 +3481,13 @@ class S3Config(Storage):
             return False
         else:
             return hide
+
+    def get_cms_newsletter_recipient_types(self):
+        """
+            Types of newsletter recipients: tuple|list of table names (PEs)
+        """
+
+        return self.cms.get("newsletter_recipient_types", ("org_organisation",))
 
     # -------------------------------------------------------------------------
     # Shelters

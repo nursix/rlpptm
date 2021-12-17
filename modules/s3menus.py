@@ -614,12 +614,18 @@ class S3OptionsMenu(object):
                     M("Series", f="series")(
                         M("Create", m="create"),
                         M("View as Pages", f="blog"),
-                    ),
+                        ),
                     M("Posts", f="post")(
                         M("Create", m="create"),
                         M("View as Pages", f="page"),
-                    ),
-                )
+                        ),
+                    M("Newsletters", c="cms", f="read_newsletter")(
+                        M("Inbox", f="read_newsletter",
+                          check = lambda this: this.following()[0].check_permission(),
+                          ),
+                        M("Compose and Send", f="newsletter", p="create"),
+                        ),
+                    )
 
     # -------------------------------------------------------------------------
     @staticmethod

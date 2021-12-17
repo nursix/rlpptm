@@ -19,7 +19,7 @@ from gluon.storage import Storage
 
 from core import ConsentTracking, \
                  FS, ICON, IS_PHONE_NUMBER_MULTI, IS_PHONE_NUMBER_SINGLE, \
-                 JSONERRORS, S3CRUD, S3CustomController, S3LocationSelector, \
+                 JSONERRORS, S3CRUD, CustomController, S3LocationSelector, \
                  S3Represent, S3Report, CRUDRequest, S3WithIntro, \
                  s3_comments_widget, s3_get_extension, s3_mark_required, \
                  s3_str, s3_text_represent, s3_truncate
@@ -30,7 +30,7 @@ TEMPLATE = "BRCMS/RLP"
 THEME = "RLP"
 
 # =============================================================================
-class index(S3CustomController):
+class index(CustomController):
     """ Custom Home Page """
 
     def __call__(self):
@@ -38,7 +38,6 @@ class index(S3CustomController):
         output = {}
 
         T = current.T
-        s3 = current.response.s3
 
         auth = current.auth
         settings = current.deployment_settings
@@ -139,7 +138,6 @@ class index(S3CustomController):
                   }
 
         # Custom view and homepage styles
-        s3.stylesheets.append("../themes/%s/homepage.css" % THEME)
         self._view(settings.get_theme_layouts(), "index.html")
 
         return output
@@ -227,7 +225,7 @@ class index(S3CustomController):
         return XML(row.body) if cmsxml else row.body
 
 # =============================================================================
-class overview(S3CustomController):
+class overview(CustomController):
     """ Custom page to display site usage statistics """
 
     def __call__(self):
@@ -286,7 +284,7 @@ class overview(S3CustomController):
         return output
 
 # =============================================================================
-class privacy(S3CustomController):
+class privacy(CustomController):
     """ Custom Page """
 
     def __call__(self):
@@ -344,7 +342,7 @@ class privacy(S3CustomController):
         return output
 
 # =============================================================================
-class legal(S3CustomController):
+class legal(CustomController):
     """ Custom Page """
 
     def __call__(self):
@@ -403,7 +401,7 @@ class legal(S3CustomController):
         return output
 
 # =============================================================================
-class register(S3CustomController):
+class register(CustomController):
     """ Registration page for private citizens """
 
     def __call__(self):
@@ -846,7 +844,7 @@ Your Activation Code: %(code)s
 """
 
 # =============================================================================
-class verify_email(S3CustomController):
+class verify_email(CustomController):
     """ Custom verify_email Page """
 
     def __call__(self):
@@ -1026,7 +1024,7 @@ class verify_email(S3CustomController):
             current.response.error = auth_messages.unable_send_email
 
 # =============================================================================
-class geocode(S3CustomController):
+class geocode(CustomController):
     """
         Custom Geocoder
         - looks up Lat/Lon from Postcode &/or Address
@@ -1079,7 +1077,7 @@ class geocode(S3CustomController):
         return output
 
 # =============================================================================
-class register_org(S3CustomController):
+class register_org(CustomController):
     """ Custom Registration Page """
 
     def __call__(self):
@@ -1497,7 +1495,7 @@ class register_org(S3CustomController):
         return organisation_id
 
 # =============================================================================
-class verify_org(S3CustomController):
+class verify_org(CustomController):
     """ Custom verify_email Page """
 
     def __call__(self):
@@ -1681,7 +1679,7 @@ Please go to %(url)s to approve this station."""
                 }
 
 # =============================================================================
-class approve_org(S3CustomController):
+class approve_org(CustomController):
     """ Custom Approval Page """
 
     def __call__(self):
