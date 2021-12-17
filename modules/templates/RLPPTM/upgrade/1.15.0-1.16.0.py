@@ -90,6 +90,21 @@ if not failed:
     infoln("...done")
 
 # -----------------------------------------------------------------------------
+# Country name update
+#
+if not failed:
+    info("Update MK country name")
+
+    table = s3db.gis_location
+    query = (table.uuid == "urn:iso:std:iso:3166:-1:code:MK") & \
+            (table.level == "L0")
+
+    name = "North Macedonia"
+    updated = db(query).update(name=name, L0=name)
+
+    infoln("...done (%s records updated)" % updated)
+
+# -----------------------------------------------------------------------------
 # Finishing up
 #
 if failed:
