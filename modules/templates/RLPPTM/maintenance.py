@@ -187,21 +187,22 @@ class Daily():
 
         from .config import TESTSTATIONS
         join = [ttable.on((ttable.site_id == ftable.site_id) & \
-                        (ttable.tag == "PUBLIC") & \
-                        (ttable.deleted == False)),
+                          (ttable.tag == "PUBLIC") & \
+                          (ttable.deleted == False)),
                 otable.on((otable.id == ftable.organisation_id)),
                 gtable.on((mtable.organisation_id == otable.id) & \
-                        (mtable.deleted == False) & \
-                        (gtable.id == mtable.group_id) & \
-                        (gtable.name == TESTSTATIONS)),
+                          (mtable.deleted == False) & \
+                          (gtable.id == mtable.group_id) & \
+                          (gtable.name == TESTSTATIONS)),
                 ]
         left = [rtable.on((rtable.site_id == ftable.site_id) & \
-                        (rtable.date >= four_weeks_ago) & \
-                        (rtable.deleted == False)),
+                          (rtable.date >= four_weeks_ago) & \
+                          (rtable.deleted == False)),
                 ltable.on((ltable.id == ftable.location_id)),
                 ]
         query = (rtable.id == None) & \
                 (ttable.value == "Y") & \
+                (ftable.created_on < four_weeks_ago) & \
                 (ftable.obsolete == False) & \
                 (ftable.deleted == False)
 
