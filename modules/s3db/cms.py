@@ -40,6 +40,7 @@ __all__ = ("CMSContentModel",
            "cms_index",
            "cms_announcements",
            "cms_documentation",
+           "cms_get_content",
            "cms_rheader",
            "cms_configure_newsfeed_post_fields",
            "cms_post_list_layout",
@@ -361,30 +362,30 @@ class CMSContentModel(DataModel):
         if org_field:
             list_fields.append(org_field)
 
-        filter_widgets = [S3TextFilter(["body"],
-                                       label = T("Search"),
-                                       _class = "filter-search",
-                                       #_placeholder = T("Search").upper(),
-                                       ),
-                          S3OptionsFilter("series_id",
-                                          label = T("Type"),
-                                          hidden = True,
-                                          ),
-                          S3LocationFilter("location_id",
-                                           label = T("Location"),
-                                           hidden = True,
-                                           ),
-                          S3OptionsFilter("created_by$organisation_id",
-                                          label = T("Organization"),
-                                          # Can't use this for integers, use field.represent instead
-                                          #represent = "%(name)s",
-                                          hidden = True,
-                                          ),
-                          S3DateFilter("created_on",
-                                       label = T("Date"),
-                                       hide_time = True,
-                                       hidden = True,
-                                       ),
+        filter_widgets = [TextFilter(["body"],
+                                     label = T("Search"),
+                                     _class = "filter-search",
+                                     #_placeholder = T("Search").upper(),
+                                     ),
+                          OptionsFilter("series_id",
+                                        label = T("Type"),
+                                        hidden = True,
+                                        ),
+                          LocationFilter("location_id",
+                                         label = T("Location"),
+                                         hidden = True,
+                                         ),
+                          OptionsFilter("created_by$organisation_id",
+                                        label = T("Organization"),
+                                        # Can't use this for integers, use field.represent instead
+                                        #represent = "%(name)s",
+                                        hidden = True,
+                                        ),
+                          DateFilter("created_on",
+                                     label = T("Date"),
+                                     hide_time = True,
+                                     hidden = True,
+                                     ),
                           ]
 
         # Resource Configuration
@@ -1389,15 +1390,15 @@ class CMSNewsletterModel(DataModel):
                        ]
 
         # Filter Widgets
-        filter_widgets = [S3TextFilter(["subject", "message", "comments"],
-                                       label = T("Search") ,
-                                       ),
-                          S3OptionsFilter("status",
-                                          options = OrderedDict(status),
-                                          cols = 3,
-                                          sort = False,
-                                          ),
-                          S3DateFilter("date_sent"),
+        filter_widgets = [TextFilter(["subject", "message", "comments"],
+                                     label = T("Search") ,
+                                     ),
+                          OptionsFilter("status",
+                                        options = OrderedDict(status),
+                                        cols = 3,
+                                        sort = False,
+                                        ),
+                          DateFilter("date_sent"),
                           ]
 
         # Table Configuration
@@ -2426,6 +2427,48 @@ def cms_documentation(r, default_page, default_url):
                        "contents": S3XMLContents(row.body),
                        },
             }
+
+# =============================================================================
+def cms_get_content(name, module=None, resource=None, cmsxml=False):
+    """
+        Get a named CMS post (e.g. a page intro or similar)
+
+        Args:
+            name: the post name
+            module: the module prefix
+            resource: the resource name
+            cmsxml: do not XML-escape the post content
+
+        Returns:
+            the content of the post (XML or string),
+            empty string if the post could not be found
+    """
+
+    if not current.deployment_settings.has_module("cms"):
+        return None
+
+    db = current.db
+    s3db = current.s3db
+
+    ctable = s3db.cms_post
+    ltable = s3db.cms_post_module
+
+    join = ltable.on((ltable.post_id == ctable.id) & \
+                     (ltable.module == module) & \
+                     (ltable.resource == resource) & \
+                     (ltable.deleted == False))
+
+    query = (ctable.name == name) & \
+            (ctable.deleted == False)
+    row = db(query).select(ctable.body,
+                           join = join,
+                           cache = s3db.cache,
+                           limitby = (0, 1),
+                           ).first()
+    if not row:
+        return ""
+
+    return XML(row.body) if cmsxml else row.body
 
 # =============================================================================
 def cms_announcements(roles=None):

@@ -240,18 +240,18 @@ def auth_consent_resource(r, tablename):
 
     user_org = "person_id$user.user_id:org_organisation_user.organisation_id"
 
-    from core import S3DateFilter, S3OptionsFilter, S3TextFilter
+    from core import DateFilter, OptionsFilter, TextFilter
 
-    filter_widgets = [S3TextFilter(["%s$name" % user_org,
-                                    "person_id$first_name",
-                                    "person_id$last_name",
-                                    "option_id$name",
-                                    ],
-                                    label = T("Search"),
-                                    ),
-                        S3OptionsFilter("consenting", cols=2),
-                        S3DateFilter("date", hidden=True),
-                        ]
+    filter_widgets = [TextFilter(["%s$name" % user_org,
+                                  "person_id$first_name",
+                                  "person_id$last_name",
+                                  "option_id$name",
+                                  ],
+                                 label = T("Search"),
+                                 ),
+                      OptionsFilter("consenting", cols=2),
+                      DateFilter("date", hidden=True),
+                      ]
 
     # Custom list fields to include the user organisation
     list_fields = ["date",
@@ -306,5 +306,54 @@ def auth_user_resource(r, tablename):
     current.s3db.configure("auth_user",
                             approve_user = approve_user,
                             )
+
+# -------------------------------------------------------------------------
+def pending_response():
+    """
+        Check for pending responses to mandatory data inquiry
+
+        Returns:
+            URL to redirect
+    """
+
+    if not current.deployment_settings.get_custom("daycare_testing_inquiry"):
+        return None
+
+    pending = None
+
+    # Get pending responders
+    managed_orgs = pending = None
+    if current.auth.s3_has_role("ORG_ADMIN", include_admin=False):
+        from ..config import TESTSTATIONS
+        from ..helpers import get_managed_orgs
+        managed_orgs = get_managed_orgs(TESTSTATIONS)
+        if managed_orgs:
+            pending = current.s3db.disease_daycare_testing_get_pending_responders(managed_orgs)
+
+    request = current.request
+
+    if pending:
+        response_url = None
+        # Only set a direct URL when not already there
+        if request.controller != "disease" or request.function != "daycare_testing":
+            next_url = request.get_vars.get("_next")
+            if not next_url:
+                next_url = URL()
+            response_url = URL(c = "disease",
+                               f = "daycare_testing",
+                               args = ["create"],
+                               vars = {"_next": next_url},
+                               )
+        # Return to this page until there are no more pending responders
+        current.session.s3.mandatory_page = True
+        return response_url
+
+    else:
+        # No further pending responses, moving on
+        next_url = request.get_vars.get("_next")
+        if not next_url:
+            next_url = URL(c="default", f="index")
+        current.session.s3.mandatory_page = False
+        return next_url
 
 # END =========================================================================

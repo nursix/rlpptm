@@ -183,7 +183,8 @@ class Daily():
         rtable = s3db.disease_testing_report
         ltable = s3db.gis_location
 
-        four_weeks_ago = datetime.datetime.now().date() - datetime.timedelta(days=28)
+        today = datetime.datetime.utcnow().date()
+        four_weeks_ago = today - datetime.timedelta(days=28)
 
         from .config import TESTSTATIONS
         join = [ttable.on((ttable.site_id == ftable.site_id) & \

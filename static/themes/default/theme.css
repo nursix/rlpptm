@@ -70,7 +70,8 @@ meta.foundation-data-attribute-namespace {
 .selected-action {
   display: inline-block;
   margin: 0.15rem;
-  padding: 0.25rem 0.5rem 0.375rem;
+  /*     margin-bottom: inherit; */
+  padding: 0.3rem 0.5rem;
   border: 0;
   border-radius: 0;
   line-height: 1;
@@ -205,7 +206,8 @@ button.toggle-text {
 #footer button.btn {
   display: inline-block;
   margin: 0.15rem;
-  padding: 0.25rem 0.5rem 0.375rem;
+  /*     margin-bottom: inherit; */
+  padding: 0.3rem 0.5rem;
   border: 0;
   border-radius: 0;
   line-height: 1;
@@ -1008,7 +1010,8 @@ div.s3-groupedopts-widget input.s3-groupedopts-option {
 .pr-contacts-editable button {
   display: inline-block;
   margin: 0.15rem;
-  padding: 0.25rem 0.5rem 0.375rem;
+  /*     margin-bottom: inherit; */
+  padding: 0.3rem 0.5rem;
   border: 0;
   border-radius: 0;
   line-height: 1;
@@ -2056,63 +2059,61 @@ form.auth_login #submit_record__row {
 /* line 40, ../scss/theme/_filters.scss */
 .age-filter-unit {
   display: inline-block;
-  vertical-align: text-bottom;
-  line-height: normal;
 }
 
-/* line 46, ../scss/theme/_filters.scss */
+/* line 44, ../scss/theme/_filters.scss */
 .filter-form td {
   border-top: 1px solid #d9d9d9;
 }
 
-/* line 49, ../scss/theme/_filters.scss */
+/* line 47, ../scss/theme/_filters.scss */
 .filter-form tr:first-child > td {
   border-top: 0;
 }
 
-/* line 52, ../scss/theme/_filters.scss */
+/* line 50, ../scss/theme/_filters.scss */
 .filter-form table.s3-groupedopts-widget td {
   border-top: 0;
 }
 
-/* Vertical arrangement of multi-button multi-select filter widgets such as S3LocationFilter */
-/* line 57, ../scss/theme/_filters.scss */
+/* Vertical arrangement of multi-button multi-select filter widgets such as LocationFilter */
+/* line 55, ../scss/theme/_filters.scss */
 .filter-form .ui-multiselect.ui-widget.ui-state-default.ui-corner-all,
 .form-container .ui-multiselect.ui-widget.ui-state-default.ui-corner-all {
   display: block;
   min-width: 220px;
 }
 
-/* line 63, ../scss/theme/_filters.scss */
+/* line 61, ../scss/theme/_filters.scss */
 .filter-form .ui-multiselect.ui-widget.ui-state-default.ui-corner-all:first-of-type,
 .form-container .ui-multiselect.ui-widget.ui-state-default.ui-corner-all:first-of-type {
   clear: none;
 }
 
-/* line 68, ../scss/theme/_filters.scss */
+/* line 66, ../scss/theme/_filters.scss */
 .ui-selectmenu-button,
 .ui-multiselect-menu {
   min-width: 220px;
 }
 
 /* Don't display the default widget, only the multiselect generated widget is displayed */
-/* line 74, ../scss/theme/_filters.scss */
+/* line 72, ../scss/theme/_filters.scss */
 select.multiselect-filter-widget {
   display: none;
 }
 
-/* line 78, ../scss/theme/_filters.scss */
+/* line 76, ../scss/theme/_filters.scss */
 .filter-advanced {
   text-decoration: none;
   cursor: pointer;
 }
 
-/* line 82, ../scss/theme/_filters.scss */
+/* line 80, ../scss/theme/_filters.scss */
 .filter-advanced-label {
   padding-right: 4px;
 }
 
-/* line 86, ../scss/theme/_filters.scss */
+/* line 84, ../scss/theme/_filters.scss */
 .s3-options-filter-anyall label {
   display: inline;
   margin-right: 0.7rem;
@@ -2120,12 +2121,12 @@ select.multiselect-filter-widget {
 }
 
 /* Filter Manager */
-/* line 94, ../scss/theme/_filters.scss */
+/* line 92, ../scss/theme/_filters.scss */
 .filter-manager-widget {
   display: inline-block;
 }
 
-/* line 97, ../scss/theme/_filters.scss */
+/* line 95, ../scss/theme/_filters.scss */
 .fm-load,
 .fm-save,
 .fm-delete,
@@ -2140,32 +2141,32 @@ select.multiselect-filter-widget {
   vertical-align: middle;
 }
 
-/* line 111, ../scss/theme/_filters.scss */
+/* line 109, ../scss/theme/_filters.scss */
 .fm-load {
   background: url(../../img/filter/load.png) no-repeat;
 }
 
-/* line 114, ../scss/theme/_filters.scss */
+/* line 112, ../scss/theme/_filters.scss */
 .fm-save {
   background: url(../../img/filter/save.png) no-repeat;
 }
 
-/* line 117, ../scss/theme/_filters.scss */
+/* line 115, ../scss/theme/_filters.scss */
 .fm-delete {
   background: url(../../img/filter/delete.png) no-repeat;
 }
 
-/* line 120, ../scss/theme/_filters.scss */
+/* line 118, ../scss/theme/_filters.scss */
 .fm-create {
   background: url(../../img/filter/create.png) no-repeat;
 }
 
-/* line 123, ../scss/theme/_filters.scss */
+/* line 121, ../scss/theme/_filters.scss */
 .fm-accept {
   background: url(../../img/crud/apply.png) no-repeat;
 }
 
-/* line 126, ../scss/theme/_filters.scss */
+/* line 124, ../scss/theme/_filters.scss */
 .fm-cancel {
   background: url(../../img/crud/cancel.png) no-repeat;
 }
@@ -3045,7 +3046,7 @@ table.fixedHeader th {
   background: url(../../img/dialog-confirmation.png) #e5ffe5 no-repeat 0.8rem 50%;
   color: #070;
 }
-/* line 50, ../scss/theme/_base.scss */
+/* line 51, ../scss/theme/_base.scss */
 .alert-success p em {
   color: #070;
 }
@@ -3056,7 +3057,7 @@ table.fixedHeader th {
   background: url(../../img/dialog-error.png) #ffe5e5 no-repeat 0.8rem 50%;
   color: #c60f13;
 }
-/* line 50, ../scss/theme/_base.scss */
+/* line 51, ../scss/theme/_base.scss */
 .alert-error p em {
   color: #c60f13;
 }
@@ -3067,7 +3068,7 @@ table.fixedHeader th {
   background: url(../../img/dialog-information.png) #ecfdff no-repeat 0.8rem 50%;
   color: #037aa8;
 }
-/* line 50, ../scss/theme/_base.scss */
+/* line 51, ../scss/theme/_base.scss */
 .alert-info p em {
   color: #037aa8;
 }
@@ -3078,7 +3079,7 @@ table.fixedHeader th {
   background: url(../../img/dialog-warning.png) #ffc no-repeat 0.8rem 50%;
   color: #d0440d;
 }
-/* line 50, ../scss/theme/_base.scss */
+/* line 51, ../scss/theme/_base.scss */
 .alert-warning p em {
   color: #d0440d;
 }
