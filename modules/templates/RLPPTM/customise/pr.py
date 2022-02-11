@@ -6,7 +6,57 @@
 
 from gluon import current, IS_NOT_EMPTY
 
-# -------------------------------------------------------------------------
+from core import get_form_record_id
+
+# -----------------------------------------------------------------------------
+def add_person_tags():
+    """
+        Person tags as filtered components
+            - for embedding in form
+    """
+
+    s3db = current.s3db
+
+    s3db.add_components("pr_person",
+                        pr_person_tag = ({"name": "tax_id",
+                                          "joinby": "person_id",
+                                          "filterby": {"tag": "TAXID"},
+                                          "multiple": False,
+                                          },
+                                         ),
+                        )
+
+# -----------------------------------------------------------------------------
+def person_postprocess(form):
+    """
+        Postprocess person-form
+            - update manager info status tag for all organisations
+              for which the person is marked as test station manager
+    """
+
+    record_id = get_form_record_id(form)
+    if not record_id:
+        return
+
+    # Lookup active HR records with org_contact flag
+    db = current.db
+    s3db = current.s3db
+
+    table = s3db.hrm_human_resource
+    query = (table.person_id == record_id) & \
+            (table.org_contact == True) & \
+            (table.status == 1) & \
+            (table.deleted == False)
+    rows = db(query).select(table.organisation_id,
+                            groupby = table.organisation_id,
+                            )
+
+    # Update manager info status tag for each org
+    from .org import update_mgrinfo
+    for row in rows:
+        update_mgrinfo(row.organisation_id)
+
+# -----------------------------------------------------------------------------
 def pr_person_resource(r, tablename):
 
     s3db = current.s3db
@@ -19,7 +69,7 @@ def pr_person_resource(r, tablename):
                                         ),
                     )
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 def pr_person_controller(**attr):
 
     s3 = current.response.s3
@@ -44,7 +94,8 @@ def pr_person_controller(**attr):
         keys = StringTemplateParser.keys(settings.get_pr_name_format())
         name_fields = [fn for fn in keys if fn in NAMES]
 
-        if r.controller in ("default", "hrm") and not r.component:
+        controller = r.controller
+        if controller in ("default", "hrm") and not r.component:
             # Personal profile (default/person) or staff
 
             # Last name is required
@@ -53,7 +104,22 @@ def pr_person_controller(**attr):
 
             # Custom Form
             crud_fields = name_fields + ["date_of_birth", "gender"]
-            r.resource.configure(crud_form = S3SQLCustomForm(*crud_fields),
+
+            # Expose Tax ID in personal profile
+            if controller == "default":
+
+                add_person_tags()
+
+                component = r.resource.components.get("tax_id")
+                field = component.table.value
+                # Not translated as specific for the German context:
+                field.comment = "Nur Teststellenverantwortliche: Ihre bei der Kassenärztl. Vereinigung angegebene Steuer-ID"
+
+                crud_fields.append((T("Tax ID"), "tax_id.value"))
+
+            r.resource.configure(crud_form = S3SQLCustomForm(*crud_fields,
+                                                             postprocess = person_postprocess,
+                                                             ),
                                  deletable = False,
                                  )
 
@@ -97,5 +163,55 @@ def pr_person_controller(**attr):
 
     return attr
 
+# -----------------------------------------------------------------------------
+def contact_update_mgrinfo(record_id, pe_id=None):
+    """
+        Updates the manager info status tag of related organisations
+
+        Args:
+            record_id: the pr_contact record_id
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    ctable = s3db.pr_contact
+    ptable = s3db.pr_person
+    htable = s3db.hrm_human_resource
+
+    join = [htable.on((htable.person_id == ptable.id) & \
+                      (htable.deleted == False)),
+            ]
+    if pe_id:
+        query = (ptable.pe_id == pe_id)
+    else:
+        join.insert(0, ptable.on(ptable.pe_id == ctable.pe_id))
+        query = (ctable.id == record_id)
+    rows = db(query).select(htable.organisation_id, join=join)
+
+    from .org import update_mgrinfo
+    for row in rows:
+        update_mgrinfo(row.organisation_id)
+
+# -----------------------------------------------------------------------------
+def contact_ondelete(row):
+
+    contact_update_mgrinfo(row.id, pe_id=row.pe_id)
+
+# -----------------------------------------------------------------------------
+def contact_onaccept(form):
+
+    record_id = get_form_record_id(form)
+    if not record_id:
+        return
+    contact_update_mgrinfo(record_id)
+
+# -----------------------------------------------------------------------------
+def pr_contact_resource(r, tablename):
+
+    s3db = current.s3db
+
+    s3db.add_custom_callback("pr_contact", "onaccept", contact_onaccept)
+    s3db.add_custom_callback("pr_contact", "ondelete", contact_ondelete)
 
 # END =========================================================================
