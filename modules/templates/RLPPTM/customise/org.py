@@ -8,7 +8,13 @@ from collections import OrderedDict
 
 from gluon import current, URL, DIV, IS_EMPTY_OR, IS_IN_SET, IS_NOT_EMPTY
 
-from core import FS, ICON, S3Represent, S3CRUD, get_form_record_id
+from core import FS, ICON, S3CRUD, S3Represent, \
+                 get_filter_options, get_form_record_id, s3_fieldmethod
+
+from ..helpers import workflow_tag_represent
+
+SITE_WORKFLOW = ("STATUS", "MPAV", "HYGIENE", "LAYOUT", "PUBLIC")
+SITE_REVIEW = ("MPAV", "HYGIENE", "LAYOUT")
 
 # -------------------------------------------------------------------------
 def add_org_tags():
@@ -66,7 +72,6 @@ def configure_org_tags(resource):
     T = current.T
 
     from ..requests import delivery_tag_opts
-    from ..helpers import workflow_tag_represent
 
     # Configure delivery-tag
     delivery_opts = delivery_tag_opts()
@@ -143,7 +148,6 @@ def update_mgrinfo(organisation_id):
                             join = join,
                             left = left,
                             )
-
     if not rows:
         # No managers selected
         status = "N/A"
@@ -198,6 +202,10 @@ def update_mgrinfo(organisation_id):
                }
         tag["id"] = ottable.insert(**tag)
         s3db.onaccept(ottable, tag, method="create")
+
+    # Update test station approval workflow if MGRINFO is mandatory
+    if current.deployment_settings.get_custom("test_station_manager_required"):
+        facility_approval_update_mgrinfo(organisation_id, status)
 
     return status
 
@@ -396,8 +404,7 @@ def org_organisation_controller(**attr):
                                  S3SQLInlineComponent, \
                                  S3SQLInlineLink, \
                                  OptionsFilter, \
-                                 TextFilter, \
-                                 get_filter_options
+                                 TextFilter
 
                 # Custom form
                 if is_org_group_admin:
@@ -709,8 +716,6 @@ def configure_site_tags(resource, role="applicant", record_id=None):
                 review_tags_visible = True
         status_visible = True
 
-    from ..helpers import workflow_tag_represent
-
     component = components.get("status")
     if component:
         ctable = component.table
@@ -785,7 +790,7 @@ def add_facility_default_tags(facility_id, approve=False):
 
         Args:
             facility_id: the facility record ID
-            approve: whether called from approval-workflow
+            approve: whether to assume approval of the facility
     """
 
     db = current.db
@@ -793,11 +798,8 @@ def add_facility_default_tags(facility_id, approve=False):
 
     ftable = s3db.org_facility
     ttable = s3db.org_site_tag
-
-    workflow = ("PUBLIC", "MPAV", "HYGIENE", "LAYOUT", "STATUS")
-
     left = ttable.on((ttable.site_id == ftable.site_id) & \
-                     (ttable.tag.belongs(workflow)) & \
+                     (ttable.tag.belongs(SITE_WORKFLOW)) & \
                      (ttable.deleted == False))
     query = (ftable.id == facility_id)
     rows = db(query).select(ftable.site_id,
@@ -815,16 +817,15 @@ def add_facility_default_tags(facility_id, approve=False):
                     for row in rows if row.org_site_tag.id}
     public = existing.get("PUBLIC") == "Y" or approve
 
-    review = ("MPAV", "HYGIENE", "LAYOUT")
-    for tag in workflow:
+    for tag in SITE_WORKFLOW:
         if tag in existing:
             continue
         elif tag == "PUBLIC":
             default = "Y" if public else "N"
         elif tag == "STATUS":
-            if any(existing[t] == "REVISE" for t in review):
+            if any(existing[t] == "REVISE" for t in SITE_REVIEW):
                 default = "REVISE"
-            elif any(existing[t] == "REVIEW" for t in review):
+            elif any(existing[t] == "REVIEW" for t in SITE_REVIEW):
                 default = "REVIEW"
             else:
                 default = "APPROVED" if public else "REVIEW"
@@ -879,50 +880,30 @@ def set_facility_code(facility_id):
     return code
 
 # -----------------------------------------------------------------------------
-def facility_approval_workflow(site_id):
+def facility_approval_status(tags, mgrinfo):
     """
-        Update facility approval workflow tags
+        Determines which site approval tags to update after status change
+        by OrgGroupAdmin
 
         Args:
-            site_id: the site ID
+            tags: the current approval tags
+            mgrinfo: the current MGRINFO status of the organisation
+
+        Returns:
+            tuple (update, notify)
+                update: dict {tag: value} for update
+                notify: boolean, whether to notify the OrgAdmin
     """
 
-    db = current.db
-    s3db = current.s3db
-
-    workflow = ("STATUS", "MPAV", "HYGIENE", "LAYOUT", "PUBLIC")
-    review = ("MPAV", "HYGIENE", "LAYOUT")
-
-    # Get all tags for site
-    ttable = s3db.org_site_tag
-    query = (ttable.site_id == site_id) & \
-            (ttable.tag.belongs(workflow)) & \
-            (ttable.deleted == False)
-    rows = db(query).select(ttable.id,
-                            ttable.tag,
-                            ttable.value,
-                            )
-    tags = {row.tag: row.value for row in rows}
-
-    if any(k not in tags for k in workflow):
-        ftable = s3db.org_facility
-        facility = db(ftable.site_id == site_id).select(ftable.id,
-                                                        limitby = (0, 1),
-                                                        ).first()
-        if facility:
-            add_facility_default_tags(facility)
-            facility_approval_workflow(site_id)
-
-    update = {}
-    notify = False
+    update, notify = {}, False
 
     status = tags.get("STATUS")
     if status == "REVISE":
-        if all(tags[k] == "APPROVED" for k in review):
+        if all(tags[k] == "APPROVED" for k in SITE_REVIEW) and mgrinfo == "COMPLETE":
             update["PUBLIC"] = "Y"
             update["STATUS"] = "APPROVED"
             notify = True
-        elif any(tags[k] == "REVIEW" for k in review):
+        elif any(tags[k] == "REVIEW" for k in SITE_REVIEW):
             update["PUBLIC"] = "N"
             update["STATUS"] = "REVIEW"
         else:
@@ -931,37 +912,90 @@ def facility_approval_workflow(site_id):
 
     elif status == "READY":
         update["PUBLIC"] = "N"
-        if all(tags[k] == "APPROVED" for k in review):
-            for k in review:
+        if all(tags[k] == "APPROVED" for k in SITE_REVIEW) and mgrinfo == "COMPLETE":
+            for k in SITE_REVIEW:
                 update[k] = "REVIEW"
         else:
-            for k in review:
+            for k in SITE_REVIEW:
                 if tags[k] == "REVISE":
                     update[k] = "REVIEW"
         update["STATUS"] = "REVIEW"
 
     elif status == "REVIEW":
-        if all(tags[k] == "APPROVED" for k in review):
+        if all(tags[k] == "APPROVED" for k in SITE_REVIEW) and mgrinfo == "COMPLETE":
             update["PUBLIC"] = "Y"
             update["STATUS"] = "APPROVED"
             notify = True
-        elif any(tags[k] == "REVIEW" for k in review):
+        elif any(tags[k] == "REVIEW" for k in SITE_REVIEW) or mgrinfo == "REVISE":
             update["PUBLIC"] = "N"
             # Keep status REVIEW
-        elif any(tags[k] == "REVISE" for k in review):
+        elif any(tags[k] == "REVISE" for k in SITE_REVIEW) or mgrinfo == "N/A":
             update["PUBLIC"] = "N"
             update["STATUS"] = "REVISE"
             notify = True
 
     elif status == "APPROVED":
-        if any(tags[k] == "REVIEW" for k in review):
+        if any(tags[k] == "REVIEW" for k in SITE_REVIEW) or mgrinfo == "REVISE":
             update["PUBLIC"] = "N"
             update["STATUS"] = "REVIEW"
-        elif any(tags[k] == "REVISE" for k in review):
+        elif any(tags[k] == "REVISE" for k in SITE_REVIEW) or mgrinfo == "N/A":
             update["PUBLIC"] = "N"
             update["STATUS"] = "REVISE"
             notify = True
 
+    return update, notify
+
+# -----------------------------------------------------------------------------
+def facility_approval_workflow(site_id):
+    """
+        Update facility approval workflow tags after status change by
+        OrgGroupAdmin, and notify the OrgAdmin of the site when needed
+
+        Args:
+            site_id: the site ID
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    # Get facility and MGRINFO status
+    ftable = s3db.org_facility
+    ottable = s3db.org_organisation_tag
+    left = ottable.on((ottable.organisation_id == ftable.organisation_id) & \
+                      (ottable.tag == "MGRINFO") & \
+                      (ottable.deleted == False))
+    query = (ftable.site_id == site_id)
+    facility = db(query).select(ftable.id,
+                                ottable.value,
+                                left = left,
+                                limitby = (0, 1),
+                                ).first()
+    if not facility:
+        return
+
+    if current.deployment_settings.get_custom("test_station_manager_required"):
+        mgrinfo = facility.org_organisation_tag.value
+    else:
+        # Treat like complete
+        mgrinfo = "COMPLETE"
+
+    # Get all tags for site
+    ttable = s3db.org_site_tag
+    query = (ttable.site_id == site_id) & \
+            (ttable.tag.belongs(SITE_WORKFLOW)) & \
+            (ttable.deleted == False)
+    rows = db(query).select(ttable.id,
+                            ttable.tag,
+                            ttable.value,
+                            )
+    tags = {row.tag: row.value for row in rows}
+    if any(k not in tags for k in SITE_WORKFLOW):
+        add_facility_default_tags(facility.org_facility.id)
+        facility_approval_workflow(site_id)
+        return
+
+    # Update tags
+    update, notify = facility_approval_status(tags, mgrinfo)
     for row in rows:
         key = row.tag
         if key in update:
@@ -969,6 +1003,7 @@ def facility_approval_workflow(site_id):
 
     T = current.T
 
+    # Screen message on status change
     public = update.get("PUBLIC")
     if public and public != tags["PUBLIC"]:
         if public == "Y":
@@ -980,6 +1015,8 @@ def facility_approval_workflow(site_id):
     # Send Notifications
     if notify:
         tags.update(update)
+        if mgrinfo != "COMPLETE":
+            tags["MGRINFO"] = "REVISE"
         msg = facility_review_notification(site_id, tags)
         if msg:
             current.response.warning = \
@@ -987,6 +1024,74 @@ def facility_approval_workflow(site_id):
         else:
             current.response.flash = \
                 T("Test station notified")
+
+# -----------------------------------------------------------------------------
+def facility_approval_update_mgrinfo(organisation_id, mgrinfo):
+    """
+        Update the workflow status of test stations depending on the
+        status of the test station manager info of the organisation
+
+        Args:
+            organisation_id: the organisation ID
+            status: the MGRINFO status
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    # Propagate status to related facilities
+    ftable = s3db.org_facility
+    query = (ftable.organisation_id == organisation_id)
+    facilities = db(query).select(ftable.id,
+                                  ftable.site_id,
+                                  ftable.obsolete,
+                                  )
+
+    for facility in facilities:
+        # Get all workflow-tags for the facility
+        ttable = s3db.org_site_tag
+        query = (ttable.site_id == facility.site_id) & \
+                (ttable.tag.belongs(SITE_WORKFLOW)) & \
+                (ttable.deleted == False)
+        rows = db(query).select(ttable.id,
+                                ttable.tag,
+                                ttable.value,
+                                )
+        tags = {row.tag: row.value for row in rows}
+
+        # Update workflow status for the facility
+        update, notify = {}, False
+        if mgrinfo == "N/A":
+            update["STATUS"] = "REVISE"
+            update["PUBLIC"] = "N"
+            notify = not facility.obsolete
+        elif mgrinfo == "REVISE":
+            if not any(tags[t] == "REVISE" for t in SITE_REVIEW):
+                update["STATUS"] = "REVIEW"
+            update["PUBLIC"] = "N"
+        elif tags.get("STATUS") == "REVISE":
+            if all(tags[t] != "REVISE" for t in SITE_REVIEW):
+                update["STATUS"] = "REVIEW"
+            update["PUBLIC"] = "N"
+        tags.update(update)
+
+        # Update workflow tags (resp. insert missing tags)
+        for row in rows:
+            if row.tag in update:
+                row.update_record(value = update[row.tag])
+                del update[row.tag]
+        if update:
+            for key, value in update.items():
+                ttable.insert(site_id = facility.site_id,
+                              tag = key,
+                              value = value,
+                              )
+
+        # Notify the OrgAdmin about approval status change
+        if notify:
+            if mgrinfo != "COMPLETE":
+                tags["MGRINFO"] = "REVISE"
+            facility_review_notification(facility.site_id, tags)
 
 # -----------------------------------------------------------------------------
 def facility_review_notification(site_id, tags):
@@ -1051,11 +1156,14 @@ def facility_review_notification(site_id, tags):
                                    ).first()
         if details and details.authorisation_advice:
             data["advice"] = details.authorisation_advice
+        else:
+            data["advice"] = "-"
 
         # Add explanations for relevant requirements
         review = (("MPAV", "FacilityMPAVRequirements"),
                   ("HYGIENE", "FacilityHygienePlanRequirements"),
                   ("LAYOUT", "FacilityLayoutRequirements"),
+                  ("MGRINFO", "TestStationManagerRequirements"),
                   )
         ctable = s3db.cms_post
         ltable = s3db.cms_post_module
@@ -1110,6 +1218,10 @@ def check_blocked_l2(form, variable):
             form: the FORM
             variable: the corresponding L2 variable of the location selector
     """
+
+    if current.auth.s3_has_role("ADMIN"):
+        # Admins bypass the check
+        return
 
     try:
         district = form.vars[variable]
@@ -1181,6 +1293,37 @@ def facility_postprocess(form):
         facility_approval_workflow(row.site_id)
 
 # -------------------------------------------------------------------------
+def facility_mgrinfo(row):
+    """
+        Field method to determine the MGRINFO status of the organisation
+
+        Args:
+            row: the facility Row
+
+        Returns:
+            the value of the MGRINFO tag of the organisation
+    """
+
+    if hasattr(row, "org_mgrinfo_organisation_tag"):
+        # Provided as extra-field
+        tag = row.org_mgrinfo_organisation_tag.value
+
+    else:
+        # Must look up
+        db = current.db
+        s3db = current.s3db
+        ttable = s3db.org_organisation_tag
+        query = (ttable.organisation_id == row.org_facility.organisation_id) & \
+                (ttable.tag == "MGRINFO") & \
+                (ttable.deleted == False)
+        row = db(query).select(ttable.value,
+                               limitby = (0, 1),
+                               ).first()
+        tag = row.value if row else None
+
+    return tag
+
+# -------------------------------------------------------------------------
 def configure_facility_form(r, is_org_group_admin=False):
     """
         Configures the facility management form
@@ -1209,6 +1352,7 @@ def configure_facility_form(r, is_org_group_admin=False):
     else:
         # Other view
         fresource = record_id = None
+
 
     from core import S3SQLCustomForm, \
                      S3SQLInlineComponent, \
@@ -1297,17 +1441,38 @@ def configure_facility_form(r, is_org_group_admin=False):
                    }
 
     if visible_tags:
+
+        table = fresource.table
+        table.mgrinfo = s3_fieldmethod("mgrinfo", facility_mgrinfo,
+                                       represent = workflow_tag_represent(dict(mgrinfo_opts())),
+                                       )
+        extra_fields = ["organisation_id$mgrinfo.value"]
+
+        if is_org_group_admin:
+            # Include MGRINFO status
+            from core import S3SQLVirtualField
+            crud_fields.append(S3SQLVirtualField("mgrinfo",
+                                                 label = T("Documentation Test Station Manager"),
+                                                 ))
+            fname = "mgrinfo"
+        else:
+            fname = visible_tags[0][1].replace(".", "_")
+
         # Append workflow tags in separate section
-        crud_fields.extend(visible_tags)
-        fname = visible_tags[0][1].replace(".", "_")
         subheadings[fname] = T("Approval and Publication")
+        crud_fields.extend(visible_tags)
+
         # Add postprocess to update workflow statuses
         postprocess = facility_postprocess
+
+    else:
+        extra_fields = None
 
     s3db.configure("org_facility",
                    crud_form = S3SQLCustomForm(*crud_fields,
                                                postprocess = postprocess,
                                                ),
+                   extra_fields = extra_fields,
                    subheadings = subheadings,
                    )
 
@@ -1353,7 +1518,6 @@ def org_facility_resource(r, tablename):
                       S3LocationSelector,
                       OptionsFilter,
                       TextFilter,
-                      get_filter_options,
                       s3_text_represent,
                       )
 
@@ -1561,7 +1725,7 @@ def org_facility_resource(r, tablename):
     record = r.record
     public_view = r.tablename == "org_facility" and \
                     (not record or
-                        not auth.s3_has_permission("update", r.table, record_id=record.id))
+                     not auth.s3_has_permission("update", r.table, record_id=record.id))
     if public_view:
         crud_form = S3SQLCustomForm(
                 "name",
@@ -1619,8 +1783,8 @@ def org_facility_resource(r, tablename):
             }
 
         s3db.configure(tablename,
-                        report_options = report_options,
-                        )
+                       report_options = report_options,
+                       )
 
     # Custom method to produce KV report
     from ..helpers import TestFacilityInfo
