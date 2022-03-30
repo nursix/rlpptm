@@ -4,6 +4,8 @@
     License: MIT
 """
 
+from collections import OrderedDict
+
 from gluon import current, URL, A, DIV, TAG, \
                   IS_EMPTY_OR, IS_IN_SET, IS_LENGTH, IS_NOT_EMPTY
 from gluon.storage import Storage
@@ -102,56 +104,56 @@ def pr_person_resource(r, tablename):
 
     has_permission = auth.s3_has_permission
 
-    # Users who can not register new residents also have
-    # only limited write-access to basic details of residents
-    if r.controller == "dvr" and not has_permission("create", "pr_person"):
+    if r.controller == "dvr":
 
-        # Can not write any fields in main person record
-        # (fields in components may still be writable, though)
-        ptable = s3db.pr_person
-        for field in ptable:
-            field.writable = False
+        # Users who can not register new cases also have only limited
+        # write-access to basic details of residents
+        if not has_permission("create", "pr_person"):
 
-        # Can not add or edit contact data in person form
-        s3db.configure("pr_contact", insertable=False)
-
-        # Can not update shelter registration from person form
-        # - check-in/check-out may still be permitted, however
-        # - STAFF can update housing unit
-
-        is_staff = auth.s3_has_role("STAFF")
-
-        rtable = s3db.cr_shelter_registration
-        for field in rtable:
-            if field.name != "shelter_unit_id" or not is_staff:
+            # Can not write any fields in main person record
+            # (fields in components may still be writable, though)
+            ptable = s3db.pr_person
+            for field in ptable:
                 field.writable = False
 
-    if r.controller == "dvr" and \
-        r.name == "person" and not r.component:
+            # Can not add or edit contact data in person form
+            s3db.configure("pr_contact", insertable=False)
 
-        # Configure anonymize-method
-        from core import S3Anonymize
-        s3db.set_method("pr_person",
-                        method = "anonymize",
-                        action = S3Anonymize,
-                        )
+            # Can not update shelter registration from person form
+            # - check-in/check-out may still be permitted, however
+            # - STAFF can update housing unit
+            is_staff = auth.s3_has_role("STAFF")
 
-        # Configure anonymize-rules
-        from ..anonymize import drk_person_anonymize
-        s3db.configure("pr_person",
-                       anonymize = drk_person_anonymize(),
-                       )
+            rtable = s3db.cr_shelter_registration
+            for field in rtable:
+                if field.name != "shelter_unit_id" or not is_staff:
+                    field.writable = False
 
-        if current.auth.s3_has_role("CASE_MANAGEMENT"):
-            # Allow use of Document Templates
+        if r.name == "person" and not r.component:
+
+            # Configure anonymize-method
+            from core import S3Anonymize
             s3db.set_method("pr_person",
-                            method = "templates",
-                            action = s3db.pr_Templates(),
+                            method = "anonymize",
+                            action = S3Anonymize,
                             )
-            s3db.set_method("pr_person",
-                            method = "template",
-                            action = s3db.pr_Template(),
-                            )
+
+            # Configure anonymize-rules
+            from ..anonymize import drk_person_anonymize
+            s3db.configure("pr_person",
+                           anonymize = drk_person_anonymize(),
+                           )
+
+            if current.auth.s3_has_role("CASE_MANAGEMENT"):
+                # Allow use of Document Templates
+                s3db.set_method("pr_person",
+                                method = "templates",
+                                action = s3db.pr_Templates(),
+                                )
+                s3db.set_method("pr_person",
+                                method = "template",
+                                action = s3db.pr_Template(),
+                                )
 
     # Configure components to inherit realm_entity
     # from the person record
@@ -188,11 +190,36 @@ def configure_person_tags():
                                                   "joinby": "person_id",
                                                   "filterby": {
                                                     "tag": "BAMF",
-                                                  },
+                                                    },
                                                   "multiple": False,
                                                   },
                                                  )
                                 )
+
+# -------------------------------------------------------------------------
+def configure_person_components(use_todos=None):
+    """
+        Configure custom components for pr_person
+    """
+
+    s3db = current.s3db
+
+    if use_todos is None:
+        use_todos = get_ui_options().get("case_use_tasks")
+
+    if use_todos:
+        # Add ToDo-list component
+        ttable = s3db.dvr_note_type
+        query = (ttable.is_task == True) & \
+                (ttable.deleted == False)
+        types = current.db(query).select(ttable.id, cache=s3db.cache)
+        s3db.add_components("pr_person",
+                            dvr_note = {"name": "todo",
+                                        "joinby": "person_id",
+                                        "filterby": {"note_type_id": [t.id for t in types],
+                                                     }
+                                        },
+                            )
 
 # -------------------------------------------------------------------------
 def pr_person_controller(**attr):
@@ -206,6 +233,9 @@ def pr_person_controller(**attr):
     ui_options = get_ui_options()
     ui_options_get = ui_options.get
     response_tab_need_filter = ui_options_get("response_tab_need_filter")
+
+    if current.request.controller == "dvr":
+        configure_person_components(use_todos = ui_options_get("case_use_tasks"))
 
     settings.base.bigtable = True
 
@@ -702,6 +732,23 @@ def pr_person_controller(**attr):
                         )
                     settings.search.filter_manager = False
 
+            elif r.component_name == "todo":
+
+                from core import OptionsFilter
+                r.component.configure(
+                    filter_widgets = [
+                        OptionsFilter("status",
+                                      options = OrderedDict((("CUR", T("Current")),
+                                                             ("OBS", T("Obsolete")),
+                                                             )),
+                                      default = "CUR",
+                                      cols = 2,
+                                      sort = False,
+                                      ),
+                        ]
+                    )
+                settings.search.filter_manager = False
+
         elif r.controller == "default":
 
             # Personal Profile
@@ -732,10 +779,7 @@ def pr_person_controller(**attr):
         if callable(standard_postp):
             output = standard_postp(r, output)
 
-        if r.controller == "dvr" and \
-            not r.component and r.record and \
-            r.method in (None, "update", "read") and \
-            isinstance(output, dict):
+        if r.controller == "dvr" and r.record and isinstance(output, dict):
 
             # Custom CRUD buttons
             if "buttons" not in output:
@@ -743,37 +787,57 @@ def pr_person_controller(**attr):
             else:
                 buttons = output["buttons"]
 
-            # Anonymize-button
-            from core import S3AnonymizeWidget
-            anonymize = S3AnonymizeWidget.widget(r, _class="action-btn anonymize-btn")
 
-            # Doc-From-Template-button
-            if ui_options_get("case_document_templates") and \
-                auth.s3_has_role("CASE_MANAGEMENT"):
-                doc_from_template = A(T("Document from Template"),
-                                      _class = "action-btn s3_modal",
-                                      _title = T("Generate Document from Template"),
-                                      _href = URL(args=[r.id, "templates"]),
-                                      )
-            else:
-                doc_from_template = ""
 
-            # Render in place of the delete-button
-            buttons["delete_btn"] = TAG[""](doc_from_template, anonymize)
+            if not r.component and r.method in (None, "update", "read"):
+
+                # Anonymize-button
+                from core import S3AnonymizeWidget
+                anonymize = S3AnonymizeWidget.widget(r, _class="action-btn anonymize-btn")
+
+                # Doc-From-Template-button
+                if ui_options_get("case_document_templates") and \
+                    auth.s3_has_role("CASE_MANAGEMENT"):
+                    doc_from_template = A(T("Document from Template"),
+                                        _class = "action-btn s3_modal",
+                                        _title = T("Generate Document from Template"),
+                                        _href = URL(args=[r.id, "templates"]),
+                                        )
+                else:
+                    doc_from_template = ""
+
+                # Render in place of the delete-button
+                buttons["delete_btn"] = TAG[""](doc_from_template, anonymize)
+
+            elif r.component_name == "todo" and r.component_id:
+
+                del_btn = buttons.get("delete_btn")
+                pdf_btn = A(T("Download PDF"),
+                            _href = r.url(method = "",
+                                          target = r.component_id,
+                                          representation = "pdf",
+                                          ),
+                            _class="action-btn",
+                            )
+                buttons["delete_btn"] = TAG[""](pdf_btn, del_btn) if del_btn else pdf_btn
 
         return output
     s3.postp = custom_postp
 
     if current.request.controller == "dvr":
-        attr = dict(attr)
-
         # Custom rheader
         from ..rheaders import drk_dvr_rheader
         attr["rheader"] = drk_dvr_rheader
 
         # Activate filters on component tabs
-        if response_tab_need_filter:
-            attr["hide_filter"] = {"response_action": False}
+        attr["hide_filter"] = {"response_action": not response_tab_need_filter,
+                               "todo": False,
+                               }
+
+        args = current.request.args
+        if len(args) > 1 and args[1][:4] == "todo":
+            attr["pdf_title"] = "ToDo"
+            attr["pdf_filename"] = "todos.pdf"
 
     return attr
 
