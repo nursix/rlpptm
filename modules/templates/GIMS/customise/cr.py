@@ -158,6 +158,9 @@ def cr_shelter_resource(r, tablename):
 
     # No add-link for organisation
     field = table.organisation_id
+    field.requires = s3db.org_organisation_requires(required = True,
+                                                    updateable = True,
+                                                    )
     field.comment = None
 
     # Custom label for population_children
@@ -421,6 +424,18 @@ def cr_shelter_population_resource(r, tablename):
                                      hidden = True,
                                      ),
                       ]
+    if current.auth.s3_has_role("ADMIN"):
+        shelter_status_opts = OrderedDict(((2, T("Open##status")),
+                                           (1, T("Closed")),
+                                           ))
+        filter_widgets.insert(1, OptionsFilter("shelter_id$status",
+                                               label = T("Shelter Status"),
+                                               options = shelter_status_opts,
+                                               sort = False,
+                                               default = 2,
+                                               cols = 2,
+                                               ))
+
     s3db.configure("cr_shelter_population",
                    filter_widgets = filter_widgets,
                    insertable = False,
@@ -475,10 +490,40 @@ def cr_shelter_population_controller(**attr):
         restrict_data_formats(r)
 
         # Exclude closed shelters
-        r.resource.add_filter(FS("shelter_id$status") == 2)
+        if not current.auth.s3_has_role("ADMIN"):
+            r.resource.add_filter(FS("shelter_id$status") == 2)
 
         return result
     s3.prep = prep
+
+    return attr
+
+# -------------------------------------------------------------------------
+def cr_reception_center_resource(r, tablename):
+
+    pass
+
+# -------------------------------------------------------------------------
+def cr_reception_center_controller(**attr):
+
+    from ..rheaders import cr_rheader
+    attr["rheader"] = cr_rheader
+
+    return attr
+
+# -------------------------------------------------------------------------
+def cr_reception_center_type_resource(r, tablename):
+
+    pass
+
+# -------------------------------------------------------------------------
+def cr_reception_center_type_controller(**attr):
+
+    import os
+    xslt_path = os.path.join("..", "..", "..", "modules", "templates", "GIMS", "formats")
+
+    attr.update(csv_stylesheet = (xslt_path, "cr", "reception_center_type.xsl"),
+                )
 
     return attr
 
