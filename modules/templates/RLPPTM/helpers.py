@@ -391,14 +391,14 @@ def restrict_data_formats(r):
     """
 
     settings = current.deployment_settings
-    allowed = ("html", "iframe", "popup", "aadata", "plain", "geojson", "pdf", "xls")
+    allowed = ("html", "iframe", "popup", "aadata", "plain", "geojson", "pdf", "xlsx")
     if r.record:
         allowed += ("card",)
     if r.method in ("report", "timeplot", "filter", "lookup", "info"):
         allowed += ("json",)
     elif r.method == "options":
         allowed += ("s3json",)
-    settings.ui.export_formats = ("pdf", "xls")
+    settings.ui.export_formats = ("pdf", "xlsx")
     if r.representation not in allowed:
         r.error(403, current.ERROR.NOT_PERMITTED)
 
@@ -1489,8 +1489,8 @@ class InvoicePDF(CRUDMethod):
         # Filename to include invoice number if available
         invoice_no = r.record.invoice_no
 
-        from core import S3Exporter
-        exporter = S3Exporter().pdf
+        from core import DataExporter
+        exporter = DataExporter.pdf
         return exporter(r.resource,
                         request = r,
                         method = "read",
@@ -1815,8 +1815,8 @@ class ClaimPDF(CRUDMethod):
         # Filename to include invoice number if available
         invoice_no = self.invoice_number(r.record)
 
-        from core import S3Exporter
-        exporter = S3Exporter().pdf
+        from core import DataExporter
+        exporter = DataExporter.pdf
         return exporter(r.resource,
                         request = r,
                         method = "read",

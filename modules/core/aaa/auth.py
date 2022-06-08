@@ -1,7 +1,7 @@
 """
     Authentication and Authorization
 
-    Copyright: (c) 2010-2021 Sahana Software Foundation
+    Copyright: (c) 2010-2022 Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -4720,8 +4720,6 @@ Please go to %(url)s to approve this user."""
         if self.override:
             return True
 
-        sr = self.get_system_roles()
-
         if not hasattr(table, "_tablename"):
             tablename = table
             table = current.s3db.table(tablename, db_only=True)
@@ -4732,44 +4730,52 @@ Please go to %(url)s to approve this user."""
 
         policy = current.deployment_settings.get_security_policy()
 
+        if isinstance(method, (list, tuple)) and policy not in (3, 4, 5, 6, 7):
+            return all(self.s3_has_permission(m, table, record_id=record_id, c=c, f=f) for m in method)
+
+        sr = self.get_system_roles()
+        permission = self.permission
+
         # Simple policy
         if policy == 1:
-            # Anonymous users can Read.
-            if method == "read":
+            required = permission.METHODS.get(method) or 0
+            if required == permission.READ:
+                # All users can read, including anonymous users
                 authorised = True
             else:
-                # Authentication required for Create/Update/Delete.
+                # Authentication required for all other methods
                 authorised = self.s3_logged_in()
 
         # Editor policy
         elif policy == 2:
-            # Anonymous users can Read.
-            if method == "read":
+            required = permission.METHODS.get(method) or 0
+            if required == permission.READ:
+                # All users can read, including anonymous users
                 authorised = True
-            elif method == "create":
-                # Authentication required for Create.
-                authorised = self.s3_logged_in()
-            elif record_id == 0 and method == "update":
-                # Authenticated users can update at least some records
+            elif required == permission.CREATE or \
+                 record_id == 0 and required == permission.UPDATE:
+                # Authenticated users can create records, and update
+                # certain default records (e.g. their profile)
                 authorised = self.s3_logged_in()
             else:
-                # Editor role required for Update/Delete.
+                # Otherwise, must be EDITOR or record owner
                 authorised = self.s3_has_role(sr.EDITOR)
                 if not authorised and self.user and "owned_by_user" in table:
-                    # Creator of Record is allowed to Edit
                     query = (table.id == record_id)
                     record = current.db(query).select(table.owned_by_user,
-                                                      limitby=(0, 1)).first()
+                                                      limitby = (0, 1),
+                                                      ).first()
                     if record and self.user.id == record.owned_by_user:
                         authorised = True
 
-        # Use S3Permission ACLs
-        elif policy in (3, 4, 5, 6, 7, 8):
-            authorised = self.permission.has_permission(method,
-                                                        c = c,
-                                                        f = f,
-                                                        t = table,
-                                                        record = record_id)
+        # Use S3Permission
+        elif policy in (3, 4, 5, 6, 7):
+            authorised = permission.has_permission(method,
+                                                   c = c,
+                                                   f = f,
+                                                   t = table,
+                                                   record = record_id,
+                                                   )
 
         # Web2py default policy
         else:

@@ -1,7 +1,7 @@
 """
     Content Management System Model
 
-    Copyright: 2012-2021 (c) Sahana Software Foundation
+    Copyright: 2012-2022 (c) Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -3413,7 +3413,7 @@ class cms_Calendar(CRUDMethod):
             #elif r.representation == "pdf":
             #    output = self.pdf(r, **attr)
             #    return output
-            #elif r.representation == "xls":
+            #elif r.representation in ("xlsx", "xls"):
             #    output = self.xls(r, **attr)
             #    return output
             else:
