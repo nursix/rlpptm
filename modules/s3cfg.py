@@ -150,7 +150,7 @@ class S3Config(Storage):
 
     def __init__(self):
 
-        super(S3Config, self).__init__()
+        super().__init__()
 
         self.asset = Storage()
         self.auth = Storage()
@@ -165,7 +165,6 @@ class S3Config(Storage):
         self.cr = Storage()
         self.custom = Storage()
         self.database = Storage()
-        self.dc = Storage()
         self.deploy = Storage()
         self.disease = Storage()
         self.doc = Storage()
@@ -326,8 +325,8 @@ class S3Config(Storage):
             try:
                 # Import the template
                 template = getattr(__import__(package, fromlist=[config]), config)
-            except ImportError:
-                raise RuntimeError("Template not found: %s" % name)
+            except ImportError as e:
+                raise RuntimeError("Template not found: %s" % name) from e
             else:
                 template.config(self)
 
@@ -542,11 +541,27 @@ class S3Config(Storage):
 
     # -------------------------------------------------------------------------
     # Authentication settings
+    # -------------------------------------------------------------------------
     def get_auth_hmac_key(self):
         """
             Salt to encrypt passwords - normally randomised during 1st run
         """
         return self.auth.get("hmac_key", "akeytochange")
+
+    def get_auth_logging(self):
+        """
+            Whether auth events should be logged
+        """
+        return self.auth.get("logging", True)
+
+    def get_auth_log_failed_logins(self):
+        """
+            Log failed logins, options:
+                - True          : log all failed logins
+                - "VALIDONLY"   : log failed logins for valid accounts
+                - False         : do not log failed logins
+        """
+        return self.auth.get("log_failed_logins", False)
 
     def get_auth_password_changes(self):
         """
@@ -690,33 +705,6 @@ class S3Config(Storage):
                in the context dict!
         """
         return self.auth.get("masterkey_context")
-
-    def get_security_self_registration(self):
-        """
-            Whether Users can register themselves
-            - False to disable self-registration
-            - True to use the default registration page at default/user/register
-            - "index" to use a cyustom registration page defined in private/templates/<template>/controllers.py
-
-        """
-        return self.security.get("self_registration", True)
-
-    def get_security_registration_visible(self):
-        visible = self.get_security_self_registration() and \
-                  self.security.get("registration_visible", True)
-        return visible
-
-    def get_security_version_info(self):
-        """
-            Whether to show version info on the about page
-        """
-        return self.security.get("version_info", True)
-
-    def get_security_version_info_requires_login(self):
-        """
-            Whether the version info on the About page requires login
-        """
-        return self.security.get("version_info_requires_login", False)
 
     def get_auth_registration_requires_verification(self):
         return self.auth.get("registration_requires_verification", False)
@@ -988,7 +976,6 @@ class S3Config(Storage):
             ("inv", T("Warehouses")),
             ("asset", T("Assets")),
             ("project", T("Projects")),
-            ("survey", T("Assessments")),
             ("irs", T("Incidents"))
         ]))
 
@@ -1014,15 +1001,49 @@ class S3Config(Storage):
     def get_auth_create_unknown_locations(self):
         return self.auth.get("create_unknown_locations", False)
 
+    # -------------------------------------------------------------------------
+    # System Security Settings
+    # -------------------------------------------------------------------------
+    def get_security_self_registration(self):
+        """
+            Whether Users can register themselves
+            - False to disable self-registration
+            - True to use the default registration page at default/user/register
+            - "index" to use a cyustom registration page defined in private/templates/<template>/controllers.py
+
+        """
+        return self.security.get("self_registration", True)
+
+    def get_security_registration_visible(self):
+        visible = self.get_security_self_registration() and \
+                  self.security.get("registration_visible", True)
+        return visible
+
+    def get_security_version_info(self):
+        """
+            Whether to show version info on the about page
+        """
+        return self.security.get("version_info", True)
+
+    def get_security_version_info_requires_login(self):
+        """
+            Whether the version info on the About page requires login
+        """
+        return self.security.get("version_info_requires_login", False)
+
     def get_security_archive_not_delete(self):
         return self.security.get("archive_not_delete", True)
+
     def get_security_audit_read(self):
         return self.security.get("audit_read", False)
+
     def get_security_audit_write(self):
         return self.security.get("audit_write", False)
+
     def get_security_policy(self):
         " Default is Simple Security Policy "
         return self.security.get("policy", 1)
+
     def get_security_strict_ownership(self):
         """
             Ownership-rule for records without owner:
@@ -1030,6 +1051,7 @@ class S3Config(Storage):
             False = owned by any authenticated user
         """
         return self.security.get("strict_ownership", True)
+
     def get_security_map(self):
         return self.security.get("map", False)
 
@@ -2115,12 +2137,10 @@ class S3Config(Storage):
         if callable(setting):
             # A custom formstyle defined in the template
             formstyle = setting
-        elif setting in FORMSTYLES:
-            # One of the standard supported formstyles
-            formstyle = FORMSTYLES[setting]
         else:
-            # A default web2py formstyle
-            formstyle = setting
+            # One of the standard supported formstyles,
+            # or a default web2py formstyle
+            formstyle = FORMSTYLES.get(setting, setting)
         return formstyle
 
     def get_ui_formstyle(self):
@@ -2390,17 +2410,37 @@ class S3Config(Storage):
         """
         return current.T(self.ui.get("label_postcode", "Postcode"))
 
+    def get_ui_label_open(self):
+        """
+            Label for datatable action-buttons that open records for
+            either read or update, depending on record-specific permissions
+
+            Note:
+                Using the same action-label for all records in the list
+                reduces cognitive load, even if the label is ambiguous
+        """
+        return self.ui.get("open_label", "Open")
+
     def get_ui_label_read(self):
         """
-            Label for buttons in list views which lead to a Read-only 'Display' page
+            Label for datatable action-buttons that open records read-only
+
+            Note:
+                Differentiating explicit "View" from ambiguous "Open" does
+                not improve UX, even if it would appear more consistent.
         """
         return self.ui.get("read_label", "Open")
 
     def get_ui_label_update(self):
         """
-            Label for buttons in list views which lead to an Editable 'Update' page
+            Label for action buttons in single-record perspectives to open
+            the record for editing
+
+            Note:
+                This label should be explicit about editing, not ambiguous
+                as the two above
         """
-        return self.ui.get("update_label", "Open")
+        return self.ui.get("update_label", "Edit")
 
     def get_ui_multiselect_widget(self):
         """
@@ -3561,102 +3601,6 @@ class S3Config(Storage):
         return self.cr.get("shelter_inspection_tasks_completed_status", 12)
 
     # -------------------------------------------------------------------------
-    # DC: Data Collection
-    #
-    def get_dc_mobile_data(self):
-        """
-            Whether Mobile Clients should download Assessments (Data not just Forms)
-            - e.g. when these are created through Targetting
-        """
-        return self.dc.get("mobile_data", False)
-
-    def get_dc_mobile_inserts(self):
-        """
-            Whether Mobile Clients should create Assessments locally
-        """
-        return self.dc.get("mobile_inserts", True)
-
-    def get_dc_response_label(self):
-        """
-            Label for Responses
-            - 'Assessment;
-            - 'Response' (default if set to None)
-            - 'Survey'
-        """
-        return self.dc.get("response_label", "Assessment")
-
-    def get_dc_response_mobile(self):
-        """
-            Whether Assessments are filled-out on the EdenMobile App
-        """
-        return self.dc.get("response_mobile", True)
-
-    def get_dc_response_web(self):
-        """
-            Whether Assessments are filled-out on the Web interface
-        """
-        return self.dc.get("response_web", True)
-
-    def get_dc_target_status(self):
-        """
-            Whether Assessment Targets have Statuses
-        """
-        return self.dc.get("target_status", False)
-
-    def get_dc_unique_question_names_per_template(self):
-        """
-            Deduplicate Questions by Name/Template
-             - needed for importing multiple translations
-        """
-        return self.dc.get("unique_question_names_per_template", False)
-
-    def get_dc_likert_options(self):
-        """
-            Likert Scales & Options
-        """
-        return self.dc.get("likert_options", {1: ["Very appropriate",
-                                                  "Somewhat appropriate",
-                                                  "Neither appropriate nor inappropriate",
-                                                  "Somewhat inappropriate",
-                                                  "Very inappropriate",
-                                                  ],
-                                              2: ["Extremely confident",
-                                                  "Very confident",
-                                                  "Moderately confident",
-                                                  "Slightly confident",
-                                                  "Not confident at all",
-                                                  ],
-                                              3: ["Always",
-                                                  "Often",
-                                                  "Occasionally",
-                                                  "Rarely",
-                                                  "Never",
-                                                  ],
-                                              4: ["Extremely safe",
-                                                  "Very safe",
-                                                  "Moderately safe",
-                                                  "Slightly safe",
-                                                  "Not safe at all",
-                                                  ],
-                                              5: ["Very satisfied",
-                                                  "Somewhat satisfied",
-                                                  "Neither satisfied nor dissatisfied",
-                                                  "Somewhat dissatisfied",
-                                                  "Very dissatisfied",
-                                                  ],
-                                              6: ["smiley-1",
-                                                  "smiley-2",
-                                                  "smiley-3",
-                                                  "smiley-4",
-                                                  "smiley-6",
-                                                  ],
-                                              7: ["smiley-3",
-                                                  "smiley-4",
-                                                  "smiley-5",
-                                                  ],
-                                              })
-
-    # -------------------------------------------------------------------------
     # Deployments
     #
     def get_deploy_alerts(self):
@@ -4066,12 +4010,6 @@ class S3Config(Storage):
         """
         return self.event.get("exercise", False)
 
-    def get_event_sitrep_dynamic(self):
-        """
-            Whether the SitRep resource should include a Dynamic Table section
-        """
-        return self.event.get("sitrep_dynamic", False)
-
     def get_event_sitrep_edxl(self):
         """
             Whether the SitRep resource should be configured for EDXL-Sitrep mode
@@ -4098,18 +4036,6 @@ class S3Config(Storage):
             Options: None, contact_method (e.g. "SMS", "EMAIL")
         """
         return self.event.get("task_notification", "EMAIL")
-
-    def get_event_dc_response_tab(self):
-        """
-            Whether to show the DC response tab for events
-        """
-        return self.event.get("dc_response_tab", True)
-
-    def get_event_dc_target_tab(self):
-        """
-            Whether to show the DC target tab for events
-        """
-        return self.event.get("dc_target_tab", True)
 
     def get_event_dispatch_tab(self):
         """

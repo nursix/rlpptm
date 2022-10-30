@@ -4,7 +4,7 @@
     License: MIT
 """
 
-from gluon import current, A, URL
+from gluon import current, A, URL, SPAN
 
 from core import S3ResourceHeader, s3_fullname, s3_rheader_resource
 
@@ -133,10 +133,11 @@ def rlpptm_org_rheader(r, tabs=None):
     if record:
         T = current.T
 
+        # Determine is_org_group_admin
+        is_org_group_admin = current.auth.s3_has_role("ORG_GROUP_ADMIN")
+
         if tablename == "org_organisation":
 
-            # Determine is_org_group_admin
-            is_org_group_admin = current.auth.s3_has_role("ORG_GROUP_ADMIN")
 
             # Determine org_group
             gtable = s3db.org_group
@@ -176,19 +177,50 @@ def rlpptm_org_rheader(r, tabs=None):
 
                 from .config import TESTSTATIONS
                 if group == TESTSTATIONS:
-                    # Show manager documentation status
-                    rows = resource.select(["mgrinfo.value"],
+                    rows = resource.select(["verification.mgrinfo",
+                                            "verification.orgtype",
+                                            ],
                                            represent = True,
                                            ).rows
                     if rows:
-                        status = rows[0]["org_mgrinfo_organisation_tag.value"]
+                        mgrinfo = rows[0]["org_verification.mgrinfo"]
+                        orgtype = rows[0]["org_verification.orgtype"]
                     else:
-                        status = "-"
+                        mgrinfo = orgtype = "-"
+
                     rheader_fields[0].append((T("Documentation Test Station Manager"),
-                                              lambda row: status,
+                                              lambda row: mgrinfo,
+                                              ))
+                    rheader_fields[1].append((T("Organization Type Verification"),
+                                              lambda row: orgtype,
                                               ))
 
             rheader_title = "name"
+
+        elif tablename == "org_facility" and is_org_group_admin:
+
+            if not tabs:
+                tabs = [(T("Basic Details"), None),
+                        (T("Approval History"), "site_approval_status"),
+                        ]
+            rheader_fields = [["organisation_id",
+                               ],
+                              ["code",
+                               ],
+                              ]
+            if record.obsolete:
+                field = resource.table.obsolete
+                rheader_fields.append([(SPAN("%s: " % field.label,
+                                             _class = "expired",
+                                             ),
+                                        "obsolete",
+                                        )])
+
+            rheader_title = "name"
+
+        else:
+            return None
+
 
         rheader = S3ResourceHeader(rheader_fields, tabs, title=rheader_title)
         rheader = rheader(r, table = resource.table, record = record)
@@ -204,6 +236,7 @@ def default_org_tabs(record, group=None, is_org_group_admin=False):
     sites_tab = None
     doc_tab = None
     managers_tab = None
+    commission_tab = None
 
     if group:
 
@@ -213,6 +246,7 @@ def default_org_tabs(record, group=None, is_org_group_admin=False):
             doc_tab = (T("Documents"), "document")
             if is_org_group_admin:
                 managers_tab = (T("Test Station Managers"), "managers")
+            commission_tab = (T("Commissions"), "commission")
         elif group == SCHOOLS:
             sites_tab = (T("Administrative Offices"), "office")
             if is_org_group_admin:
@@ -220,11 +254,12 @@ def default_org_tabs(record, group=None, is_org_group_admin=False):
         elif group == GOVERNMENT:
             sites_tab = (T("Warehouses"), "warehouse")
 
-    return [(T("Organisation"), None),
+    return [(T("Organization"), None),
             invite_tab,
             sites_tab,
             (T("Staff"), "human_resource"),
             managers_tab,
+            commission_tab,
             doc_tab,
             ]
 

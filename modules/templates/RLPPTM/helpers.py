@@ -13,7 +13,8 @@ from gluon import current, Field, \
                   SQLFORM, A, DIV, H4, H5, I, INPUT, LI, P, SPAN, TABLE, TD, TH, TR, UL
 
 from core import ICON, IS_FLOAT_AMOUNT, JSONERRORS, S3DateTime, \
-                 CRUDMethod, S3Represent, s3_fullname, s3_mark_required, s3_str
+                 CRUDMethod, S3Represent, S3PriorityRepresent, \
+                 s3_fullname, s3_mark_required, s3_str
 
 from s3db.pr import pr_PersonRepresentContact
 
@@ -83,11 +84,10 @@ def get_managed_facilities(role="ORG_ADMIN", public_only=True, cacheable=True):
         return realms
 
     if public_only:
-        ttable = s3db.org_site_tag
-        join = ttable.on((ttable.site_id == ftable.site_id) & \
-                         (ttable.tag == "PUBLIC") & \
-                         (ttable.deleted == False))
-        query &= (ttable.value == "Y")
+        atable = s3db.org_site_approval
+        join = atable.on((atable.site_id == ftable.site_id) & \
+                         (atable.public == "Y") & \
+                         (atable.deleted == False))
     else:
         join = None
 
@@ -434,7 +434,7 @@ def assign_pending_invoices(billing_id, organisation_id=None, invoice_id=None):
                                    organisation_id = organisation_id,
                                    )
     else:
-        accountants = None
+        accountants = []
 
     # Query for any pending invoices of this billing cycle
     itable = s3db.fin_voucher_invoice
@@ -630,55 +630,6 @@ def configure_binary_tags(resource, tag_components):
             field.default = "N"
             field.requires = IS_IN_SET(binary_tag_opts, zero=None)
             field.represent = lambda v, row=None: binary_tag_opts.get(v, "-")
-
-# -----------------------------------------------------------------------------
-def workflow_tag_represent(options, none=None):
-    """
-        Color-coded and icon-supported representation of
-        facility approval workflow tags
-
-        Args:
-            options: the tag options as dict {value: label}
-            none: treat None-values like this option (str)
-    """
-
-    icons = {"REVISE": "fa fa-exclamation-triangle",
-             "REJECT": "fa fa-exclamation-triangle",
-             "REVIEW": "fa fa-hourglass",
-             "APPROVED": "fa fa-check",
-             "COMPLETE": "fa fa-check",
-             "N/A": "fa fa-minus-circle",
-             "N": "fa fa-minus-circle",
-             "Y": "fa fa-check",
-             }
-
-    css_classes = {"REVISE": "workflow-red",
-                   "REJECT": "workflow-red",
-                   "REVIEW": "workflow-amber",
-                   "APPROVED": "workflow-green",
-                   "COMPLETE": "workflow-green",
-                   "N/A": "workflow-grey",
-                   "N": "workflow-red",
-                   "Y": "workflow-green",
-                   }
-
-    def represent(value, row=None):
-
-        if value is None and none:
-            value = none
-
-        label = DIV(_class="approve-workflow")
-        color = css_classes.get(value)
-        if color:
-            label.add_class(color)
-        icon = icons.get(value)
-        if icon:
-            label.append(I(_class=icon))
-        label.append(options.get(value, "-"))
-
-        return label
-
-    return represent
 
 # -----------------------------------------------------------------------------
 def applicable_org_types(organisation_id, group=None, represent=False):
@@ -1079,6 +1030,182 @@ def rlp_holidays(start, end):
     return rules
 
 # =============================================================================
+class WorkflowOptions:
+    """
+        Option sets for workflow statuses or status reasons
+    """
+
+    icons = {"red": "fa fa-exclamation-triangle",
+             "amber": "fa fa-hourglass",
+             "green": "fa fa-check",
+             "grey": "fa fa-minus-circle",
+             }
+
+    css_classes = {"red": "workflow-red",
+                   "amber": "workflow-amber",
+                   "green": "workflow-green",
+                   "grey": "workflow-grey",
+                   }
+
+    # -------------------------------------------------------------------------
+    def __init__(self, *theset, selectable=None, represent="workflow", none=None):
+        """
+            Args:
+                theset: tuple|list of tuples specifying all options,
+                        (value, label) or (value, label, color)
+                selectable: tuple|list of manually selectable values
+                represent: how to represent values, either:
+                            - "workflow" for icon + red|amber|green
+                            - "status"   to use S3PriorityRepresent
+                none: treat None-value like this value
+        """
+
+        self.theset = theset
+        self._represent = represent
+        self.none = none
+
+        self._colors = None
+        self._labels = None
+
+        self._keys = [o[0] for o in theset]
+        if selectable:
+            self._selectable = [k for k in self._keys if k in selectable]
+        else:
+            self._selectable = self._keys
+
+    # -------------------------------------------------------------------------
+    def selectable(self, values=False, current_value=None):
+        """
+            Produces a list of selectable options for use with IS_IN_SET
+
+            Args:
+                values: which values to use
+                        - True for the manually selectable options as configured
+                        - tuple of values to override the manually selectable options
+                        - False for all possible options
+                current_value: the current value of the field, to be included
+                               in the selectable options
+        """
+
+        if values is False:
+            selectable = self._keys
+        elif values is True:
+            selectable = self._selectable
+        elif isinstance(values, (tuple, list, set)):
+            selectable = list(values)
+        else:
+            selectable = []
+
+        if current_value and current_value not in selectable:
+            selectable = [current_value] + selectable
+
+        return [o for o in self.labels if o[0] in selectable]
+
+    # -------------------------------------------------------------------------
+    @property
+    def colors(self):
+        """
+            The option "colors", for representation
+
+            Returns:
+                a dict {value: color}
+        """
+
+        colors = self._colors
+        if not colors:
+            colors = self._colors = {}
+            for opt in self.theset:
+                if len(opt) > 2:
+                    colors[opt[0]] = opt[2]
+                else:
+                    colors[opt[0]] = None
+        return colors
+
+    # -------------------------------------------------------------------------
+    @property
+    def labels(self):
+        """
+            The (localized) option labels, for representation
+
+            Returns:
+                a list of tuples [(value, T(label)), ...]
+        """
+
+        labels = self._labels
+        if not labels:
+            T = current.T
+            labels = self._labels = [(o[0], T(o[1])) for o in self.theset]
+        return labels
+
+    # -------------------------------------------------------------------------
+    @property
+    def represent(self):
+        """
+            The representation method for this option set
+
+            Returns:
+                the representation function
+        """
+
+        represent = self._represent
+        if not callable(represent):
+            if represent == "workflow":
+                represent = self.represent_workflow()
+            elif represent == "status":
+                represent = self.represent_status()
+            else:
+                represent = None
+            self._represent = represent
+        return represent
+
+    # -------------------------------------------------------------------------
+    def represent_workflow(self):
+        """
+            Representation as workflow element (icon + red|amber|green)
+
+            Returns:
+                the representation function
+        """
+
+        none = self.none
+        labels = dict(self.labels)
+        colors = self.colors
+        icons = self.icons
+        css_classes = self.css_classes
+
+        def represent(value, row=None):
+
+            if value is None and none:
+                value = none
+
+            label = DIV(_class="approve-workflow")
+
+            color = colors.get(value)
+            if color:
+                icon = icons.get(color)
+                if icon:
+                    label.append(I(_class=icon))
+                css_class = css_classes.get(color)
+                if css_class:
+                    label.add_class(css_class)
+            label.append(labels.get(value, "-"))
+
+            return label
+
+        return represent
+
+    # -------------------------------------------------------------------------
+    def represent_status(self):
+        """
+            Representation using S3PriorityRepresent
+
+            Returns:
+                a S3PriorityRepresent instance
+        """
+
+        return S3PriorityRepresent(dict(self.labels), self.colors)
+
+# =============================================================================
 class ServiceListRepresent(S3Represent):
 
     always_list = True
@@ -1121,10 +1248,10 @@ class OrganisationRepresent(S3Represent):
 
     def __init__(self, show_type=True, show_link=True):
 
-        super(OrganisationRepresent, self).__init__(lookup = "org_organisation",
-                                                    fields = ["name",],
-                                                    show_link = show_link,
-                                                    )
+        super().__init__(lookup = "org_organisation",
+                         fields = ["name",],
+                         show_link = show_link,
+                         )
         self.show_type = show_type
         self.org_types = {}
         self.type_names = {}
@@ -1270,7 +1397,7 @@ class InviteUserOrg(CRUDMethod):
         auth_settings = auth.settings
         auth_messages = auth.messages
 
-        output = {"title": T("Invite Organisation"),
+        output = {"title": T("Invite Organization"),
                   }
 
         # Check for existing accounts
@@ -1376,7 +1503,7 @@ class InviteUserOrg(CRUDMethod):
                 response.confirmation = T("Invitation sent")
         else:
             if account:
-                response.warning = T("This organisation has been invited before!")
+                response.warning = T("This organization has been invited before!")
 
         output["form"] = form
 
@@ -2258,10 +2385,9 @@ class TestFacilityInfo(CRUDMethod):
                 r.error(400, current.ERROR.BAD_REQUEST)
             query = (table.code.upper() == code.upper())
 
-        ttable = s3db.org_site_tag
-        left = ttable.on((ttable.site_id == table.site_id) & \
-                         (ttable.tag == "PUBLIC") & \
-                         (ttable.deleted == False))
+        atable = s3db.org_site_approval
+        left = atable.on((atable.site_id == table.site_id) & \
+                         (atable.deleted == False))
 
         query &= (table.deleted == False)
         row = db(query).select(table.code,
@@ -2272,8 +2398,7 @@ class TestFacilityInfo(CRUDMethod):
                                table.organisation_id,
                                table.location_id,
                                table.site_id,
-                               ttable.id,
-                               ttable.value,
+                               atable.public,
                                left = left,
                                limitby = (0, 1),
                                ).first()
@@ -2282,14 +2407,14 @@ class TestFacilityInfo(CRUDMethod):
             r.error(404, current.ERROR.BAD_RECORD)
         else:
             facility = row.org_facility
-            public = row.org_site_tag
+            approval = row.org_site_approval
 
         # Prepare facility info
         output = {"code": facility.code,
                   "name": facility.name,
                   "phone": facility.phone1,
                   "email": facility.email,
-                  "public": True if public.value == "Y" else False,
+                  "public": approval.public == "Y",
                   }
 
         # Look up organisation data
@@ -2457,7 +2582,7 @@ class PersonRepresentManager(pr_PersonRepresentContact):
                 fields: unused (retained for API compatibility)
         """
 
-        rows = super(PersonRepresentManager, self).lookup_rows(key, values, fields=fields)
+        rows = super().lookup_rows(key, values, fields=fields)
 
         # Lookup dates of birth
         table = self.table

@@ -193,9 +193,9 @@ class DiseaseDataModel(DataModel):
 
         tablename = "disease_testing_device"
         define_table(tablename,
-                     disease_id(
-                         ondelete = "CASCADE",
-                         ),
+                     disease_id(ondelete = "CASCADE",
+                                comment = None,
+                                ),
                      Field("name",
                            label = T("Name"),
                            requires = IS_NOT_EMPTY(),
@@ -235,7 +235,7 @@ class DiseaseDataModel(DataModel):
 
         # Table configuration
         self.configure(tablename,
-                       onaccept = self.testing_device_onaccept,
+                       #onaccept = self.testing_device_onaccept,
                        )
 
         # CRUD Strings
