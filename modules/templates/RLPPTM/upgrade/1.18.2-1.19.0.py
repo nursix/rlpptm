@@ -150,7 +150,17 @@ if not failed:
     # Only import relevant CMS posts, do not update existing ones
     def cms_post_duplicate(item):
         name = item.data.get("name")
-        if name in ("...", # TODO select items
+        if name in ("Message CommissionExpired",
+                    "Message CommissionIssued",
+                    "Message CommissionRevoked",
+                    "Message CommissionStatusChanged",
+                    "Message CommissionSuspended",
+                    "Subject CommissionExpired",
+                    "Subject CommissionIssued",
+                    "Subject CommissionRevoked",
+                    "Subject CommissionStatusChanged",
+                    "Subject CommissionSuspended",
+                    "TestProviderRequirements",
                     ):
             S3Duplicate(noupdate=True)(item)
         else:
