@@ -6,9 +6,10 @@
 
 from collections import OrderedDict
 
-from gluon import current, DIV, IS_EMPTY_OR, IS_IN_SET, IS_NOT_EMPTY
+from gluon import current, URL, \
+                  DIV, IS_EMPTY_OR, IS_IN_SET, IS_NOT_EMPTY, TAG
 
-from core import FS, ICON, S3CRUD, S3Represent, \
+from core import FS, ICON, IS_ONE_OF, S3CRUD, S3Represent, \
                  get_filter_options, get_form_record_id, s3_fieldmethod
 
 from ..models.org import TestProvider, TestStation, \
@@ -88,7 +89,12 @@ def organisation_postprocess(form):
     if not record_id:
         return
 
-    TestProvider(record_id).update_verification()
+    info, warn = TestProvider(record_id).update_verification()
+    if current.auth.s3_has_role("ORG_GROUP_ADMIN"):
+        if info:
+            current.response.information = info
+        if warn:
+            current.response.warning = warn
 
 # -------------------------------------------------------------------------
 def organisation_organisation_type_onaccept(form):
@@ -107,7 +113,12 @@ def organisation_organisation_type_onaccept(form):
         except AttributeError:
             return
 
-        TestProvider(organisation_id).update_verification()
+        info, warn = TestProvider(organisation_id).update_verification()
+        if current.auth.s3_has_role("ORG_GROUP_ADMIN"):
+            if info:
+                current.response.information = info
+            if warn:
+                current.response.warning = warn
 
 # -------------------------------------------------------------------------
 def org_organisation_resource(r, tablename):
@@ -166,22 +177,15 @@ def org_organisation_controller(**attr):
     s3 = current.response.s3
     settings = current.deployment_settings
 
+    # Is OrgGroupAdmin?
+    auth = current.auth
+    is_org_group_admin = auth.s3_has_role("ORG_GROUP_ADMIN")
+
     # Enable bigtable features
     settings.base.bigtable = True
 
     # Add custom components
-    current.s3db.add_components("org_organisation",
-                                hrm_human_resource = {"name": "managers",
-                                                      "joinby": "organisation_id",
-                                                      "filterby": {"org_contact": True,
-                                                                   "status": 1, # active
-                                                                   },
-                                                      },
-                                org_verification = {"joinby": "organisation_id",
-                                                    "multiple": False,
-                                                    },
-                                org_commission = "organisation_id",
-                                )
+    TestProvider.add_components()
 
     # Custom prep
     standard_prep = s3.prep
@@ -189,12 +193,9 @@ def org_organisation_controller(**attr):
         # Call standard prep
         result = standard_prep(r) if callable(standard_prep) else True
 
-        auth = current.auth
         s3db = current.s3db
 
         resource = r.resource
-
-        is_org_group_admin = auth.s3_has_role("ORG_GROUP_ADMIN")
 
         # Configure organisation tags
         configure_org_tags(resource)
@@ -387,6 +388,9 @@ def org_organisation_controller(**attr):
                                     )
 
         elif component_name == "facility":
+
+            settings.ui.open_read_first = True
+
             if r.component_id and \
                 (is_org_group_admin or \
                 record and auth.s3_has_role("ORG_ADMIN", for_pe=record.pe_id)):
@@ -421,8 +425,61 @@ def org_organisation_controller(**attr):
                                               commission_id = r.component_id,
                                               )
 
+        elif component_name == "issue":
+
+            ctable = r.component.table
+
+            # Make site_id visible
+            field = ctable.site_id
+            field.label = T("Test Station")
+            field.readable = field.writable = True
+
+            # Limit to sites of this org
+            stable = s3db.org_site
+            dbset = current.db((stable.organisation_id == r.id) & \
+                               (stable.instance_type == "org_facility"))
+            field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "org_site.site_id",
+                                                   field.represent,
+                                                   ))
+
+            # List fields
+            list_fields = ["date",
+                           "site_id",
+                           "name",
+                           "description",
+                           "status",
+                           ]
+            r.component.configure(list_fields = list_fields,
+                                  )
+
+            # Open read-view first
+            settings.ui.open_read_first = True
+
         return result
     s3.prep = prep
+
+    standard_postp = s3.postp
+    def postp(r, output):
+
+        if callable(standard_postp):
+            output = standard_postp(r, output)
+
+        component_id = r.component_id
+        if is_org_group_admin and \
+           r.component_name == "facility" and component_id and \
+           isinstance(output, dict) and "buttons" in output:
+
+            buttons = output["buttons"]
+
+            # Add a "Manage"-button to switch to facility perspective
+            manage_url = URL(c="org", f="facility", args=[component_id, "update"])
+            manage_btn = S3CRUD.crud_button(T("Manage"), _href=manage_url)
+
+            delete_btn = buttons.get("delete_btn")
+            buttons["delete_btn"] = TAG[""](manage_btn, delete_btn) \
+                                    if delete_btn else manage_btn
+        return output
+    s3.postp = postp
 
     # Custom rheader
     from ..rheaders import rlpptm_org_rheader
