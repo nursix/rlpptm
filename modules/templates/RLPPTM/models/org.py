@@ -25,7 +25,8 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("TestProviderModel",
+__all__ = ("TestProviderRequirementsModel",
+           "TestProviderModel",
            "TestStationModel"
            )
 
@@ -34,7 +35,7 @@ import datetime
 from gluon import current, Field, URL, IS_EMPTY_OR, IS_IN_SET, DIV
 from gluon.storage import Storage
 
-from core import DataModel, IS_UTC_DATE, \
+from core import BooleanRepresent, DataModel, S3Duplicate, IS_UTC_DATE, \
                  get_form_record_id, represent_option, s3_comments, \
                  s3_comments_widget, s3_date, s3_datetime, s3_meta_fields, \
                  s3_text_represent, s3_yes_no_represent
@@ -46,19 +47,25 @@ DEFAULT = lambda: None
 # =============================================================================
 # Status and Reason Options
 #
-ORGTYPE_STATUS = WorkflowOptions(("N/A", "not specified", "grey"),
-                                 ("ACCEPT", "not required", "green"),
-                                 ("N/V", "not verified", "amber"),
-                                 ("VERIFIED", "verified", "green"),
-                                 selectable = ("N/V", "VERIFIED"),
-                                 )
+# Org requirements and approval status
+ORG_RQM = WorkflowOptions(("N/A", "not specified", "grey"),
+                          ("REVISE", "Completion/Adjustment Required", "red"),
+                          ("REVIEW", "Review Pending", "amber"),
+                          ("VERIFIED", "verified", "green"),
+                          ("ACCEPT", "not required", "green"),
+                          selectable = ("REVISE", "VERIFIED"),
+                          none = "REVISE",
+                          )
 
-MGRINFO_STATUS = WorkflowOptions(("N/A", "not specified", "grey"),
-                                 ("ACCEPT", "not required", "green"),
-                                 ("REVISE", "Completion/Adjustment required", "red"),
-                                 ("COMPLETE", "complete", "green"),
-                                 )
+VERIFICATION_STATUS = WorkflowOptions(("REVISE", "Completion/Adjustment Required", "red"),
+                                      ("READY", "Ready for Review", "amber"),
+                                      ("REVIEW", "Review Pending", "amber"),
+                                      ("COMPLETE", "complete", "green"),
+                                      selectable = ("REVISE", "READY"),
+                                      none = "REVISE",
+                                      )
 
+# Commission status and reasons
 COMMISSION_STATUS = WorkflowOptions(("CURRENT", "current", "green"),
                                     ("SUSPENDED", "suspended", "amber"),
                                     ("REVOKED", "revoked", "black"),
@@ -71,6 +78,13 @@ COMMISSION_REASON = WorkflowOptions(("N/V", "Documentation/Verification incomple
                                     selectable = ("OVERRIDE",),
                                     )
 
+# Site requirements and approval status
+SITE_RQM = WorkflowOptions(("REVISE", "Completion/Adjustment Required", "red"),
+                           ("REVIEW", "Review Pending", "amber"),
+                           ("APPROVED", "Approved##actionable", "green"),
+                           none = "REVISE",
+                           )
+
 APPROVAL_STATUS = WorkflowOptions(("REVISE", "Completion/Adjustment Required", "red"),
                                   ("READY", "Ready for Review", "amber"),
                                   ("REVIEW", "Review Pending", "amber"),
@@ -79,12 +93,7 @@ APPROVAL_STATUS = WorkflowOptions(("REVISE", "Completion/Adjustment Required", "
                                   none = "REVISE",
                                   )
 
-REVIEW_STATUS = WorkflowOptions(("REVISE", "Completion/Adjustment Required", "red"),
-                                ("REVIEW", "Review Pending", "amber"),
-                                ("APPROVED", "Approved##actionable", "green"),
-                                none = "REVISE",
-                                )
-
+# Public-status and reasons
 PUBLIC_STATUS = WorkflowOptions(("N", "No", "grey"),
                                 ("Y", "Yes", "green"),
                                 )
@@ -95,6 +104,60 @@ PUBLIC_REASON = WorkflowOptions(("COMMISSION", "Provider not currently commissio
                                 ("OVERRIDE", "set by Administrator"),
                                 selectable = ("OVERRIDE",),
                                 )
+
+# =============================================================================
+class TestProviderRequirementsModel(DataModel):
+    """
+        Approval characteristics/requirements for types of test providers
+    """
+
+    names = ("org_requirements",
+             )
+
+    def model(self):
+
+        T = current.T
+
+        flag_represent = BooleanRepresent(icons=True, flag=True)
+
+        # ---------------------------------------------------------------------
+        # Requirements
+        #
+        tablename = "org_requirements"
+        self.define_table(tablename,
+                          self.org_organisation_type_id(),
+                          Field("commercial", "boolean",
+                                label = T("Commercial Providers"),
+                                default = False,
+                                represent = flag_represent,
+                                ),
+                          Field("natpersn", "boolean",
+                                label = T("Natural Persons"),
+                                default = False,
+                                represent = flag_represent,
+                                ),
+                          Field("verifreq", "boolean",
+                                label = T("Organization Type verification required"),
+                                default = False,
+                                represent = flag_represent,
+                                ),
+                          Field("mpavreq", "boolean",
+                                label = T("MPAV Qualification verification required"),
+                                default = True,
+                                represent = flag_represent,
+                                ),
+                          Field("minforeq", "boolean",
+                                label = T("Manager Information required"),
+                                default = False,
+                                represent = flag_represent,
+                                ),
+                          *s3_meta_fields())
+
+        # Table configuration
+        self.configure(tablename,
+                       deduplicate = S3Duplicate(primary=("organisation_type_id",),
+                                                 ),
+                       )
 
 # =============================================================================
 class TestProviderModel(DataModel):
@@ -128,31 +191,56 @@ class TestProviderModel(DataModel):
                            readable = False,
                            writable = False,
                            ),
+                     # Workflow status
+                     Field("status",
+                           label = T("Processing Status"),
+                           default = "REVISE",
+                           requires = IS_IN_SET(VERIFICATION_STATUS.selectable(True),
+                                                zero = None,
+                                                sort = False,
+                                                ),
+                           represent = VERIFICATION_STATUS.represent,
+                           readable = True,
+                           writable = False,
+                           ),
                      # Whether organisation type is verified
                      Field("orgtype",
-                           label = T("Type Verification"),
+                           label = T("Organization Type verification"),
                            default = "N/A",
-                           requires = IS_IN_SET(ORGTYPE_STATUS.selectable(True),
+                           requires = IS_IN_SET(ORG_RQM.selectable(True),
                                                 sort = False,
                                                 zero = None,
                                                 ),
-                           represent = ORGTYPE_STATUS.represent,
+                           represent = ORG_RQM.represent,
+                           readable = True,
+                           writable = False,
+                           ),
+                     # Whether organisation is qualified for MPAV
+                     Field("mpav",
+                           label = T("MPAV Qualification verification"),
+                           default = "N/A",
+                           requires = IS_IN_SET(ORG_RQM.selectable(True),
+                                                sort = False,
+                                                zero = None,
+                                                ),
+                           represent = ORG_RQM.represent,
                            readable = True,
                            writable = False,
                            ),
                      # Whether manager information is complete and verified
                      Field("mgrinfo",
-                           label = T("Test Station Manager Information"),
+                           label = T("Documentation Test Station Manager"),
                            default = "N/A",
-                           requires = IS_IN_SET(MGRINFO_STATUS.selectable(),
+                           requires = IS_IN_SET(ORG_RQM.selectable(),
                                                 sort = False,
                                                 zero = None,
                                                 ),
-                           represent = MGRINFO_STATUS.represent,
+                           represent = ORG_RQM.represent,
                            readable = True,
                            writable = False,
                            ),
                      # Overall accepted-status
+                     # TODO drop when migrated
                      Field("accepted", "boolean",
                            label = T("Verified"),
                            default = False,
@@ -301,7 +389,7 @@ class TestProviderModel(DataModel):
         if "status" in form_vars:
             # CURRENT only allowed when org verification valid
             if status == "CURRENT" and \
-               not TestProvider(organisation_id).verification.accepted:
+               not TestProvider(organisation_id).verified:
                 form.errors["status"] = T("Organization not verified")
 
             # CURRENT/SUSPENDED only allowed before end date
@@ -357,7 +445,7 @@ class TestProviderModel(DataModel):
         today = current.request.utcnow.date()
 
         update = {}
-        if provider.verification.accepted:
+        if provider.verified:
             if record.end_date and record.end_date < today:
                 update["status"] = "EXPIRED"
                 update["status_reason"] = None
@@ -449,26 +537,27 @@ class TestStationModel(DataModel):
                            writable = False,
                            ),
                      # MPAV qualification
+                     # TODO drop when migrated
                      Field("mpav",
                            label = T("MPAV Qualification"),
                            default = "REVISE",
-                           requires = IS_IN_SET(REVIEW_STATUS.selectable(True),
+                           requires = IS_IN_SET(SITE_RQM.selectable(True),
                                                 zero = None,
                                                 sort = False,
                                                 ),
-                           represent = REVIEW_STATUS.represent,
-                           readable = True,
+                           represent = SITE_RQM.represent,
+                           readable = False,
                            writable = False,
                            ),
                      # Hygiene concept
                      Field("hygiene",
                            label = T("Hygiene Plan"),
                            default = "REVISE",
-                           requires = IS_IN_SET(REVIEW_STATUS.selectable(True),
+                           requires = IS_IN_SET(SITE_RQM.selectable(True),
                                                 zero = None,
                                                 sort = False,
                                                 ),
-                           represent = REVIEW_STATUS.represent,
+                           represent = SITE_RQM.represent,
                            readable = True,
                            writable = False,
                            ),
@@ -476,11 +565,11 @@ class TestStationModel(DataModel):
                      Field("layout",
                            label = T("Facility Layout Plan"),
                            default = "REVISE",
-                           requires = IS_IN_SET(REVIEW_STATUS.selectable(True),
+                           requires = IS_IN_SET(SITE_RQM.selectable(True),
                                                 zero = None,
                                                 sort = False,
                                                 ),
-                           represent = REVIEW_STATUS.represent,
+                           represent = SITE_RQM.represent,
                            readable = True,
                            writable = False,
                            ),
@@ -540,19 +629,21 @@ class TestStationModel(DataModel):
                            represent = APPROVAL_STATUS.represent,
                            writable = False,
                            ),
+                     # TODO drop when migrated
                      Field("mpav",
                            label = T("MPAV Qualification"),
-                           represent = REVIEW_STATUS.represent,
+                           represent = SITE_RQM.represent,
+                           readable = False,
                            writable = False,
                            ),
                      Field("hygiene",
                            label = T("Hygiene Plan"),
-                           represent = REVIEW_STATUS.represent,
+                           represent = SITE_RQM.represent,
                            writable = False,
                            ),
                      Field("layout",
                            label = T("Facility Layout Plan"),
-                           represent = REVIEW_STATUS.represent,
+                           represent = SITE_RQM.represent,
                            writable = False,
                            ),
                      Field("public",
@@ -610,7 +701,6 @@ class TestStationModel(DataModel):
         """
 
         return ("status",
-                "mpav",
                 "hygiene",
                 "layout",
                 "public",
@@ -747,6 +837,18 @@ class TestProvider:
 
     # -------------------------------------------------------------------------
     @property
+    def verified(self):
+        """
+            Whether the verification of this provider is complete
+
+            Returns:
+                bool
+        """
+
+        return self.verification.status == "COMPLETE"
+
+    # -------------------------------------------------------------------------
+    @property
     def current_commission(self):
         """
             The current commission record, i.e.
@@ -782,11 +884,10 @@ class TestProvider:
     @property
     def types(self):
         """
-            The types and corresponding type tags for the organisation type
-            of this provider
+            The organisation types and corresponding requirements for this provider
 
             Returns:
-                dict {type_id: {tag: value}} with all current types and tags
+                dict {type_id: requirements}
         """
 
         types = self._types
@@ -798,26 +899,34 @@ class TestProvider:
             s3db = current.s3db
 
             ltable = s3db.org_organisation_organisation_type
-            ttable = s3db.org_organisation_type_tag
+            rtable = s3db.org_requirements
 
-            left = ttable.on((ttable.organisation_type_id == ltable.organisation_type_id) & \
-                             (ttable.deleted == False))
+            left = rtable.on((rtable.organisation_type_id == ltable.organisation_type_id) & \
+                             (rtable.deleted == False))
             query = (ltable.organisation_id == self.organisation_id) & \
                     (ltable.deleted == False)
             rows = db(query).select(ltable.organisation_type_id,
-                                    ttable.tag,
-                                    ttable.value,
+                                    rtable.id,
+                                    rtable.commercial,
+                                    rtable.minforeq,
+                                    rtable.mpavreq,
+                                    rtable.verifreq,
                                     left=left,
                                     )
+
+            # Default provider requirements
+            defaults = Storage(commercial = False,
+                               minforeq = False,
+                               verifreq = False,
+                               mpavreq = True,
+                               )
+
             for row in rows:
-                tag = row[ttable]
-                type_id = row[ltable].organisation_type_id
-                if type_id not in types:
-                    tags = types[type_id] = {}
+                requirements = row[rtable]
+                if requirements.id:
+                    types[row[ltable].organisation_type_id] = requirements
                 else:
-                    tags = types[type_id]
-                if tag.tag:
-                    tags[tag.tag] = tag.value
+                    types[row[ltable].organisation_type_id] = defaults
 
             self._types = types
 
@@ -834,7 +943,7 @@ class TestProvider:
         """
 
         types = self.types
-        return any(types[t].get("Commercial") == "Y" for t in types)
+        return any(types[t].commercial for t in types)
 
     # -------------------------------------------------------------------------
     @property
@@ -847,7 +956,20 @@ class TestProvider:
         """
 
         types = self.types
-        return any(types[t].get("VERIFREQ") == "Y" for t in types)
+        return any(types[t].verifreq for t in types)
+
+    # -------------------------------------------------------------------------
+    @property
+    def mpavreq(self):
+        """
+            Whether MPAV qualification verification is required for this provider
+
+            Returns:
+                bool
+        """
+
+        types = self.types
+        return any(types[t].mpavreq for t in types)
 
     # -------------------------------------------------------------------------
     @property
@@ -860,7 +982,7 @@ class TestProvider:
         """
 
         types = self.types
-        return any(types[t].get("MINFOREQ") == "Y" for t in types)
+        return any(types[t].minforeq for t in types)
 
     # -------------------------------------------------------------------------
     # Instance methods
@@ -884,9 +1006,10 @@ class TestProvider:
 
         verification = current.db(query).select(table.id,
                                                 table.dhash,
-                                                table.mgrinfo,
+                                                table.status,
                                                 table.orgtype,
-                                                table.accepted,
+                                                table.mpav,
+                                                table.mgrinfo,
                                                 limitby = (0, 1),
                                                 ).first()
         return verification
@@ -902,17 +1025,27 @@ class TestProvider:
         """
 
         if self.types:
-            orgtype = "N/V" if self.verifreq else "ACCEPT"
+            orgtype = "REVISE" if self.verifreq else "ACCEPT"
+            mpav = "REVISE" if self.mpavreq else "ACCEPT"
         else:
             orgtype = "N/A"
+            mpav = "REVISE"
+
         mgrinfo = self.check_mgrinfo() if self.minforeq else "ACCEPT"
 
-        accepted = orgtype in ("ACCEPT", "VERIFIED") and \
-                   mgrinfo in ("ACCEPT", "COMPLETE")
+        review = (orgtype, mpav, mgrinfo)
 
-        return {"orgtype": orgtype,
+        if all(v in ("VERIFIED", "ACCEPT") for v in review):
+            status = "COMPLETE"
+        elif any(v == "REVIEW" for v in review):
+            status = "REVIEW"
+        else:
+            status = "REVISE"
+
+        return {"status": status,
+                "orgtype": orgtype,
+                "mpav": mpav,
                 "mgrinfo": mgrinfo,
-                "accepted": accepted,
                 }
 
     # -----------------------------------------------------------------------------
@@ -1045,7 +1178,7 @@ class TestProvider:
             complete and verified/accepted
 
             Returns:
-                status N/A|REVISE|COMPLETE
+                status N/A|REVISE|REVIEW|COMPLETE
 
             Notes:
                 - does not evaluate whether manager info is required
@@ -1156,24 +1289,36 @@ class TestProvider:
                             # Data changed by someone else => previous
                             # approval of documentation no longer valid
                             reset_all(doc_tags)
-                            accepted = False
 
-                # Check approval status for documentation
-                if accepted and all(tag.value == "APPROVED" for tag in doc_tags):
-                    if not verified:
-                        # Set the verification hash
-                        dsh_tag.insert(human_resource_id = row[htable.id],
-                                       tag = "DHASH",
-                                       value = vhash,
-                                       )
-                    # If at least one record is acceptable, the manager-data
-                    # status of the organisation can be set as complete
-                    status = "COMPLETE"
-                else:
-                    # Remove the verification hash, if any (unapproved records
-                    # do not need to be integrity-checked)
-                    if verified:
-                        dhash.delete_record()
+                # Determine overall approval status for the manager documentation
+                if accepted:
+                    if all(tag.value == "APPROVED" for tag in doc_tags):
+                        # If at least one manager record is acceptable, the
+                        # manager-data status of the organisation can be set
+                        # as complete
+                        status = "VERIFIED"
+                    else:
+                        accepted = False
+
+                    if status != "VERIFIED" and \
+                       all(tag.value != "REJECT" for tag in doc_tags):
+                        # If at least one manager record is complete and none
+                        # of its documents have been rejected, the overall
+                        # manager-data status of the organisation can be set
+                        # to REVIEW, i.e. assuming that the relevant documents
+                        # have been handed in for review, but not reviewed yet
+                        status = "REVIEW"
+
+                # Update verification hash
+                if not verified and accepted:
+                    # Add verification hash
+                    dsh_tag.insert(human_resource_id = row[htable.id],
+                                   tag = "DHASH",
+                                   value = vhash,
+                                   )
+                elif verified and not accepted:
+                    # Remove verification hash
+                    dhash.delete_record()
 
         return status
 
@@ -1191,32 +1336,58 @@ class TestProvider:
 
         update = self.vhash()[0]
         if update:
-            accepted = update["accepted"]
+            if "status" in update:
+                status = update["status"]
         else:
             update = {}
+            status = verification.status
 
+            # Update orgtype
             orgtype = verification.orgtype
             if self.verifreq:
                 if orgtype == "ACCEPT":
-                    orgtype = "N/V"
+                    orgtype = "REVIEW"
             else:
-                if orgtype == "N/V":
+                if orgtype == "REVIEW":
                     orgtype = "ACCEPT"
+            if orgtype == "REVISE" and status == "READY":
+                orgtype = "REVIEW"
             if orgtype != verification.orgtype:
                 update["orgtype"] = orgtype
 
+            # Update mpav
+            mpav = verification.mpav
+            if self.mpavreq:
+                if mpav == "ACCEPT":
+                    mpav = "REVIEW"
+            else:
+                if mpav == "REVIEW":
+                    mpav = "ACCEPT"
+            if mpav == "REVISE" and status == "READY":
+                mpav = "REVIEW"
+            if mpav != verification.mpav:
+                update["mpav"] = mpav
+
+            # Update mgrinfo
             mgrinfo = self.check_mgrinfo() if self.minforeq else "ACCEPT"
             if mgrinfo != verification.mgrinfo:
                 update["mgrinfo"] = mgrinfo
 
-            accepted = orgtype in ("ACCEPT", "VERIFIED") and \
-                       mgrinfo in ("ACCEPT", "COMPLETE")
-            if accepted != verification.accepted:
-                update["accepted"] = accepted
+            # Determine overall status
+            review = (orgtype, mpav, mgrinfo)
+            if all(v in ("VERIFIED", "ACCEPT") for v in review):
+                status = "COMPLETE"
+            elif any(v == "REVIEW" for v in review):
+                status = "REVIEW"
+            else:
+                status = "REVISE"
+            if status != verification.status:
+                update["status"] = status
 
         if update:
             verification.update_record(**update)
-        if accepted:
+
+        if status == "COMPLETE":
             info, warn = self.reinstate_commission("N/V")
         else:
             info, warn = self.suspend_commission("N/V")
@@ -1552,38 +1723,67 @@ class TestProvider:
 
         component = resource.components.get("verification")
         if not component:
-            return
+            return None
         table = component.table
+
+        visible = []
 
         if record_id:
             is_approver = role == "approver"
 
             provider = cls(record_id)
 
+            # Overall status
+            field = table.status
+            current_value = provider.verification.status
+            options = VERIFICATION_STATUS.selectable(True)
+            if current_value not in dict(options):
+                field.writable = False
+            else:
+                field.requires = IS_IN_SET(options, sort=False, zero=None)
+                field.writable = not is_approver
+
+            # Organisation type verification (if required)
             field = table.orgtype
             if provider.verifreq:
-                # Configure selectable options
                 current_value = provider.verification.orgtype
-                options = ORGTYPE_STATUS.selectable(True)
+                options = ORG_RQM.selectable(True, current_value=current_value)
                 if current_value not in dict(options):
                     field.writable = False
                 else:
-                    field.requires = IS_IN_SET(options,
-                                               sort = False,
-                                               zero = None,
-                                               )
+                    field.requires = IS_IN_SET(options, sort=False, zero=None)
                     field.writable = is_approver
             else:
                 field.readable = False
 
-            field = table.mgrinfo # not manually writable
+            # MPAV Qualification verification (if required)
+            field = table.mpav
+            if provider.mpavreq:
+                current_value = provider.verification.mpav
+                options = ORG_RQM.selectable(True, current_value=current_value)
+                if current_value not in dict(options):
+                    field.writable = False
+                else:
+                    field.requires = IS_IN_SET(options, sort=False, zero=None)
+                    field.writable = is_approver
+            else:
+                field.readable = False
+
+            # Manager Info (if required, always read-only)
+            field = table.mgrinfo
             if not provider.minforeq:
                 field.readable = False
 
+            for fn in ("status", "orgtype", "mpav", "mgrinfo"):
+                field = table[fn]
+                if field.readable or field.writable:
+                    visible.append("verification.%s" % fn)
         else:
-            for fn in ("orgtype", "mgrinfo"):
+            for fn in ("status", "orgtype", "mpav", "mgrinfo"):
                 field = table[fn]
                 field.readable = field.writable = False
+
+        return visible if visible else None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1618,7 +1818,7 @@ class TestProvider:
 
             # Has the provider verification been accepted?
             if record_id:
-                accepted = TestProvider(record_id).verification.accepted
+                accepted = TestProvider(record_id).verified
             else:
                 accepted = False
 
@@ -1828,7 +2028,6 @@ class TestStation:
         return current.db(query).select(table.id,
                                         table.dhash,
                                         table.status,
-                                        table.mpav,
                                         table.hygiene,
                                         table.layout,
                                         table.public,
@@ -1960,7 +2159,8 @@ class TestStation:
 
         # Check against the current dhash
         dhash = approval.dhash
-        if approval.status == "APPROVED" and dhash and dhash != vhash and \
+        status = approval.status
+        if status == "APPROVED" and dhash and dhash != vhash and \
            not current.auth.s3_has_role("ORG_GROUP_ADMIN"):
 
             # Relevant data have changed
@@ -1970,16 +2170,14 @@ class TestStation:
 
             # Status update:
             # - details that were previously approved, must be reviewed
-            # - overall status becomes review, unless there are details under revision
-            status = "REVIEW"
-            for t in ("mpav", "hygiene", "layout"):
+            status = approval.status
+            for t in ("hygiene", "layout"):
                 value = approval[t]
                 if value == "APPROVED":
                     update[t] = "REVIEW"
-                elif value == "REVISE":
-                    status = "REVISE"
-            update["status"] = status
-
+                    status = "REVIEW"
+            if status != approval.status:
+                update["status"] = status
         else:
             update = None
 
@@ -2000,7 +2198,7 @@ class TestStation:
         tags = self.approval
         update, notify = {}, False
 
-        SITE_REVIEW = ("mpav", "hygiene", "layout")
+        SITE_REVIEW = ("hygiene", "layout")
         all_tags = lambda v: all(tags[k] == v for k in SITE_REVIEW)
         any_tags = lambda v: any(tags[k] == v for k in SITE_REVIEW)
 
@@ -2237,10 +2435,8 @@ class TestStation:
             data["advice"] = advice if advice else "-"
 
             # Add explanations for relevant requirements
-            review = (("mpav", "FacilityMPAVRequirements"),
-                      ("hygiene", "FacilityHygienePlanRequirements"),
+            review = (("hygiene", "FacilityHygienePlanRequirements"),
                       ("layout", "FacilityLayoutRequirements"),
-                      #("MGRINFO", "TestStationManagerRequirements"),
                       )
             ctable = s3db.cms_post
             ltable = s3db.cms_post_module
@@ -2316,7 +2512,7 @@ class TestStation:
 
         if public == "Y":
             # Update only to "Y" if fully approved
-            for tag in ("status", "mpav", "hygiene", "layout"):
+            for tag in ("status", "hygiene", "layout"):
                 query &= (table[tag] == "APPROVED")
             # Update only those which match the specified reason
             if isinstance(reason, (tuple, list, set)):
@@ -2444,7 +2640,7 @@ class TestStation:
         is_approver = role == "approver"
 
         # Configure review-tags
-        review_tags = ("mpav", "hygiene", "layout")
+        review_tags = ("hygiene", "layout")
         for fn in review_tags:
             field = ctable[fn]
             field.default = "REVISE"

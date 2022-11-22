@@ -10,10 +10,10 @@ from gluon import current, URL, \
                   DIV, IS_EMPTY_OR, IS_IN_SET, IS_NOT_EMPTY, TAG
 
 from core import FS, ICON, IS_ONE_OF, S3CRUD, S3Represent, \
-                 get_filter_options, get_form_record_id, s3_fieldmethod
+                 get_filter_options, get_form_record_id
 
 from ..models.org import TestProvider, TestStation, \
-                         MGRINFO_STATUS, PUBLIC_REASON
+                         VERIFICATION_STATUS, PUBLIC_REASON
 
 # -------------------------------------------------------------------------
 def add_org_tags():
@@ -248,6 +248,9 @@ def org_organisation_controller(**attr):
                 from ..helpers import is_org_group
 
                 # Custom form
+                subheadings = {"name": T("Organization"),
+                               "emailcontact": T("Contact Information"),
+                               }
 
                 is_test_station = record and is_org_group(record.id, TESTSTATIONS)
                 if is_test_station:
@@ -256,7 +259,8 @@ def org_organisation_controller(**attr):
                     acronym, logo = "acronym", "logo"
 
                 if is_org_group_admin:
-                    # Show organisation type(s) and verification tag as required
+
+                    # Show organisation type(s) as required
                     types = S3SQLInlineLink("organisation_type",
                                             field = "organisation_type_id",
                                             search = False,
@@ -264,14 +268,6 @@ def org_organisation_controller(**attr):
                                             multiple = settings.get_org_organisation_types_multiple(),
                                             widget = "multiselect",
                                             )
-                    if is_test_station and TestProvider(record.id).verifreq:
-                        TestProvider.configure_verification(r.resource,
-                                                            role = "approver",
-                                                            record_id = record.id,
-                                                            )
-                        type_check = "verification.orgtype"
-                    else:
-                        type_check = None
 
                     # Show org groups
                     if record:
@@ -292,6 +288,7 @@ def org_organisation_controller(**attr):
                                              )
 
                     # Show projects
+                    subheadings["project"] = T("Administrative")
                     projects = S3SQLInlineLink("project",
                                                field = "project_id",
                                                label = T("Project Partner for"),
@@ -300,21 +297,47 @@ def org_organisation_controller(**attr):
 
                     # Show delivery-tag
                     delivery = "delivery.value"
+
+                    # Role for verification fields
+                    role = "approver"
                 else:
-                    # Test provider cannot change the name of their organisation
+
                     if is_test_station:
                         table = resource.table
+
+                        # Test provider cannot change the name of their organisation
                         field = table.name
                         field.writable = False
 
-                    # Administrative fields not visible
-                    groups = projects = delivery = types = type_check = None
+                        # Show type(s) read-only
+                        types = S3SQLInlineLink("organisation_type",
+                                                field = "organisation_type_id",
+                                                search = False,
+                                                label = T("Type"),
+                                                multiple = settings.get_org_organisation_types_multiple(),
+                                                widget = "multiselect",
+                                                readonly = True,
+                                                )
+                    else:
+                        types = None
+
+                    groups = projects = delivery = None
+
+                    # Role for verification fields
+                    role = "applicant"
+
+                if is_test_station:
+                    verification = TestProvider.configure_verification(r.resource,
+                                                                       role = role,
+                                                                       record_id = record.id,
+                                                                       )
+                else:
+                    verification = None
 
                 crud_fields = ["name",
                                acronym,
                                groups,
                                types,
-                               type_check,
                                projects,
                                delivery,
                                S3SQLInlineComponent(
@@ -333,6 +356,10 @@ def org_organisation_controller(**attr):
                                "comments",
                                ]
 
+                if verification:
+                    crud_fields.extend(verification)
+                    subheadings[verification[0].replace(".", "_")] = T("Documentation / Verification")
+
                 # Configure post-process to add/update verification
                 crud_form = S3SQLCustomForm(*crud_fields,
                                             postprocess = organisation_postprocess,
@@ -347,6 +374,7 @@ def org_organisation_controller(**attr):
                                              ),
                                   ]
                 if is_org_group_admin:
+                    verification_filter_opts = ("REVISE", "REVIEW", "COMPLETE")
                     filter_widgets.extend([
                         OptionsFilter(
                             "group__link.group_id",
@@ -359,16 +387,24 @@ def org_organisation_controller(**attr):
                             options = lambda: get_filter_options("org_organisation_type"),
                             ),
                         OptionsFilter(
-                            "verification.mgrinfo",
-                            label = T("TestSt Manager##abbr"),
-                            options = OrderedDict(MGRINFO_STATUS.labels),
+                            "verification.status",
+                            label = T("Documentation / Verification"),
+                            options = OrderedDict(VERIFICATION_STATUS.selectable(values=verification_filter_opts)),
                             sort = False,
                             hidden = True,
                             ),
+                        #OptionsFilter(
+                        #    "verification.mgrinfo",
+                        #    label = T("TestSt Manager##abbr"),
+                        #    options = OrderedDict(ORG_RQM.labels),
+                        #    sort = False,
+                        #    hidden = True,
+                        #    ),
                         ])
 
                 resource.configure(crud_form = crud_form,
                                    filter_widgets = filter_widgets,
+                                   subheadings = subheadings,
                                    )
 
             # Custom list fields
@@ -385,7 +421,7 @@ def org_organisation_controller(**attr):
                 list_fields.insert(0, (T("Organization Group"), "group__link.group_id"))
                 list_fields.append((T("Email"), "email.value"))
             r.resource.configure(list_fields = list_fields,
-                                    )
+                                 )
 
         elif component_name == "facility":
 
@@ -500,25 +536,10 @@ def org_organisation_type_resource(r, tablename):
                                                       "filterby": {"tag": "OrgGroup"},
                                                       "multiple": False,
                                                       },
-                                                     # Commercial provider type
-                                                     {"name": "commercial",
-                                                      "joinby": "organisation_type_id",
-                                                      "filterby": {"tag": "Commercial"},
-                                                      "multiple": False,
-                                                      },
-                                                     # Manager info required
-                                                     {"name": "minforeq",
-                                                      "joinby": "organisation_type_id",
-                                                      "filterby": {"tag": "MINFOREQ"},
-                                                      "multiple": False,
-                                                      },
-                                                     # Type verification required
-                                                     {"name": "verifreq",
-                                                      "joinby": "organisation_type_id",
-                                                      "filterby": {"tag": "VERIFREQ"},
-                                                      "multiple": False,
-                                                      },
                                                      ),
+                        org_requirements = {"joinby": "organisation_type_id",
+                                            "multiple": False,
+                                            },
                         )
 
     if r.tablename == "org_organisation_type":
@@ -542,10 +563,6 @@ def org_organisation_type_resource(r, tablename):
             field.label = T("Organization Group")
             field.requires = IS_EMPTY_OR(IS_IN_SET(options))
 
-        # Configure binary tag representation
-        from ..helpers import configure_binary_tags
-        configure_binary_tags(r.resource, ("commercial", "verifreq", "minforeq"))
-
         # Expose orderable item categories
         ltable = s3db.req_requester_category
         field = ltable.item_category_id
@@ -555,9 +572,11 @@ def org_organisation_type_resource(r, tablename):
         from core import S3SQLCustomForm, S3SQLInlineLink
         crud_form = S3SQLCustomForm("name",
                                     "group.value",
-                                    (T("Commercial Providers"), "commercial.value"),
-                                    (T("Verification required"), "verifreq.value"),
-                                    (T("Manager Information required"), "minforeq.value"),
+                                    "requirements.commercial",
+                                    "requirements.natpersn",
+                                    "requirements.verifreq",
+                                    "requirements.mpavreq",
+                                    "requirements.minforeq",
                                     S3SQLInlineLink("item_category",
                                                     field = "item_category_id",
                                                     label = T("Orderable Item Categories"),
@@ -569,7 +588,7 @@ def org_organisation_type_resource(r, tablename):
         list_fields = ["id",
                        "name",
                        "group.value",
-                       (T("Commercial Providers"), "commercial.value"),
+                       "requirements.commercial",
                        (T("Orderable Item Categories"), "requester_category.item_category_id"),
                        "comments",
                        ]
@@ -811,29 +830,9 @@ def configure_facility_form(r, is_org_group_admin=False):
                    }
 
     if visible_tags:
-
-        table = fresource.table
-        table.mgrinfo = s3_fieldmethod("mgrinfo", facility_mgrinfo,
-                                       represent = MGRINFO_STATUS.represent,
-                                       )
-        extra_fields = ["organisation_id$verification.mgrinfo"]
-
-        if is_org_group_admin:
-            # Include MGRINFO status
-            from core import S3SQLVirtualField
-            crud_fields.append(S3SQLVirtualField("mgrinfo",
-                                                 label = T("Documentation Test Station Manager"),
-                                                 ))
-            fname = "mgrinfo"
-        else:
-            fname = visible_tags[0].replace(".", "_")
-
         # Append workflow tags in separate section
-        subheadings[fname] = T("Approval and Publication")
+        subheadings[visible_tags[0].replace(".", "_")] = T("Approval and Publication")
         crud_fields.extend(visible_tags)
-
-    else:
-        extra_fields = None
 
     # Configure postprocess to add/update workflow statuses
     crud_form = S3SQLCustomForm(*crud_fields,
@@ -842,7 +841,6 @@ def configure_facility_form(r, is_org_group_admin=False):
 
     s3db.configure("org_facility",
                    crud_form = crud_form,
-                   extra_fields = extra_fields,
                    subheadings = subheadings,
                    )
 
