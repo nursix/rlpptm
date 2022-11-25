@@ -31,14 +31,16 @@ __all__ = ("TestProviderRequirementsModel",
            )
 
 import datetime
+import os
 
 from gluon import current, Field, URL, IS_EMPTY_OR, IS_IN_SET, DIV
 from gluon.storage import Storage
 
-from core import BooleanRepresent, DataModel, S3Duplicate, IS_UTC_DATE, \
-                 get_form_record_id, represent_option, s3_comments, \
-                 s3_comments_widget, s3_date, s3_datetime, s3_meta_fields, \
-                 s3_text_represent, s3_yes_no_represent
+from core import BooleanRepresent, DataModel, S3Duplicate, \
+                 get_form_record_id, represent_file, represent_option, \
+                 s3_comments, s3_comments_widget, \
+                 s3_date, s3_datetime, s3_meta_fields, \
+                 s3_text_represent
 
 from ..helpers import WorkflowOptions
 
@@ -239,20 +241,12 @@ class TestProviderModel(DataModel):
                            readable = True,
                            writable = False,
                            ),
-                     # Overall accepted-status
-                     # TODO drop when migrated
-                     Field("accepted", "boolean",
-                           label = T("Verified"),
-                           default = False,
-                           represent = s3_yes_no_represent,
-                           readable = False,
-                           writable = False,
-                           ),
                      *s3_meta_fields())
 
         # ---------------------------------------------------------------------
         # Commission
         #
+        folder = current.request.folder
         tablename = "org_commission"
         define_table(tablename,
                      organisation_id(empty=False),
@@ -291,6 +285,16 @@ class TestProviderModel(DataModel):
                                                   sort = False,
                                                   )),
                            represent = represent_option(dict(COMMISSION_REASON.labels)),
+                           ),
+                     Field("cnote", "upload",
+                           label = T("Commissioning Note"),
+                           uploadfolder = os.path.join(folder, "uploads", "commissions"),
+                           represent = represent_file("org_commission", "cnote"),
+                           writable = False,
+                           ),
+                     Field("vhash",
+                           readable = False,
+                           writable = False,
                            ),
                      s3_comments(),
                      *s3_meta_fields())
@@ -436,6 +440,8 @@ class TestProviderModel(DataModel):
                                                   table.prev_status,
                                                   table.status,
                                                   table.status_reason,
+                                                  table.cnote,
+                                                  table.vhash,
                                                   limitby = (0, 1),
                                                   ).first()
         if not record:
@@ -461,8 +467,14 @@ class TestProviderModel(DataModel):
         if status_change:
             update["status_date"] = today
             update["prev_status"] = new_status
+
         if update:
             record.update_record(**update)
+
+        # Issue commissioning note
+        if record.status == "CURRENT" and not record.vhash:
+            from ..commission import ProviderCommission
+            ProviderCommission(record.id).issue_note()
 
         if status_change:
             # Deactivate/reactivate all test stations
@@ -534,19 +546,6 @@ class TestStationModel(DataModel):
                                                 ),
                            represent = APPROVAL_STATUS.represent,
                            readable = True,
-                           writable = False,
-                           ),
-                     # MPAV qualification
-                     # TODO drop when migrated
-                     Field("mpav",
-                           label = T("MPAV Qualification"),
-                           default = "REVISE",
-                           requires = IS_IN_SET(SITE_RQM.selectable(True),
-                                                zero = None,
-                                                sort = False,
-                                                ),
-                           represent = SITE_RQM.represent,
-                           readable = False,
                            writable = False,
                            ),
                      # Hygiene concept
@@ -629,7 +628,7 @@ class TestStationModel(DataModel):
                            represent = APPROVAL_STATUS.represent,
                            writable = False,
                            ),
-                     # TODO drop when migrated
+                     # Retained since relevant in historic records:
                      Field("mpav",
                            label = T("MPAV Qualification"),
                            represent = SITE_RQM.represent,
@@ -1487,6 +1486,11 @@ class TestProvider:
                              modified_on = table.modified_on,
                              )
 
+            # Issue any missing commissioning notes
+            from ..commission import ProviderCommission
+            for commission_id in commission_ids:
+                ProviderCommission(commission_id).issue_note()
+
             msg = self.notify_commission_change(status = "CURRENT",
                                                 reason = reason,
                                                 commission_ids = commission_ids,
@@ -1828,10 +1832,16 @@ class TestProvider:
                 # Existing commission, editable if current or suspended
                 editable = commission.status in ("CURRENT", "SUSPENDED")
 
-                # Allow to keep the original commission date
+                # Dates are not editable once commission has been issued
                 field = table.date
-                field.requires = IS_UTC_DATE(minimum=commission.date)
-                field.widget.minimum = commission.date
+                field.writable = False
+                field = table.end_date
+                field.writable = False
+
+                # Allow to keep the original commission date
+                #field = table.date
+                #field.requires = IS_UTC_DATE(minimum=commission.date)
+                #field.widget.minimum = commission.date
             else:
                 # List view or new commission, always editable
                 editable = True
