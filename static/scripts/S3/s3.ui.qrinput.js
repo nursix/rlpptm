@@ -128,12 +128,14 @@
                         dialog.dialog('open');
                         scanner = new QrScanner(videoInput.get(0),
                             function(result) {
+                                scanner.stop();
                                 videoInput.hide();
                                 success.show();
+                                window.navigator.vibrate(100);
                                 $el.val(result).trigger('change' + self.eventNamespace);
                                 setTimeout(function() {
                                     dialog.dialog('close');
-                                }, 1000);
+                                }, 400);
                             },
                             function( /* error */ ) {
                                 // TODO handle error
