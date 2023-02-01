@@ -54,11 +54,11 @@ class S3MainMenu(default.S3MainMenu):
                                           ),
                    restrict=("SHELTER_MANAGER", "SHELTER_READER"),
                    ),
-                MM("Reception Centers", c="cr", f=("reception_center",
-                                                   "reception_center_status",
-                                                   ),
-                   restrict=("AFA_MANAGER", "AFA_READER"),
-                   ),
+                MM("Reception Centers", c="cr", f=("reception_center", "reception_center_status"),
+                   restrict=("AFA_MANAGER", "AFA_READER"), link=False)(
+                    MM("Overview", f="reception_center", m="overview"),
+                    MM("Facilities", f="reception_center"),
+                    ),
                 MM("Newsletters", c="cms", f="read_newsletter"),
                 ]
 
@@ -198,8 +198,9 @@ class S3OptionsMenu(default.S3OptionsMenu):
         if current.request.function in rc_functions:
             # Reception center perspective
             menu = M(c="cr")(
+                        M("Overview", f="reception_center", m="overview"),
                         M("Facilities", f="reception_center")(
-                            M("Create", m="create"),
+                            M("Create Facility", m="create"),
                             M("Map", m="map"),
                             ),
                         M("Statistics", link=False)(
