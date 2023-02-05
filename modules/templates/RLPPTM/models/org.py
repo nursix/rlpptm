@@ -1146,7 +1146,8 @@ class TestProvider:
         vhash = get_dhash([types])
 
         # Check the current hash to detect relevant changes
-        if vhash != self.verification.dhash:
+        if vhash != self.verification.dhash and \
+           not current.auth.s3_has_role("ORG_GROUP_ADMIN"):
             # Data have changed
             # => reset verification to type-specific defaults
             update = self.verification_defaults()
@@ -1333,12 +1334,15 @@ class TestProvider:
 
         verification = self.verification
 
-        update = self.vhash()[0]
+        update, vhash = self.vhash()
         if update:
             if "status" in update:
                 status = update["status"]
         else:
-            update = {}
+            if vhash != verification.dash:
+                update = {"dhash": vhash}
+            else:
+                update = {}
             status = verification.status
 
             # Update orgtype
