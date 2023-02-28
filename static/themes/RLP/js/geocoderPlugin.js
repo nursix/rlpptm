@@ -101,7 +101,9 @@ $(function(){
                         });
 
                         // Reset Geocoder-option
-                        self.useGeocoder = true;
+                        $.when(pending).always(function() {
+                            self.useGeocoder = true;
+                        });
                     }
 
                     // Notify results
