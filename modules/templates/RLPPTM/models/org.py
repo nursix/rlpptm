@@ -178,6 +178,7 @@ class TestProviderModel(DataModel):
 
     names = ("org_verification",
              "org_commission",
+             "org_bsnr",
              )
 
     def model(self):
@@ -331,6 +332,30 @@ class TestProviderModel(DataModel):
             msg_record_deleted = T("Commission deleted"),
             msg_list_empty = T("No Commissions currently registered"),
             )
+
+        # ---------------------------------------------------------------------
+        # BSNR
+        #
+        tablename = "org_bsnr"
+        define_table(tablename,
+                     organisation_id(empty=False),
+                     Field("bsnr",
+                           label = T("BSNR"),
+                           writable = False,
+                           ),
+                     Field("taxid",
+                           label = T("Tax ID"),
+                           writable = False,
+                           ),
+                     *s3_meta_fields())
+
+        # Table configuration
+        configure(tablename,
+                  deduplicate = S3Duplicate(primary = ("organisation_id",
+                                                       "bsnr",
+                                                       ),
+                                            ),
+                  )
 
     #--------------------------------------------------------------------------
     @staticmethod
@@ -1793,6 +1818,7 @@ class TestProvider:
                                                         },
                                     org_representative = "organisation_id",
                                     org_commission = "organisation_id",
+                                    org_bsnr = "organisation_id",
                                     jnl_issue = "organisation_id",
                                     )
 
@@ -1965,11 +1991,10 @@ class ProviderRepresentative:
     """ Service functions for provider representative verification """
 
     # Data requirements for representatives
-    # - for future activation
-    place_of_birth_required = False
-    email_required = False
-    phone_required = False
-    address_required = False
+    place_of_birth_required = True
+    email_required = True
+    phone_required = True
+    address_required = True
     account_required = False
     role_required = False
 
