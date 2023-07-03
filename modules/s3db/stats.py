@@ -106,7 +106,7 @@ class StatsParameterModel(DataModel):
     def defaults(self):
         """ Safe defaults if module is disabled """
 
-        #dummy = S3ReusableField.dummy
+        #dummy = FieldTemplate.dummy
 
         return {"stats_parameter_represent": lambda v: "",
                 }
@@ -147,12 +147,14 @@ class StatsDataModel(DataModel):
                          6 : T("Projection"),
                          }
 
-        accuracy = S3ReusableField("accuracy", "integer",
-                                   represent = represent_option(accuracy_opts),
-                                   requires = IS_EMPTY_OR(IS_IN_SET(accuracy_opts,
-                                                                    zero=None,
-                                                                    )),
-                                   )
+        accuracy = FieldTemplate("accuracy", "integer",
+                                 represent = represent_option(accuracy_opts),
+                                 requires = IS_EMPTY_OR(
+                                                IS_IN_SET(accuracy_opts,
+                                                          zero = None,
+                                                          )),
+                                 )
+
         tablename = "stats_data"
         super_entity(tablename, "data_id",
                      sd_types,
@@ -169,11 +171,11 @@ class StatsDataModel(DataModel):
                            # IS_FLOAT_AMOUNT.represent(v, precision=2),
                            ),
                      # @ToDo: This will need to be a datetime for some usecases
-                     s3_date(label = T("Start Date"),
-                             ),
-                     s3_date("end_date",
-                             label = T("End Date"),
-                             ),
+                     DateField(label = T("Start Date"),
+                               ),
+                     DateField("end_date",
+                               label = T("End Date"),
+                               ),
                      accuracy(),
                      )
 
@@ -185,7 +187,7 @@ class StatsDataModel(DataModel):
     def defaults(self):
         """ Safe defaults if module is disabled """
 
-        dummy = S3ReusableField.dummy
+        dummy = FieldTemplate.dummy
 
         return {"stats_accuracy": dummy("accuracy"),
                 }
@@ -224,14 +226,15 @@ class StatsSourceModel(DataModel):
 
         # For use by other FKs
         represent = stats_SourceRepresent(show_link = True)
-        source_id = S3ReusableField("source_id", "reference %s" % tablename,
-                                    label = T("Source"),
-                                    represent = represent,
-                                    requires = IS_EMPTY_OR(
+        source_id = FieldTemplate("source_id", "reference %s" % tablename,
+                                  label = T("Source"),
+                                  represent = represent,
+                                  requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "stats_source.source_id",
                                                           represent,
-                                                          sort=True)),
-                                    )
+                                                          sort = True,
+                                                          )),
+                                  )
 
         #self.add_components(tablename,
         #                    stats_source_details="source_id",
@@ -258,7 +261,7 @@ class StatsSourceModel(DataModel):
     def defaults(self):
         """ Safe defaults if module is disabled """
 
-        dummy = S3ReusableField.dummy
+        dummy = FieldTemplate.dummy
 
         return {"stats_source_id": dummy("source_id"),
                 }
@@ -308,9 +311,9 @@ class StatsDemographicModel(DataModel):
                            represent = lambda v: T(v) if v is not None \
                                                     else NONE,
                            ),
-                     s3_comments("description",
-                                 label = T("Description"),
-                                 ),
+                     CommentsField("description",
+                                   label = T("Description"),
+                                   ),
                      # Link to the Demographic which is the Total, so that we can calculate percentages
                      Field("total_id", self.stats_parameter,
                            label = T("Total"),
@@ -321,7 +324,6 @@ class StatsDemographicModel(DataModel):
                                                   instance_types = ("stats_demographic",),
                                                   sort=True)),
                            ),
-                     *s3_meta_fields()
                      )
 
         # CRUD Strings
@@ -378,7 +380,7 @@ class StatsDemographicModel(DataModel):
                             IS_FLOAT_AMOUNT.represent(v, precision=2),
                            requires = IS_NOT_EMPTY(),
                            ),
-                     s3_date(empty = False),
+                     DateField(empty = False),
                      Field("end_date", "date",
                            # Just used for the year() VF
                            readable = False,
@@ -392,8 +394,7 @@ class StatsDemographicModel(DataModel):
                            ),
                      # Link to Source
                      self.stats_source_id(),
-                     s3_comments(),
-                     *s3_meta_fields()
+                     CommentsField(),
                      )
 
         # CRUD Strings
@@ -523,12 +524,12 @@ class StatsDemographicModel(DataModel):
                                                 current.messages.UNKNOWN_OPT),
                            requires = IS_IN_SET(aggregate_types),
                            ),
-                     s3_date("date",
-                             label = T("Start Date"),
-                             ),
-                     s3_date("end_date",
-                             label = T("End Date"),
-                             ),
+                     DateField("date",
+                               label = T("Start Date"),
+                               ),
+                     DateField("end_date",
+                               label = T("End Date"),
+                               ),
                      # Sum is used by Vulnerability as a fallback if we have no data at this level
                      Field("sum", "double",
                            label = T("Sum"),
@@ -566,7 +567,6 @@ class StatsDemographicModel(DataModel):
                      #Field("variance", "double",
                      #      label = T("Variance"),
                      #      ),
-                     *s3_meta_fields()
                      )
 
         # ---------------------------------------------------------------------
@@ -582,7 +582,7 @@ class StatsDemographicModel(DataModel):
     def defaults(self):
         """ Safe defaults if module is disabled """
 
-        return {"stats_demographic_id": S3ReusableField.dummy("parameter_id"),
+        return {"stats_demographic_id": FieldTemplate.dummy("parameter_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -1284,8 +1284,8 @@ class StatsImpactModel(DataModel):
                      Field("name",
                            label = T("Name"),
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         ADD_IMPACT_TYPE = T("Add Impact Type")
         crud_strings[tablename] = Storage(
@@ -1319,7 +1319,7 @@ class StatsImpactModel(DataModel):
                      # Instance (link to Photos/Reports)
                      super_link("doc_id", "doc_entity"),
                      self.gis_location_id(widget = S3LocationSelector(show_map=False)),
-                     s3_date(),
+                     DateField(),
                      # This is a component, so needs to be a super_link
                      # - can't override field name, ondelete or requires
                      super_link("parameter_id", "stats_parameter",
@@ -1342,8 +1342,8 @@ class StatsImpactModel(DataModel):
                            requires = IS_NOT_EMPTY(),
                            ),
                      self.stats_accuracy(default = 3), # Default: Official Estimate
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         crud_strings[tablename] = Storage(
             label_create=T("Add Impact"),
@@ -1366,13 +1366,13 @@ class StatsImpactModel(DataModel):
                           ]
 
         # Reusable Field
-        impact_id = S3ReusableField("impact_id", "reference %s" % tablename,
-                                     label = T("Impact"),
-                                     ondelete = "CASCADE",
-                                     represent = S3Represent(lookup=tablename),
-                                     requires = IS_EMPTY_OR(
-                                        IS_ONE_OF_EMPTY(current.db, "stats_impact.id")),
-                                     )
+        impact_id = FieldTemplate("impact_id", "reference %s" % tablename,
+                                  label = T("Impact"),
+                                  ondelete = "CASCADE",
+                                  represent = S3Represent(lookup=tablename),
+                                  requires = IS_EMPTY_OR(
+                                                IS_ONE_OF_EMPTY(current.db, "stats_impact.id")),
+                                  )
 
         configure(tablename,
                   filter_widgets = filter_widgets,
@@ -1416,8 +1416,8 @@ class StatsPeopleModel(DataModel):
                      Field("name",
                            label = T("Name"),
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         ADD_PEOPLE_TYPE = T("Add Type of People")
         crud_strings[tablename] = Storage(
@@ -1478,8 +1478,8 @@ class StatsPeopleModel(DataModel):
                      self.pr_person_id(label = T("Contact Person"),
                                        widget = S3AddPersonWidget(controller="pr"),
                                        ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         crud_strings[tablename] = Storage(
             label_create=T("Add People"),
@@ -1537,7 +1537,7 @@ class StatsPeopleModel(DataModel):
                            represent = represent,
                            ),
                      self.org_group_id(empty=False),
-                     *s3_meta_fields())
+                     )
 
         # Pass names back to global scope (s3.*)
         return None

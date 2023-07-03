@@ -640,13 +640,14 @@ def location():
         # We've been called from the Location Selector widget
         table.addr_street.readable = table.addr_street.writable = False
 
-    country = S3ReusableField("country", "string", length=2,
-                              label = COUNTRY,
-                              requires = IS_EMPTY_OR(IS_IN_SET_LAZY(
-                                    lambda: gis.get_countries(key_type="code"),
-                                    zero = SELECT_LOCATION)),
-                              represent = lambda code: \
-                                    gis.get_country(code, key_type="code") or UNKNOWN_OPT)
+    country = FieldTemplate("country", "string", length=2,
+                            label = COUNTRY,
+                            requires = IS_EMPTY_OR(IS_IN_SET_LAZY(
+                                            lambda: gis.get_countries(key_type="code"),
+                                            zero = SELECT_LOCATION)),
+                            represent = lambda code: \
+                                            gis.get_country(code, key_type="code") or UNKNOWN_OPT,
+                            )
 
     output = crud_controller(# CSV column headers, so no T()
                              csv_extra_fields = [{"label": "Country",
@@ -2376,7 +2377,7 @@ def layer_shapefile():
                 if settings.get_gis_spatialdb():
                     # Add a spatial field
                     append(Field("the_geom", "geometry()"))
-                s3db.define_table(_tablename, *Fields)
+                s3db.define_table(_tablename, *Fields, meta=False)
                 new_arg = _tablename[4:]
                 extension = test[4:]
                 if extension:

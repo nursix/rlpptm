@@ -137,8 +137,8 @@ class EventModel(DataModel):
                            readable = hierarchical_event_types,
                            writable = hierarchical_event_types,
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         type_represent = S3Represent(lookup=tablename, translate=True)
 
@@ -201,19 +201,20 @@ class EventModel(DataModel):
                 msg_list_empty = T("No Event Types currently registered")
                 )
 
-        event_type_id = S3ReusableField("event_type_id", "reference %s" % tablename,
-                                        label = label,
-                                        ondelete = "RESTRICT",
-                                        represent = type_represent,
-                                        requires = IS_EMPTY_OR(
+        event_type_id = FieldTemplate("event_type_id", "reference %s" % tablename,
+                                      label = label,
+                                      ondelete = "RESTRICT",
+                                      represent = type_represent,
+                                      requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(db, "event_event_type.id",
                                                               type_represent,
-                                                              orderby="event_event_type.name",
-                                                              sort=True)),
-                                        sortby = "name",
-                                        widget = event_type_widget,
-                                        comment = event_type_comment,
-                                        )
+                                                              orderby = "event_event_type.name",
+                                                              sort = True,
+                                                              )),
+                                      sortby = "name",
+                                      widget = event_type_widget,
+                                      comment = event_type_comment,
+                                      )
 
         configure(tablename,
                   deduplicate = S3Duplicate(),
@@ -262,27 +263,27 @@ class EventModel(DataModel):
                                                            # Should!
                            #                                T("Exercises mean all screens have a watermark & all notifications have a prefix."))),
                            ),
-                     s3_datetime("start_date",
-                                 default = "now",
-                                 label = T("Start Date"),
-                                 represent = "date",
-                                 widget = "date",
-                                 set_min = "#event_event_end_date",
-                                 ),
-                     s3_datetime("end_date",
-                                 label = T("End Date"),
-                                 represent = "date",
-                                 widget = "date",
-                                 set_max = "#event_event_start_date",
-                                 ),
+                     DateTimeField("start_date",
+                                   default = "now",
+                                   label = T("Start Date"),
+                                   represent = "date",
+                                   widget = "date",
+                                   set_min = "#event_event_end_date",
+                                   ),
+                     DateTimeField("end_date",
+                                   label = T("End Date"),
+                                   represent = "date",
+                                   widget = "date",
+                                   set_max = "#event_event_start_date",
+                                   ),
                      Field.Method("year", self.event_event_year),
                      Field("closed", "boolean",
                            default = False,
                            label = T("Closed"),
                            represent = s3_yes_no_represent,
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # CRUD strings
         if disaster:
@@ -315,24 +316,27 @@ class EventModel(DataModel):
                 msg_list_empty = T("No Events currently registered"))
 
         represent = S3Represent(lookup=tablename)
-        event_id = S3ReusableField("event_id", "reference %s" % tablename,
-                                   sortby="name",
-                                   requires = IS_EMPTY_OR(
+        event_id = FieldTemplate("event_id", "reference %s" % tablename,
+                                 sortby="name",
+                                 requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "event_event.id",
                                                           represent,
-                                                          filterby="closed",
-                                                          filter_opts=(False,),
-                                                          orderby="event_event.name",
-                                                          sort=True)),
-                                   represent = represent,
-                                   label = label,
-                                   ondelete = "CASCADE",
-                                   # Uncomment these to use an Autocomplete & not a Dropdown
-                                   #widget = S3AutocompleteWidget()
-                                   #comment = DIV(_class="tooltip",
-                                   #              _title="%s|%s" % (T("Event"),
-                                   #                                AUTOCOMPLETE_HELP))
-                                   )
+                                                          filterby = "closed",
+                                                          filter_opts = (False,),
+                                                          orderby = "event_event.name",
+                                                          sort = True,
+                                                          )),
+                                 represent = represent,
+                                 label = label,
+                                 ondelete = "CASCADE",
+                                 # Uncomment these to use an Autocomplete & not a Dropdown
+                                 #widget = S3AutocompleteWidget(),
+                                 #comment = DIV(_class = "tooltip",
+                                 #              _title = "%s|%s" % (T("Event"),
+                                 #                                  AUTOCOMPLETE_HELP,
+                                 #                                  ),
+                                 #              ),
+                                 )
 
         # Which levels of Hierarchy are we using?
         levels = current.gis.get_relevant_hierarchy_levels()
@@ -598,7 +602,7 @@ class EventModel(DataModel):
             Return safe defaults in case the model has been deactivated.
         """
 
-        dummy = S3ReusableField.dummy
+        dummy = FieldTemplate.dummy
 
         return {"event_event_id": dummy("event_id"),
                 "event_type_id": dummy("event_type_id"),
@@ -955,7 +959,7 @@ class EventLocationModel(DataModel):
                             #                      tooltip = AUTOCOMPLETE_HELP,
                             #                      ),
                             ),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("event_id",
@@ -989,12 +993,12 @@ class EventNameModel(DataModel):
                           self.event_event_id(empty = False,
                                               ondelete = "CASCADE",
                                               ),
-                          s3_language(empty = False),
+                          LanguageField(empty = False),
                           Field("name_l10n",
                                 label = T("Local Name"),
                                 ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("event_id",
@@ -1042,8 +1046,8 @@ class EventTagModel(DataModel):
                           Field("value",
                                 label = T("Value"),
                                 ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("event_id",
@@ -1129,17 +1133,21 @@ class EventIncidentModel(DataModel):
                                                                  # Should!
                                 #                                T("Exercises mean all screens have a watermark & all notifications have a prefix."))),
                                 ),
-                          s3_datetime(default = "now",
-                                      comment = DIV(_class="tooltip",
-                                                    _title="%s|%s" % (T("Date"),
-                                                                      T("The time at which the Incident started."))),
-                                      ),
-                          s3_datetime(name = "end_date",
-                                      label = T("Closed at"),
-                                      comment = DIV(_class="tooltip",
-                                                    _title="%s|%s" % (T("Closed at"),
-                                                                      T("The time when the Incident was closed."))),
-                                      ),
+                          DateTimeField(default = "now",
+                                        comment = DIV(_class="tooltip",
+                                                      _title="%s|%s" % (T("Date"),
+                                                                        T("The time at which the Incident started."),
+                                                                        ),
+                                                      ),
+                                        ),
+                          DateTimeField(name = "end_date",
+                                        label = T("Closed at"),
+                                        comment = DIV(_class="tooltip",
+                                                      _title="%s|%s" % (T("Closed at"),
+                                                                        T("The time when the Incident was closed."),
+                                                                        ),
+                                                      ),
+                                        ),
                           Field("closed", "boolean",
                                 default = False,
                                 label = T("Closed"),
@@ -1173,13 +1181,13 @@ class EventIncidentModel(DataModel):
                                                    ),
                           self.pr_person_id(label = T("Incident Commander"),
                                             ),
-                          s3_comments("action_plan",
-                                      comment = None,
-                                      label = T("Action Plan"),
-                                      widget = s3_richtext_widget,
-                                      ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField("action_plan",
+                                        comment = None,
+                                        label = T("Action Plan"),
+                                        widget = s3_richtext_widget,
+                                        ),
+                          CommentsField(),
+                          )
 
         if ticket:
             label = T("Ticket")
@@ -1279,11 +1287,11 @@ class EventIncidentModel(DataModel):
                                                    ))
 
         represent = S3Represent(lookup=tablename)
-        incident_id = S3ReusableField("incident_id", "reference %s" % tablename,
-                                      label = label,
-                                      ondelete = "RESTRICT",
-                                      represent = represent,
-                                      requires = IS_EMPTY_OR(
+        incident_id = FieldTemplate("incident_id", "reference %s" % tablename,
+                                    label = label,
+                                    ondelete = "RESTRICT",
+                                    represent = represent,
+                                    requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(db, "event_incident.id",
                                                               represent,
                                                               filterby = "closed",
@@ -1291,13 +1299,15 @@ class EventIncidentModel(DataModel):
                                                               orderby = "event_incident.name",
                                                               sort = True,
                                                               )),
-                                      sortby = "name",
-                                      # Uncomment these to use an Autocomplete & not a Dropdown
-                                      #widget = S3AutocompleteWidget()
-                                      #comment = DIV(_class="tooltip",
-                                      #              _title="%s|%s" % (T("Incident"),
-                                      #                                current.messages.AUTOCOMPLETE_HELP))
-                                      )
+                                    sortby = "name",
+                                    # Uncomment these to use an Autocomplete & not a Dropdown
+                                    #widget = S3AutocompleteWidget(),
+                                    #comment = DIV(_class = "tooltip",
+                                    #              _title = "%s|%s" % (T("Incident"),
+                                    #                                  current.messages.AUTOCOMPLETE_HELP,
+                                    #                                  ),
+                                    #              ),
+                                    )
 
         # @ToDo: Move this workflow into Templates?
         # - or useful to have good defaults
@@ -1479,7 +1489,7 @@ class EventIncidentModel(DataModel):
             Return safe defaults in case the model has been deactivated.
         """
 
-        return {"event_incident_id": S3ReusableField.dummy("incident_id"),
+        return {"event_incident_id": FieldTemplate.dummy("incident_id"),
                 }
 
     # ---------------------------------------------------------------------
@@ -2079,7 +2089,7 @@ class EventIncidentReportModel(DataModel):
                      # Use link table(s)
                      #self.event_event_id(ondelete = ondelete),
                      #self.event_incident_id(ondelete = "CASCADE"),
-                     s3_datetime(default="now"),
+                     DateTimeField(default="now"),
                      Field("name", notnull=True,
                            label = T("Short Description"),
                            requires = IS_NOT_EMPTY(),
@@ -2110,8 +2120,8 @@ class EventIncidentReportModel(DataModel):
                            label = T("Closed"),
                            represent = s3_yes_no_represent,
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("Create Incident Report"),
@@ -2235,7 +2245,7 @@ class EventIncidentReportModel(DataModel):
                      self.event_incident_id(empty = False,
                                             ondelete = "CASCADE",
                                             ),
-                     *s3_meta_fields())
+                     )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("incident_report_id",
@@ -2271,7 +2281,7 @@ class EventActivityModel(DataModel):
                           #self.event_incident_id(ondelete = "CASCADE"),
                           self.project_activity_id(#ondelete = "CASCADE", # default anyway
                                                    ),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("event_id",
@@ -2307,7 +2317,7 @@ class EventRequestModel(DataModel):
                           self.event_incident_id(ondelete = "CASCADE"),
                           self.req_req_id(#ondelete = "CASCADE", # default anyway
                                           ),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("event_id",
@@ -2411,9 +2421,9 @@ class EventResourceModel(DataModel):
                                                ),
                           #Field.Method("location", lambda row: self.sit_location(row, tablename)),
                           # @ToDo: Deprecate once we start using S3Track
-                          s3_datetime(default = "now"),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          DateTimeField(default = "now"),
+                          CommentsField(),
+                          )
 
         # CRUD strings
         current.response.s3.crud_strings[tablename] = Storage(
@@ -2527,7 +2537,7 @@ class EventIncidentReportOrganisationGroupModel(DataModel):
                                                      ),
                                 ),
                           self.org_group_id(empty=False),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("incident_report_id",
@@ -2573,8 +2583,7 @@ class EventIncidentLogModel(DataModel):
                                           writable = True,
                                           comment = T("You can send an SMS notification to a Person or Organization On-Duty Number"),
                                           ),
-                          s3_comments(),
-                          *s3_meta_fields(),
+                          CommentsField(),
                           on_define = lambda table: \
                             [table.created_by.set_attributes(represent = self.auth_UserRepresent(show_email = False,
                                                                                                  show_link = False)),
@@ -2677,8 +2686,8 @@ class EventIncidentTypeModel(DataModel):
                                 readable = hierarchical_incident_types,
                                 writable = hierarchical_incident_types,
                                 ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         type_represent = S3Represent(lookup=tablename, translate=True)
 
@@ -2729,19 +2738,20 @@ class EventIncidentTypeModel(DataModel):
             label = T("Ticket Type")
         else:
             label = T("Incident Type")
-        incident_type_id = S3ReusableField("incident_type_id", "reference %s" % tablename,
-                                           label = label,
-                                           ondelete = "RESTRICT",
-                                           represent = type_represent,
-                                           requires = IS_EMPTY_OR(
+        incident_type_id = FieldTemplate("incident_type_id", "reference %s" % tablename,
+                                         label = label,
+                                         ondelete = "RESTRICT",
+                                         represent = type_represent,
+                                         requires = IS_EMPTY_OR(
                                                         IS_ONE_OF(db, "event_incident_type.id",
                                                                   type_represent,
-                                                                  orderby="event_incident_type.name",
-                                                                  sort=True)),
-                                           sortby = "name",
-                                           widget = incident_type_widget,
-                                           comment = incident_type_comment,
-                                           )
+                                                                  orderby = "event_incident_type.name",
+                                                                  sort = True,
+                                                                  )),
+                                         sortby = "name",
+                                         widget = incident_type_widget,
+                                         comment = incident_type_comment,
+                                         )
         self.configure(tablename,
                        deduplicate = S3Duplicate(),
                        hierarchy = hierarchy,
@@ -2764,7 +2774,7 @@ class EventIncidentTypeModel(DataModel):
             Return safe defaults in case the model has been deactivated.
         """
 
-        return {"event_incident_type_id": S3ReusableField.dummy("incident_type_id"),
+        return {"event_incident_type_id": FieldTemplate.dummy("incident_type_id"),
                 }
 
 # =============================================================================
@@ -2793,8 +2803,8 @@ class EventIncidentTypeTagModel(DataModel):
                           # key is a reserved word in MySQL
                           Field("tag", label=T("Key")),
                           Field("value", label=T("Value")),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("incident_type_id",
@@ -2852,7 +2862,7 @@ class EventAlertModel(DataModel):
                            ),
                      # Link to the Message once sent
                      self.msg_message_id(readable = False),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -2875,13 +2885,14 @@ class EventAlertModel(DataModel):
 
         # Reusable field
         represent = S3Represent(lookup=tablename)
-        alert_id = S3ReusableField("alert_id", "reference %s" % tablename,
-                                   label = T("Alert"),
-                                   ondelete = "CASCADE",
-                                   represent = represent,
-                                   requires = IS_ONE_OF(db, "event_alert.id",
-                                                        represent),
-                                   )
+        alert_id = FieldTemplate("alert_id", "reference %s" % tablename,
+                                 label = T("Alert"),
+                                 ondelete = "CASCADE",
+                                 represent = represent,
+                                 requires = IS_ONE_OF(db, "event_alert.id",
+                                                      represent,
+                                                      ),
+                                 )
 
         # ---------------------------------------------------------------------
         # Recipients of the Alert
@@ -2891,7 +2902,7 @@ class EventAlertModel(DataModel):
                      alert_id(),
                      self.pr_person_id(empty = False,
                                        label = T("Recipient")),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -2990,20 +3001,18 @@ class EventAssetModel(DataModel):
                                             IS_IN_SET(status_opts),
                                             ),
                                 ),
-                          s3_datetime("start_date",
-                                      label = T("Start Date"),
-                                      widget = "date",
-                                      ),
-                          s3_datetime("end_date",
-                                      label = T("End Date"),
-                                      # Not supported by s3_datetime
-                                      #start_field = "event_asset_start_date",
-                                      #default_interval = 12,
-                                      widget = "date",
-                                      ),
-                          s3_comments(),
-
-                          *s3_meta_fields())
+                          DateTimeField("start_date",
+                                        label = T("Start Date"),
+                                        widget = "date",
+                                        ),
+                          DateTimeField("end_date",
+                                        label = T("End Date"),
+                                        #start_field = "event_asset_start_date",
+                                        #default_interval = 12,
+                                        widget = "date",
+                                        ),
+                          CommentsField(),
+                          )
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("Add Asset"),
@@ -3159,7 +3168,7 @@ class EventBookmarkModel(DataModel):
                           Field("user_id", auth.settings.table_user,
                                 default = auth.user.id if auth.user else None,
                                 ),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("event_id",
@@ -3217,7 +3226,7 @@ class EventCMSModel(DataModel):
                      post_id(empty = False,
                              ondelete = "CASCADE",
                              ),
-                     *s3_meta_fields())
+                     )
 
         #current.response.s3.crud_strings[tablename] = Storage(
         #    label_create = T("Tag Post"),
@@ -3251,7 +3260,7 @@ class EventCMSModel(DataModel):
                      self.event_incident_type_id(empty = False,
                                                  ondelete = "CASCADE",
                                                  ),
-                     *s3_meta_fields())
+                     )
 
         configure(tablename,
                   deduplicate = S3Duplicate(primary = ("post_id",
@@ -3292,7 +3301,7 @@ class EventCMSTagModel(DataModel):
                           self.cms_tag_id(empty = False,
                                           ondelete = "CASCADE",
                                           ),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("event_id",
@@ -3337,7 +3346,7 @@ class EventExpenseModel(DataModel):
                           self.fin_expense_id(empty = False,
                                               ondelete = "CASCADE",
                                               ),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        context = {"incident": "incident_id",
@@ -3377,7 +3386,7 @@ class EventForumModel(DataModel):
                           self.pr_forum_id(empty = False,
                                            ondelete = "CASCADE",
                                            ),
-                          *s3_meta_fields())
+                          )
 
         #current.response.s3.crud_strings[tablename] = Storage(
         #    label_create = T("Share Incident"), # or Event
@@ -3499,19 +3508,18 @@ class EventHRModel(DataModel):
                                             IS_IN_SET(status_opts),
                                             ),
                                 ),
-                          s3_datetime("start_date",
-                                      label = T("Start Date"),
-                                      widget = "date",
-                                      ),
-                          s3_datetime("end_date",
-                                      label = T("End Date"),
-                                      # Not supported by s3_datetime
-                                      #start_field = "event_human_resource_start_date",
-                                      #default_interval = 12,
-                                      widget = "date",
-                                      ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          DateTimeField("start_date",
+                                        label = T("Start Date"),
+                                        widget = "date",
+                                        ),
+                          DateTimeField("end_date",
+                                        label = T("End Date"),
+                                        #start_field = "event_human_resource_start_date",
+                                        #default_interval = 12,
+                                        widget = "date",
+                                        ),
+                          CommentsField(),
+                          )
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("Assign Human Resource"),
@@ -3690,8 +3698,8 @@ class EventTeamModel(DataModel):
                                        IS_LENGTH(64),
                                        ],
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # CRUD Strings
         CREATE_STATUS = T("Create Group Status")
@@ -3709,17 +3717,17 @@ class EventTeamModel(DataModel):
             )
 
         represent = S3Represent(lookup=tablename)
-        status_id = S3ReusableField("status_id", "reference %s" % tablename,
-                                    label = T("Status"),
-                                    ondelete = "RESTRICT",
-                                    represent = represent,
-                                    requires = IS_ONE_OF(db, "event_team_status.id",
-                                                         represent,
-                                                         orderby="event_team_status.name",
-                                                         sort=True,
-                                                         ),
-                                    sortby = "name",
-                                    )
+        status_id = FieldTemplate("status_id", "reference %s" % tablename,
+                                  label = T("Status"),
+                                  ondelete = "RESTRICT",
+                                  represent = represent,
+                                  requires = IS_ONE_OF(db, "event_team_status.id",
+                                                       represent,
+                                                       orderby = "event_team_status.name",
+                                                       sort = True,
+                                                       ),
+                                  sortby = "name",
+                                  )
 
         configure(tablename,
                   # All name duplicates are updates (=default rule):
@@ -3741,7 +3749,7 @@ class EventTeamModel(DataModel):
                                       widget = None,
                                       ),
                      status_id(),
-                     *s3_meta_fields())
+                     )
 
         crud_strings[tablename] = Storage(
             label_create = T("Assign Team"),
@@ -3801,7 +3809,7 @@ class EventImpactModel(DataModel):
                           self.stats_impact_id(empty = False,
                                                ondelete = "CASCADE",
                                                ),
-                          *s3_meta_fields())
+                          )
 
         # Table configuration
         self.configure(tablename,
@@ -3853,7 +3861,7 @@ class EventMapModel(DataModel):
                           self.gis_config_id(empty = False,
                                              ondelete = "CASCADE",
                                              ),
-                          *s3_meta_fields())
+                          )
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("Create Map Profile"),
@@ -3906,7 +3914,7 @@ class EventNeedModel(DataModel):
                           self.req_need_id(empty = False,
                                            ondelete = "CASCADE",
                                            ),
-                          *s3_meta_fields())
+                          )
 
         # Table configuration
         self.configure(tablename,
@@ -3980,8 +3988,8 @@ class EventOrganisationModel(DataModel):
                                 requires = IS_IN_SET(status_opts),
                                 ),
                           # @ToDo: Role?
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("Add Organization"),
@@ -4031,7 +4039,7 @@ class EventProjectModel(DataModel):
                           #self.event_incident_id(ondelete = "CASCADE"),
                           self.project_project_id(#ondelete = "CASCADE", # default anyway
                                                   ),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("event_id",
@@ -4079,13 +4087,13 @@ class EventScenarioModel(DataModel):
                                             IS_LENGTH(64)
                                             ],
                                 ),
-                          s3_comments("action_plan",
-                                      comment = None,
-                                      label = T("Standard Operating Procedure"),
-                                      widget = s3_richtext_widget,
-                                      ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField("action_plan",
+                                        comment = None,
+                                        label = T("Standard Operating Procedure"),
+                                        widget = s3_richtext_widget,
+                                        ),
+                          CommentsField(),
+                          )
 
         # CRUD strings
         current.response.s3.crud_strings[tablename] = Storage(
@@ -4136,22 +4144,24 @@ class EventScenarioModel(DataModel):
                             )
 
         represent = S3Represent(lookup=tablename)
-        scenario_id = S3ReusableField("scenario_id", "reference %s" % tablename,
-                                      label = T("Scenario"),
-                                      ondelete = "SET NULL",
-                                      represent = represent,
-                                      requires = IS_EMPTY_OR(
+        scenario_id = FieldTemplate("scenario_id", "reference %s" % tablename,
+                                    label = T("Scenario"),
+                                    ondelete = "SET NULL",
+                                    represent = represent,
+                                    requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(current.db, "event_scenario.id",
                                                               represent,
                                                               orderby = "event_scenario.name",
                                                               sort = True,
                                                               )),
-                                      sortby = "name",
-                                      # Comment these to use a Dropdown & not an Autocomplete
-                                      #widget = S3AutocompleteWidget()
-                                      #comment = DIV(_class="tooltip",
-                                      #              _title="%s|%s" % (T("Scenario"),
-                                      #                                current.messages.AUTOCOMPLETE_HELP))
+                                    sortby = "name",
+                                    # Comment these to use a Dropdown & not an Autocomplete
+                                    #widget = S3AutocompleteWidget(),
+                                    #comment = DIV(_class = "tooltip",
+                                    #              _title = "%s|%s" % (T("Scenario"),
+                                    #                                  current.messages.AUTOCOMPLETE_HELP,
+                                    #                                  ),
+                                    #              ),
                                     )
 
         filter_widgets = [TextFilter("name",
@@ -4235,20 +4245,18 @@ class EventScenarioAssetModel(DataModel):
                                               comment = T("Only assign a specific item if there are no alternatives"),
                                               ),
                           # @ToDo: Have a T+x time into Response for Start/End
-                          #s3_datetime("start_date",
-                          #            label = T("Start Date"),
-                          #            widget = "date",
-                          #            ),
-                          #s3_datetime("end_date",
-                          #            label = T("End Date"),
-                          #            # Not supported by s3_datetime
-                          #            #start_field = "event_scenario_asset_start_date",
-                          #            #default_interval = 12,
-                          #            widget = "date",
-                          #            ),
-                          s3_comments(),
-
-                          *s3_meta_fields())
+                          #DateTimeField("start_date",
+                          #              label = T("Start Date"),
+                          #              widget = "date",
+                          #              ),
+                          #DateTimeField("end_date",
+                          #              label = T("End Date"),
+                          #              #start_field = "event_scenario_asset_start_date",
+                          #              #default_interval = 12,
+                          #              widget = "date",
+                          #              ),
+                          CommentsField(),
+                          )
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("Add Asset"),
@@ -4335,19 +4343,18 @@ class EventScenarioHRModel(DataModel):
                                                                   ),
                                             ),
                           # @ToDo: Have a T+x time into Response for Start/End
-                          #s3_datetime("start_date",
-                          #            label = T("Start Date"),
-                          #            widget = "date",
-                          #            ),
-                          #s3_datetime("end_date",
-                          #            label = T("End Date"),
-                          #            # Not supported by s3_datetime
-                          #            #start_field = "event_scenario_human_resource_start_date",
-                          #            #default_interval = 12,
-                          #            widget = "date",
-                          #            ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          #DateTimeField("start_date",
+                          #              label = T("Start Date"),
+                          #              widget = "date",
+                          #              ),
+                          #DateTimeField("end_date",
+                          #              label = T("End Date"),
+                          #              #start_field = "event_scenario_human_resource_start_date",
+                          #              #default_interval = 12,
+                          #              widget = "date",
+                          #              ),
+                          CommentsField(),
+                          )
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("Assign Human Resource"),
@@ -4398,8 +4405,8 @@ class EventScenarioOrganisationModel(DataModel):
                           self.org_organisation_id(ondelete = "RESTRICT",
                                                    empty = False,
                                                    ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("Assign Organization"),
@@ -4451,7 +4458,7 @@ class EventScenarioTaskModel(DataModel):
                           self.project_task_id(empty = False,
                                                ondelete = "CASCADE",
                                                ),
-                          *s3_meta_fields())
+                          )
 
         # Not used as we actuate = replace, although the
         # msg_list_empty is used by the ActionPlan
@@ -4542,7 +4549,7 @@ class EventSiteModel(DataModel):
                                        status_opts.get(opt, current.messages.UNKNOWN_OPT),
                                 requires = IS_IN_SET(status_opts),
                                 ),
-                          *s3_meta_fields())
+                          )
 
         current.response.s3.crud_strings[tablename] = Storage(
             label_create = T("Assign Facility"),
@@ -4623,7 +4630,6 @@ class EventShelterModel(DataModel):
                           self.cr_shelter_id(empty = False,
                                              ondelete = "CASCADE",
                                              ),
-                          *s3_meta_fields()
                           )
 
         function = current.request.function
@@ -4830,38 +4836,38 @@ class EventSitRepModel(DataModel):
                           #      readable = sitrep_edxl,
                           #      writable = sitrep_edxl,
                           #      ),
-                          s3_datetime(default = "now",
-                                      represent = "date",
-                                      widget = "date",
-                                      #set_min = "#event_sitrep_end_date",
-                                      ),
-                          #s3_datetime("end_date",
-                          #            label = T("End Date"),
-                          #            represent = "date",
-                          #            widget = "date",
-                          #            set_max = "#event_sitrep_date",
-                          #            readable = sitrep_edxl,
-                          #            writable = sitrep_edxl,
-                          #            ),
-                          #s3_datetime("approved_on",
-                          #            readable = sitrep_edxl,
-                          #            writable = False,
-                          #            ),
-                          #s3_datetime("next_contact",
-                          #            readable = sitrep_edxl,
-                          #            writable = sitrep_edxl,
-                          #            ),
-                          s3_comments("summary",
-                                      comment = None,
-                                      label = T("Summary"),
-                                      #readable = not sitrep_edxl,
-                                      #writable = not sitrep_edxl,
-                                      widget = s3_richtext_widget,
-                                      ),
-                          s3_comments(#readable = not sitrep_edxl,
-                                      #writable = not sitrep_edxl,
-                                      ),
-                          *s3_meta_fields())
+                          DateTimeField(default = "now",
+                                        represent = "date",
+                                        widget = "date",
+                                        #set_min = "#event_sitrep_end_date",
+                                        ),
+                          #DateTimeField("end_date",
+                          #              label = T("End Date"),
+                          #              represent = "date",
+                          #              widget = "date",
+                          #              set_max = "#event_sitrep_date",
+                          #              readable = sitrep_edxl,
+                          #              writable = sitrep_edxl,
+                          #              ),
+                          #DateTimeField("approved_on",
+                          #              readable = sitrep_edxl,
+                          #              writable = False,
+                          #              ),
+                          #DateTimeField("next_contact",
+                          #              readable = sitrep_edxl,
+                          #              writable = sitrep_edxl,
+                          #              ),
+                          CommentsField("summary",
+                                        comment = None,
+                                        label = T("Summary"),
+                                        #readable = not sitrep_edxl,
+                                        #writable = not sitrep_edxl,
+                                        widget = s3_richtext_widget,
+                                        ),
+                          CommentsField(#readable = not sitrep_edxl,
+                                        #writable = not sitrep_edxl,
+                                        ),
+                          )
 
         # CRUD strings
         current.response.s3.crud_strings[tablename] = Storage(
@@ -4946,18 +4952,18 @@ class EventSitRepModel(DataModel):
 
         represent = S3Represent(lookup=tablename)
 
-        sitrep_id = S3ReusableField("sitrep_id", "reference %s" % tablename,
-                                    label = T("Situation Report"),
-                                    ondelete = "RESTRICT",
-                                    represent = represent,
-                                    requires = IS_EMPTY_OR(
+        sitrep_id = FieldTemplate("sitrep_id", "reference %s" % tablename,
+                                  label = T("Situation Report"),
+                                  ondelete = "RESTRICT",
+                                  represent = represent,
+                                  requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(current.db, "event_sitrep.id",
                                                           represent,
                                                           orderby="event_sitrep.name",
                                                           sort=True,
                                                           )),
-                                    sortby = "name",
-                                    )
+                                  sortby = "name",
+                                  )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -4972,7 +4978,7 @@ class EventSitRepModel(DataModel):
             Return safe defaults in case the model has been deactivated.
         """
 
-        return {"event_sitrep_id": S3ReusableField.dummy("sitrep_id"),
+        return {"event_sitrep_id": FieldTemplate.dummy("sitrep_id"),
                 }
 
 # =============================================================================
@@ -5009,7 +5015,7 @@ class EventTaskModel(DataModel):
                           self.project_task_id(empty = False,
                                                ondelete = "CASCADE",
                                                ),
-                          *s3_meta_fields())
+                          )
 
         # Not used as we actuate = replace, although the
         # msg_list_empty is used by the ActionPlan

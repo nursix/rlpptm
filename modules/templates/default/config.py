@@ -56,10 +56,6 @@ def config(settings):
     # Always notify the approver of a new (verified) user, even if the user is automatically approved
     #settings.auth.always_notify_approver = False
 
-    # The name of the teams that users are added to when they opt-in to receive alerts
-    #settings.auth.opt_in_team_list = ["Updates"]
-    # Uncomment this to set the opt in default to True
-    #settings.auth.opt_in_default = True
     # Uncomment this to request the Home Phone when a user registers
     #settings.auth.registration_requests_home_phone = True
     # Uncomment this to request the Mobile Phone when a user registers
@@ -850,8 +846,6 @@ def config(settings):
     #    {#"<table name>.<field name>"  : ["<Organisation Name>"],
     #     "pr_person_details.mother_name"             : [],
     #     "pr_person_details.father_name"             : [],
-    #     "pr_person_details.company"                 : [],
-    #     "pr_person_details.affiliations"            : [],
     #     "vol_volunteer.active"                      : [],
     #     "vol_volunteer_cluster.vol_cluster_type_id"      : [],
     #     "vol_volunteer_cluster.vol_cluster_id"          : [],

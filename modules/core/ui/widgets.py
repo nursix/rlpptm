@@ -1330,13 +1330,13 @@ class S3AgeWidget(FormWidget):
         method
 
         Example:
-            s3_date("date_of_birth",
-                    label = T("Age"),
-                    widget = S3AgeWidget.widget,
-                    represent = lambda v: S3AgeWidget.date_as_age(v) \
-                                          if v else current.messages["NONE"],
-                    ...
-                    )
+            DateField("date_of_birth",
+                      label = T("Age"),
+                      widget = S3AgeWidget.widget,
+                      represent = lambda v: S3AgeWidget.date_as_age(v) \
+                                            if v else current.messages["NONE"],
+                      ...
+                      )
     """
 
     @classmethod
@@ -2843,17 +2843,22 @@ class S3QRInput(FormWidget):
         device camera (if available) to capture the code
     """
 
-    def __init__(self, hidden=False, icon=True, label=False):
+    def __init__(self, hidden=False, icon=True, label=False, pattern=None, index=None):
         """
             Args:
                 hidden: use a hidden input
                 icon: show icon on button
                 label: show label on button
+                pattern: a JS regular expression to parse the QR Code
+                index: group index or name for the regex match
         """
 
         self.hidden = hidden
         self.icon = icon
         self.label = label
+
+        self.pattern = pattern
+        self.index = index
 
     # -------------------------------------------------------------------------
     def __call__(self, field, value, **attributes):
@@ -2916,7 +2921,9 @@ class S3QRInput(FormWidget):
                      _class = "qrinput",
                      )
 
-        options = {}
+        options = {"inputPattern": self.pattern,
+                   "inputIndex": self.index,
+                   }
         self.inject_script(widget_id, options)
 
         return widget
@@ -8309,7 +8316,7 @@ class S3PhoneWidget(StringWidget):
 def s3_comments_widget(field, value, **attr):
     """
         A smaller-than-normal textarea
-        to be used by the s3_comments & gis.desc_field Reusable fields
+        to be used by the CommentsField & gis.desc_field Reusable fields
     """
 
     _id = attr.get("_id", "%s_%s" % (field._tablename, field.name))

@@ -130,12 +130,12 @@ class CMSContentModel(DataModel):
                            label = T("Comments permitted?"),
                            represent = s3_yes_no_represent,
                            ),
-                     s3_comments(),
+                     CommentsField(),
                      # Multiple Roles (@ToDo: Implement the restriction)
                      s3_roles_permitted(readable = False,
                                         writable = False
                                         ),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         ADD_SERIES = T("Create Series")
@@ -154,16 +154,17 @@ class CMSContentModel(DataModel):
         # Reusable field
         translate = settings.get_L10n_translate_cms_series()
         represent = S3Represent(lookup=tablename, translate=translate)
-        series_id = S3ReusableField("series_id", "reference %s" % tablename,
-                                    label = T("Type"), # Even if this isn't always the use-case
-                                    ondelete = "CASCADE",
-                                    readable = False,
-                                    writable = False,
-                                    represent = represent,
-                                    requires = IS_EMPTY_OR(
+        series_id = FieldTemplate("series_id", "reference %s" % tablename,
+                                  label = T("Type"), # Even if this isn't always the use-case
+                                  ondelete = "CASCADE",
+                                  readable = False,
+                                  writable = False,
+                                  represent = represent,
+                                  requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "cms_series.id",
-                                                          represent)),
-                                    )
+                                                          represent,
+                                                          )),
+                                  )
 
         # Resource Configuration
         configure(tablename,
@@ -188,8 +189,8 @@ class CMSContentModel(DataModel):
                                        IS_LENGTH(128),
                                        ],
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # CRUD Strings
         ADD_STATUS = T("Create Status")
@@ -209,20 +210,21 @@ class CMSContentModel(DataModel):
         # Reusable Field
         represent = S3Represent(lookup=tablename, translate=True)
                                 #none = T("Unknown"))
-        status_id = S3ReusableField("status_id", "reference %s" % tablename,
-                        comment = S3PopupLink(title = ADD_STATUS,
-                                              c = "cms",
-                                              f = "status",
-                                              ),
-                        label = T("Status"),
-                        ondelete = "SET NULL",
-                        represent = represent,
-                        requires = IS_EMPTY_OR(
-                                    IS_ONE_OF(db, "cms_status.id",
-                                              represent,
-                                              sort=True)),
-                        sortby = "name",
-                        )
+        status_id = FieldTemplate("status_id", "reference %s" % tablename,
+                                  label = T("Status"),
+                                  ondelete = "SET NULL",
+                                  represent = represent,
+                                  requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(db, "cms_status.id",
+                                                          represent,
+                                                          sort = True,
+                                                          )),
+                                  sortby = "name",
+                                  comment = S3PopupLink(title = ADD_STATUS,
+                                                        c = "cms",
+                                                        f = "status",
+                                                        ),
+                                  )
 
         # ---------------------------------------------------------------------
         # Posts
@@ -266,7 +268,7 @@ class CMSContentModel(DataModel):
                            #requires = IS_NOT_EMPTY(),
                            widget = body_widget,
                            ),
-                     s3_datetime(default = "now"),
+                     DateTimeField(default = "now"),
                      # @ToDo: Move this to link table?
                      self.gis_location_id(),
                      # @ToDo: Move this to link table?
@@ -310,12 +312,12 @@ class CMSContentModel(DataModel):
                      #Field("published", "boolean",
                      #      default=True,
                      #      label=T("Published")),
-                     s3_comments(),
+                     CommentsField(),
                      # Multiple Roles (@ToDo: Implement the restriction)
                      s3_roles_permitted(readable = False,
                                         writable = False
                                         ),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         ADD_POST = T("Create Post")
@@ -333,20 +335,21 @@ class CMSContentModel(DataModel):
 
         # Reusable field
         represent = S3Represent(lookup=tablename)
-        post_id = S3ReusableField("post_id", "reference %s" % tablename,
-                                  comment = S3PopupLink(c = "cms",
-                                                        f = "post",
-                                                        title = ADD_POST,
-                                                        tooltip = T("A block of rich text which could be embedded into a page, viewed as a complete page or viewed as a list of news items."),
-                                                        ),
-                                  label = T("Post"),
-                                  ondelete = "CASCADE",
-                                  represent = represent,
-                                  requires = IS_EMPTY_OR(
+        post_id = FieldTemplate("post_id", "reference %s" % tablename,
+                                label = T("Post"),
+                                ondelete = "CASCADE",
+                                represent = represent,
+                                requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "cms_post.id",
-                                                          represent)),
-                                  sortby = "name",
-                                  )
+                                                          represent,
+                                                          )),
+                                sortby = "name",
+                                comment = S3PopupLink(c = "cms",
+                                                      f = "post",
+                                                      title = ADD_POST,
+                                                      tooltip = T("A block of rich text which could be embedded into a page, viewed as a complete page or viewed as a list of news items."),
+                                                      ),
+                                )
 
         list_fields = ["post_module.module",
                        "title",
@@ -556,7 +559,7 @@ class CMSContentModel(DataModel):
                            comment = T("If you specify a record then this will be used for that record's profile page"),
                            label = T("Record"),
                            ),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -578,12 +581,12 @@ class CMSContentModel(DataModel):
                      Field("name",
                            label = T("Tag"),
                            ),
-                     s3_comments(),
+                     CommentsField(),
                      # Multiple Roles (@ToDo: Implement the restriction)
                      #s3_roles_permitted(readable = False,
                      #                   writable = False
                      #                   ),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -600,15 +603,16 @@ class CMSContentModel(DataModel):
 
         # Reusable field
         represent = S3Represent(lookup=tablename, translate=True)
-        tag_id = S3ReusableField("tag_id", "reference %s" % tablename,
-                                 label = T("Tag"),
-                                 ondelete = "CASCADE",
-                                 represent = represent,
-                                 requires = IS_EMPTY_OR(
+        tag_id = FieldTemplate("tag_id", "reference %s" % tablename,
+                               label = T("Tag"),
+                               ondelete = "CASCADE",
+                               represent = represent,
+                               requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "cms_tag.id",
-                                                          represent)),
-                                 sortby = "name",
-                                 )
+                                                          represent,
+                                                          )),
+                               sortby = "name",
+                               )
 
         # Custom Methods
         set_method("cms_tag",
@@ -622,7 +626,7 @@ class CMSContentModel(DataModel):
         define_table(tablename,
                      post_id(empty = False),
                      tag_id(empty = False),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -660,7 +664,7 @@ class CMSContentModel(DataModel):
                            label = T("Comment"),
                            requires = IS_NOT_EMPTY(),
                            ),
-                     *s3_meta_fields())
+                     )
 
         # Resource Configuration
         configure(tablename,
@@ -683,7 +687,7 @@ class CMSContentModel(DataModel):
             Safe defaults for model-global names in case module is disabled
         """
 
-        dummy = S3ReusableField.dummy
+        dummy = FieldTemplate.dummy
 
         return {"cms_post_id": dummy("post_id"),
                 "cms_tag_id": dummy("tag_id"),
@@ -1087,7 +1091,7 @@ class CMSContentForumModel(DataModel):
                           self.pr_forum_id(empty = False,
                                            ondelete = "CASCADE",
                                            ),
-                          *s3_meta_fields())
+                          )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -1111,7 +1115,7 @@ class CMSContentMapModel(DataModel):
         self.define_table(tablename,
                           self.cms_post_id(empty = False),
                           self.super_link("layer_id", "gis_layer_entity"),
-                          *s3_meta_fields())
+                          )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -1139,7 +1143,7 @@ class CMSContentOrgModel(DataModel):
                           self.org_organisation_id(empty = False,
                                                    ondelete = "CASCADE",
                                                    ),
-                          *s3_meta_fields())
+                          )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -1163,7 +1167,7 @@ class CMSContentOrgGroupModel(DataModel):
         self.define_table(tablename,
                           self.cms_post_id(empty=False),
                           self.org_group_id(empty=False),
-                          *s3_meta_fields())
+                          )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -1191,7 +1195,7 @@ class CMSContentTeamModel(DataModel):
                           self.pr_group_id(empty = False,
                                            ondelete = "CASCADE",
                                            ),
-                          *s3_meta_fields())
+                          )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -1215,7 +1219,7 @@ class CMSContentUserModel(DataModel):
         self.define_table(tablename,
                           self.cms_post_id(empty = False),
                           Field("user_id", current.auth.settings.table_user),
-                          *s3_meta_fields())
+                          )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -1254,7 +1258,7 @@ class CMSContentRoleModel(DataModel):
                                                                  multiple = True,
                                                                  )),
                                 ),
-                          *s3_meta_fields())
+                          )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
@@ -1330,11 +1334,11 @@ class CMSNewsletterModel(DataModel):
                            requires = IS_NOT_EMPTY(),
                            represent = s3_text_represent,
                            ),
-                     s3_datetime("date_sent",
-                                 label = T("Date Sent"),
-                                 readable = False,
-                                 writable = False,
-                                 ),
+                     DateTimeField("date_sent",
+                                   label = T("Date Sent"),
+                                   readable = False,
+                                   writable = False,
+                                   ),
                      Field("status",
                            label = T("Status"),
                            default = "NEW",
@@ -1351,8 +1355,8 @@ class CMSNewsletterModel(DataModel):
                            writable = False,
                            ),
                      Field.Method("read_status", self.newsletter_read_status),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # Components
         self.add_components(tablename,
@@ -1469,10 +1473,10 @@ class CMSNewsletterModel(DataModel):
                                                 ),
                            ),
                      # Activated in prep when notification-method is configured:
-                     s3_datetime("notified_on",
-                                 label = T("Notified on"),
-                                 writable = False,
-                                 ),
+                     DateTimeField("notified_on",
+                                   label = T("Notified on"),
+                                   writable = False,
+                                   ),
                      Field("status",
                            default = "PENDING",
                            requires = IS_IN_SET(status, zero=None),
@@ -1483,7 +1487,7 @@ class CMSNewsletterModel(DataModel):
                            writable = False,
                            represent = s3_text_represent,
                            ),
-                     *s3_meta_fields())
+                     )
 
         # List fields
         list_fields = ["pe_id", "status", "notified_on"]
@@ -1520,7 +1524,7 @@ class CMSNewsletterModel(DataModel):
         define_table(tablename,
                      Field("newsletter_id", "reference cms_newsletter"),
                      self.pr_filter_id(),
-                     *s3_meta_fields())
+                     )
 
         # ---------------------------------------------------------------------
         # Newsletter read confirmation
@@ -1530,8 +1534,8 @@ class CMSNewsletterModel(DataModel):
         define_table(tablename,
                      Field("newsletter_id", "reference cms_newsletter"),
                      Field("user_id", "reference auth_user"),
-                     s3_datetime(default="now"),
-                     *s3_meta_fields())
+                     DateTimeField(default="now"),
+                     )
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)

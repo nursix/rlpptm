@@ -40,11 +40,11 @@ from gluon import current, Field, HTTP, URL, \
 from gluon.contenttype import contenttype
 from gluon.storage import Storage
 
-from core import CustomController, CRUDMethod, DataModel, FS, S3Report,  \
-                 S3Duplicate, S3LocationSelector, S3PriorityRepresent, \
-                 S3Represent, S3ReusableField, S3SQLCustomForm, \
+from core import CustomController, CRUDMethod, DataModel, DateField, FS, \
+                 S3Report, S3Duplicate, S3LocationSelector, S3PriorityRepresent, \
+                 S3Represent, FieldTemplate, S3SQLCustomForm, \
                  IS_ONE_OF, IS_PHONE_NUMBER_MULTI, \
-                 get_form_record_id, s3_comments, s3_date, s3_meta_fields, \
+                 get_form_record_id, CommentsField, \
                  s3_str, get_filter_options, \
                  LocationFilter, OptionsFilter, TextFilter
 
@@ -69,10 +69,10 @@ class CRReceptionCenterModel(DataModel):
         configure = self.configure
 
         # Reusable field for population-type fields
-        population = S3ReusableField("population", "integer",
-                                     default = 0,
-                                     requires = IS_INT_IN_RANGE(0),
-                                     )
+        population = FieldTemplate("population", "integer",
+                                   default = 0,
+                                   requires = IS_INT_IN_RANGE(0),
+                                   )
 
         # ---------------------------------------------------------------------
         # Reception Center Types
@@ -83,8 +83,8 @@ class CRReceptionCenterModel(DataModel):
                            label = T("Name"),
                            requires = IS_NOT_EMPTY(),
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # Representation
         type_represent = S3Represent(lookup=tablename)
@@ -115,15 +115,15 @@ class CRReceptionCenterModel(DataModel):
                        ("SB", T("standby")),
                        ("NA", T("closed")),
                        )
-        status = S3ReusableField("status",
-                                 default = "OP",
-                                 requires = IS_IN_SET(status_opts, zero=None),
-                                 represent = S3PriorityRepresent(dict(status_opts),
-                                                                 {"OP": "green",
-                                                                  "SB": "amber",
-                                                                  "NA": "grey"
-                                                                  }).represent,
-                                 )
+        status = FieldTemplate("status",
+                               default = "OP",
+                               requires = IS_IN_SET(status_opts, zero=None),
+                               represent = S3PriorityRepresent(dict(status_opts),
+                                                               {"OP": "green",
+                                                                "SB": "amber",
+                                                                "NA": "grey"
+                                                                }).represent,
+                               )
 
         tablename = "cr_reception_center"
         define_table(tablename,
@@ -197,8 +197,8 @@ class CRReceptionCenterModel(DataModel):
                            readable = False,
                            writable = False,
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # Components
         self.add_components(tablename,
@@ -344,12 +344,12 @@ class CRReceptionCenterModel(DataModel):
                                                 ),
                            represent = facility_represent,
                            ),
-                     s3_date(default = "now",
-                             ),
-                     s3_date("date_until",
-                             readable = False,
-                             writable = False,
-                             ),
+                     DateField(default = "now",
+                               ),
+                     DateField("date_until",
+                               readable = False,
+                               writable = False,
+                               ),
                      status(),
                      population("capacity",
                                 label = T("Maximum Capacity"),
@@ -374,7 +374,7 @@ class CRReceptionCenterModel(DataModel):
                            label = T("Occupancy %"),
                            represent = self.occupancy_represent,
                            ),
-                     *s3_meta_fields())
+                     )
 
         # Filter Widgets
         filter_widgets = [TextFilter(["facility_id$name",

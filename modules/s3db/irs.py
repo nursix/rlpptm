@@ -213,7 +213,7 @@ class IRSModel(DataModel):
                                 ),
                            represent = lambda opt: \
                                        irs_incident_type_opts.get(opt, opt)),
-                     *s3_meta_fields())
+                     )
 
         configure(tablename,
                   list_fields = ["code"],
@@ -275,16 +275,16 @@ class IRSModel(DataModel):
                            readable = False,
                            writable = False,
                            label = T("Contact Details")),
-                     s3_datetime("datetime",
-                                 label = T("Date/Time of Alert"),
-                                 empty=False,
-                                 default="now",
-                                 future=0,
-                                 ),
-                     s3_datetime("expiry",
-                                 label = T("Expiry Date/Time"),
-                                 past=0,
-                                 ),
+                     DateTimeField("datetime",
+                                   label = T("Date/Time of Alert"),
+                                   empty = False,
+                                   default = "now",
+                                   future = 0,
+                                   ),
+                     DateTimeField("expiry",
+                                   label = T("Expiry Date/Time"),
+                                   past = 0,
+                                   ),
                      self.gis_location_id(),
                      # Very basic Impact Assessment
                      # @ToDo: Use Stats_Impact component instead
@@ -317,14 +317,14 @@ class IRSModel(DataModel):
                            ),
                      # @ToDo: Move this to Events?
                      # Then add component to list_fields
-                     s3_datetime("dispatch",
-                                 label = T("Date/Time of Dispatch"),
-                                 future=0,
-                                 # We don't want these visible in Create forms
-                                 # (we override in Update forms in controller)
-                                 readable = False,
-                                 writable = False,
-                                 ),
+                     DateTimeField("dispatch",
+                                   label = T("Date/Time of Dispatch"),
+                                   future = 0,
+                                   # We don't want these visible in Create forms
+                                   # (we override in Update forms in controller)
+                                   readable = False,
+                                   writable = False,
+                                   ),
                      Field("closed", "boolean",
                            # We don't want these visible in Create forms
                            # (we override in Update forms in controller)
@@ -336,8 +336,8 @@ class IRSModel(DataModel):
                                        (T("No"),
                                        T("Yes"))[closed == True]
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # CRUD strings
         crud_strings[tablename] = Storage(
@@ -463,15 +463,15 @@ class IRSModel(DataModel):
                                  },
                       )
 
-        ireport_id = S3ReusableField("ireport_id", "reference %s" % tablename,
-                                     requires = IS_EMPTY_OR(
-                                                    IS_ONE_OF(db,
-                                                              "irs_ireport.id",
-                                                              self.irs_ireport_represent)),
-                                     represent = self.irs_ireport_represent,
-                                     label = T("Incident"),
-                                     ondelete = "CASCADE",
-                                     )
+        ireport_id = FieldTemplate("ireport_id", "reference %s" % tablename,
+                                   requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(db, "irs_ireport.id",
+                                                          self.irs_ireport_represent,
+                                                          )),
+                                   represent = self.irs_ireport_represent,
+                                   label = T("Incident"),
+                                   ondelete = "CASCADE",
+                                   )
 
         # Custom Methods
         set_method("irs_ireport",
@@ -499,8 +499,8 @@ class IRSModel(DataModel):
         define_table(tablename,
                      ireport_id(),
                      self.pr_person_id(),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # ---------------------------------------------------------------------
         # Return model-global names to response.s3
@@ -516,7 +516,7 @@ class IRSModel(DataModel):
             - used by events module
         """
 
-        return {"irs_ireport_id": S3ReusableField.dummy("ireport_id"),
+        return {"irs_ireport_id": FieldTemplate.dummy("ireport_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -926,12 +926,12 @@ class IRSResponseModel(DataModel):
                            readable = msg_enabled,
                            represent = response_represent,
                            ),
-                     s3_comments("reply",
-                                 label = T("Reply Message"),
-                                 writable = msg_enabled,
-                                 readable = msg_enabled
-                                 ),
-                     *s3_meta_fields())
+                     CommentsField("reply",
+                                   label = T("Reply Message"),
+                                   writable = msg_enabled,
+                                   readable = msg_enabled
+                                   ),
+                     )
 
         configure(tablename,
                   list_fields=["id",
@@ -960,11 +960,11 @@ class IRSResponseModel(DataModel):
                                                     tooltip = T("If you don't see the vehicle in the list, you can add a new one by clicking link 'Add Vehicle'."),
                                                     ),
                               ),
-                     s3_datetime("datetime",
-                                 default = "now",
-                                 future = 0,
-                                 label = T("Dispatch Time"),
-                                 ),
+                     DateTimeField("datetime",
+                                   default = "now",
+                                   future = 0,
+                                   label = T("Dispatch Time"),
+                                   ),
                      self.super_link("site_id", "org_site",
                                      label = T("Fire Station"),
                                      readable = True,
@@ -979,8 +979,8 @@ class IRSResponseModel(DataModel):
                            writable=False),
                      Field.Method("minutes",
                                   self.irs_ireport_vehicle_minutes),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         configure(tablename, extra_fields = ["datetime"])
 
@@ -1014,7 +1014,7 @@ class IRSResponseModel(DataModel):
                            # @ToDo: Close all assignments when Incident closed
                            readable=False,
                            writable=False),
-                     *s3_meta_fields())
+                     )
 
         # ---------------------------------------------------------------------
         # Return model-global names to s3db.*

@@ -100,6 +100,7 @@ class ProjectModel(DataModel):
         mode_drr = settings.get_project_mode_drr()
         budget_monitoring = settings.get_project_budget_monitoring()
         multi_budgets = settings.get_project_multiple_budgets()
+        use_budget = not multi_budgets and not budget_monitoring
         multi_orgs = settings.get_project_multiple_organisations()
         use_codes = settings.get_project_codes()
 
@@ -113,7 +114,6 @@ class ProjectModel(DataModel):
         # ---------------------------------------------------------------------
         # Projects
         #
-
         LEAD_ROLE = settings.get_project_organisation_lead_role()
         org_label = settings.get_project_organisation_roles()[LEAD_ROLE]
 
@@ -155,16 +155,16 @@ class ProjectModel(DataModel):
                            ),
                      self.project_status_id(),
                      # NB There is additional client-side validation for start/end date in the Controller
-                     s3_date("start_date",
-                             label = T("Start Date"),
-                             set_min = "#project_project_end_date",
-                             ),
-                     s3_date("end_date",
-                             label = T("End Date"),
-                             set_max = "#project_project_start_date",
-                             start_field = "project_project_start_date",
-                             default_interval = 12,
-                             ),
+                     DateField("start_date",
+                               label = T("Start Date"),
+                               set_min = "#project_project_end_date",
+                               ),
+                     DateField("end_date",
+                               label = T("End Date"),
+                               set_max = "#project_project_start_date",
+                               #start_field = "project_project_start_date",
+                               #default_interval = 12,
+                               ),
                      # Free-text field with no validation (used by OCHA template currently)
                      Field("duration",
                            label = T("Duration"),
@@ -177,12 +177,12 @@ class ProjectModel(DataModel):
                            label = T("Budget"),
                            represent = lambda v: \
                             IS_FLOAT_AMOUNT.represent(v, precision=2),
-                           readable = False if (multi_budgets or budget_monitoring) else True,
-                           writable = False if (multi_budgets or budget_monitoring) else True,
+                           readable = use_budget,
+                           writable = use_budget,
                            ),
-                     s3_currency(readable = False if (multi_budgets or budget_monitoring) else True,
-                                 writable = False if (multi_budgets or budget_monitoring) else True,
-                                 ),
+                     CurrencyField(readable = use_budget,
+                                   writable = use_budget,
+                                   ),
                      Field("objectives", "text",
                            label = T("Objectives"),
                            represent = lambda v: s3_text_represent(v, lines=8),
@@ -195,11 +195,13 @@ class ProjectModel(DataModel):
                                   self.project_total_annual_budget),
                      Field.Method("total_organisation_amount",
                                   self.project_total_organisation_amount),
-                     s3_comments(comment=DIV(_class="tooltip",
-                                             _title="%s|%s" % (T("Comments"),
-                                                               T("Outcomes, Impact, Challenges"))),
-                                 ),
-                     *s3_meta_fields())
+                     CommentsField(comment=DIV(_class="tooltip",
+                                               _title="%s|%s" % (T("Comments"),
+                                                                 T("Outcomes, Impact, Challenges"),
+                                                                 ),
+                                               ),
+                                   ),
+                     )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -390,22 +392,21 @@ class ProjectModel(DataModel):
         else:
             project_represent = S3Represent(lookup=tablename)
 
-        project_id = S3ReusableField("project_id", "reference %s" % tablename,
-            label = T("Project"),
-            ondelete = "CASCADE",
-            represent = project_represent,
-            requires = IS_EMPTY_OR(
-                        IS_ONE_OF(db, "project_project.id",
-                                  project_represent,
-                                  updateable = True,
+        project_id = FieldTemplate("project_id", "reference %s" % tablename,
+                                   label = T("Project"),
+                                   ondelete = "CASCADE",
+                                   represent = project_represent,
+                                   requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(db, "project_project.id",
+                                                          project_represent,
+                                                          updateable = True,
+                                                          )),
+                                  sortby = "name",
+                                  comment = S3PopupLink(c = "project",
+                                                        f = "project",
+                                                        tooltip = T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
+                                                        ),
                                   )
-                        ),
-            sortby = "name",
-            comment = S3PopupLink(c = "project",
-                                  f = "project",
-                                  tooltip = T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
-                                  ),
-            )
 
         # Custom Methods
         set_method("project_project",
@@ -537,7 +538,7 @@ class ProjectModel(DataModel):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        return {"project_project_id": S3ReusableField.dummy("project_id"),
+        return {"project_project_id": FieldTemplate.dummy("project_id"),
                 }
 
     # -------------------------------------------------------------------------
@@ -812,8 +813,8 @@ class ProjectAnnualBudgetModel(DataModel):
                                 #label = T("Amount Budgeted"),
                                 requires = IS_FLOAT_AMOUNT(),
                                 ),
-                          s3_currency(required=True),
-                          *s3_meta_fields())
+                          CurrencyField(required=True),
+                          )
 
 
         # CRUD Strings
@@ -890,9 +891,9 @@ class ProjectBeneficiaryModel(DataModel):
                                                     "project_beneficiary_type.name"),
                                        ],
                            ),
-                     s3_comments("description",
-                                 label = T("Description"),
-                                 ),
+                     CommentsField("description",
+                                   label = T("Description"),
+                                   ),
                      # Link to the Beneficiary Type which is the Total, so that we can calculate percentages
                      Field("total_id", self.stats_parameter,
                            label = T("Total"),
@@ -903,7 +904,7 @@ class ProjectBeneficiaryModel(DataModel):
                                                   instance_types = ("project_beneficiary_type",),
                                                   sort=True)),
                            ),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         ADD_BNF_TYPE = T("Create Beneficiary Type")
@@ -978,25 +979,25 @@ class ProjectBeneficiaryModel(DataModel):
                            represent = IS_INT_AMOUNT.represent,
                            requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
                            ),
-                     s3_date("date",
-                             #empty = False,
-                             label = T("Start Date"),
-                             set_min = "#project_beneficiary_end_date",
-                             ),
-                     s3_date("end_date",
-                             #empty = False,
-                             label = T("End Date"),
-                             set_max = "#project_beneficiary_date",
-                             start_field = "project_beneficiary_date",
-                             default_interval = 12,
-                             ),
+                     DateField("date",
+                               #empty = False,
+                               label = T("Start Date"),
+                               set_min = "#project_beneficiary_end_date",
+                               ),
+                     DateField("end_date",
+                               #empty = False,
+                               label = T("End Date"),
+                               set_max = "#project_beneficiary_date",
+                               #start_field = "project_beneficiary_date",
+                               #default_interval = 12,
+                               ),
                      Field("year", "list:integer",
                            compute = lambda row: \
                              self.stats_year(row, "project_beneficiary"),
                            label = T("Year"),
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # CRUD Strings
         ADD_BNF = T("Add Beneficiaries")
@@ -1111,21 +1112,22 @@ class ProjectBeneficiaryModel(DataModel):
                   )
 
         # Reusable Field
-        beneficiary_id = S3ReusableField("beneficiary_id", "reference %s" % tablename,
-            label = T("Beneficiaries"),
-            ondelete = "SET NULL",
-            represent = self.project_beneficiary_represent,
-            requires = IS_EMPTY_OR(
-                        IS_ONE_OF(db, "project_beneficiary.id",
-                                  self.project_beneficiary_represent,
-                                  sort=True)),
-            sortby = "name",
-            comment = S3PopupLink(c = "project",
-                                  f = "beneficiary",
-                                  title = ADD_BNF,
-                                  tooltip = T("If you don't see the beneficiary in the list, you can add a new one by clicking link 'Add Beneficiaries'."),
-                                  ),
-            )
+        beneficiary_id = FieldTemplate("beneficiary_id", "reference %s" % tablename,
+                                       label = T("Beneficiaries"),
+                                       ondelete = "SET NULL",
+                                       represent = self.project_beneficiary_represent,
+                                       requires = IS_EMPTY_OR(
+                                                    IS_ONE_OF(db, "project_beneficiary.id",
+                                                              self.project_beneficiary_represent,
+                                                              sort = True,
+                                                              )),
+                                       sortby = "name",
+                                       comment = S3PopupLink(c = "project",
+                                                             f = "beneficiary",
+                                                             title = ADD_BNF,
+                                                             tooltip = T("If you don't see the beneficiary in the list, you can add a new one by clicking link 'Add Beneficiaries'."),
+                                                             ),
+                                       )
 
         # Components
         self.add_components(tablename,
@@ -1151,8 +1153,8 @@ class ProjectBeneficiaryModel(DataModel):
                      beneficiary_id(empty = False,
                                     ondelete = "CASCADE",
                                     ),
-                     #s3_comments(),
-                     *s3_meta_fields())
+                     #CommentsField(),
+                     )
 
         configure(tablename,
                   deduplicate = S3Duplicate(primary = ("activity_id",
@@ -1172,8 +1174,8 @@ class ProjectBeneficiaryModel(DataModel):
                      beneficiary_id(empty = False,
                                     ondelete = "CASCADE",
                                     ),
-                     #s3_comments(),
-                     *s3_meta_fields())
+                     #CommentsField(),
+                     )
 
         configure(tablename,
                   deduplicate = S3Duplicate(primary = ("activity_type_id",
@@ -1266,11 +1268,11 @@ class ProjectHazardModel(DataModel):
                                                       else NONE,
                            requires = IS_NOT_EMPTY(),
                            ),
-                     s3_comments(
+                     CommentsField(
                         represent = lambda v: T(v) if v is not None \
                                                    else NONE,
                         ),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -1289,16 +1291,17 @@ class ProjectHazardModel(DataModel):
 
         # Reusable Field
         represent = S3Represent(lookup=tablename, translate=True)
-        hazard_id = S3ReusableField("hazard_id", "reference %s" % tablename,
-                                    sortby = "name",
-                                    label = T("Hazards"),
-                                    requires = IS_EMPTY_OR(
+        hazard_id = FieldTemplate("hazard_id", "reference %s" % tablename,
+                                  sortby = "name",
+                                  label = T("Hazards"),
+                                  requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "project_hazard.id",
                                                           represent,
-                                                          sort=True)),
-                                    represent = represent,
-                                    ondelete = "CASCADE",
-                                    )
+                                                          sort = True,
+                                                          )),
+                                  represent = represent,
+                                  ondelete = "CASCADE",
+                                  )
 
         # ---------------------------------------------------------------------
         # Projects <> Hazards Link Table
@@ -1307,7 +1310,6 @@ class ProjectHazardModel(DataModel):
         define_table(tablename,
                      hazard_id(),
                      self.project_project_id(),
-                     *s3_meta_fields()
                      )
 
         # CRUD Strings
@@ -1379,7 +1381,6 @@ class ProjectHRModel(DataModel):
                                        status_opts.get(opt, current.messages.UNKNOWN_OPT),
                                 requires = IS_IN_SET(status_opts),
                                 ),
-                          *s3_meta_fields()
                           )
 
         current.response.s3.crud_strings[tablename] = Storage(
@@ -1498,8 +1499,8 @@ class ProjectLocationModel(DataModel):
                            requires = IS_DECIMAL_IN_RANGE(0, 1),
                            writable = mode_3w,
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # CRUD Strings
         if community:
@@ -1679,21 +1680,22 @@ class ProjectLocationModel(DataModel):
 
         # Reusable Field
         project_location_represent = project_LocationRepresent()
-        project_location_id = S3ReusableField("project_location_id", "reference %s" % tablename,
-            label = LOCATION,
-            ondelete = "CASCADE",
-            represent = project_location_represent,
-            requires = IS_EMPTY_OR(
-                        IS_ONE_OF(db, "project_location.id",
-                                  project_location_represent,
-                                  updateable = True,
-                                  sort=True)),
-            comment = S3PopupLink(ADD_LOCATION,
-                                  c = "project",
-                                  f = "location",
-                                  tooltip = LOCATION_TOOLTIP,
-                                  ),
-            )
+        project_location_id = FieldTemplate("project_location_id", "reference %s" % tablename,
+                                            label = LOCATION,
+                                            ondelete = "CASCADE",
+                                            represent = project_location_represent,
+                                            requires = IS_EMPTY_OR(
+                                                            IS_ONE_OF(db, "project_location.id",
+                                                                      project_location_represent,
+                                                                      updateable = True,
+                                                                      sort = True,
+                                                                      )),
+                                            comment = S3PopupLink(ADD_LOCATION,
+                                                                  c = "project",
+                                                                  f = "location",
+                                                                  tooltip = LOCATION_TOOLTIP,
+                                                                  ),
+                                            )
 
         # ---------------------------------------------------------------------
         # Project Community Contact Person
@@ -1705,7 +1707,7 @@ class ProjectLocationModel(DataModel):
                                        widget = S3AddPersonWidget(controller="pr"),
                                        empty = False,
                                        ),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -1787,7 +1789,7 @@ class ProjectLocationModel(DataModel):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        return {"project_location_id": S3ReusableField.dummy("project_location_id"),
+        return {"project_location_id": FieldTemplate.dummy("project_location_id"),
                 "project_location_represent": lambda v, row=None: "",
                 }
 
@@ -1864,7 +1866,7 @@ class ProjectMasterKeyModel(DataModel):
         self.define_table("project_project_masterkey",
                           self.project_project_id(empty = False),
                           self.auth_masterkey_id(empty = False),
-                          *s3_meta_fields())
+                          )
 
 
         # ---------------------------------------------------------------------
@@ -1929,9 +1931,9 @@ class ProjectOrganisationModel(DataModel):
                                             IS_FLOAT_AMOUNT.represent(v, precision=2),
                                 widget = IS_FLOAT_AMOUNT.widget,
                                 label = T("Funds Contributed")),
-                          s3_currency(),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CurrencyField(),
+                          CommentsField(),
+                          )
 
         # CRUD Strings
         current.response.s3.crud_strings[tablename] = Storage(
@@ -2114,7 +2116,6 @@ class ProjectSectorModel(DataModel):
                           self.project_project_id(empty = False,
                                                   ondelete = "CASCADE",
                                                   ),
-                          *s3_meta_fields()
                           )
 
         # CRUD Strings
@@ -2160,8 +2161,8 @@ class ProjectStatusModel(DataModel):
                                             IS_LENGTH(128),
                                             ],
                                 ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         # CRUD Strings
         ADD_STATUS = T("Create Status")
@@ -2181,20 +2182,21 @@ class ProjectStatusModel(DataModel):
 
         # Reusable Field
         represent = S3Represent(lookup=tablename, translate=True)
-        status_id = S3ReusableField("status_id", "reference %s" % tablename,
-                        comment = S3PopupLink(title = ADD_STATUS,
-                                              c = "project",
-                                              f = "status",
-                                              ),
-                        label = T("Status"),
-                        ondelete = "SET NULL",
-                        represent = represent,
-                        requires = IS_EMPTY_OR(
-                                    IS_ONE_OF(current.db, "project_status.id",
-                                              represent,
-                                              sort=True)),
-                        sortby = "name",
-                        )
+        status_id = FieldTemplate("status_id", "reference %s" % tablename,
+                                  comment = S3PopupLink(title = ADD_STATUS,
+                                                        c = "project",
+                                                        f = "status",
+                                                        ),
+                                  label = T("Status"),
+                                  ondelete = "SET NULL",
+                                  represent = represent,
+                                  requires = IS_EMPTY_OR(
+                                                IS_ONE_OF(current.db, "project_status.id",
+                                                          represent,
+                                                          sort = True,
+                                                          )),
+                                  sortby = "name",
+                                  )
 
         # Pass names back to global scope (s3.*)
         return {"project_status_id": status_id,
@@ -2206,7 +2208,7 @@ class ProjectStatusModel(DataModel):
             Safe defaults for model-global names in case module is disabled
         """
 
-        return {"project_status_id": S3ReusableField.dummy("status_id"),
+        return {"project_status_id": FieldTemplate.dummy("status_id"),
                 }
 
 # =============================================================================
@@ -2232,8 +2234,8 @@ class ProjectTagModel(DataModel):
                           Field("value",
                                 label = T("Value"),
                                 ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("project_id",
@@ -2283,11 +2285,11 @@ class ProjectThemeModel(DataModel):
                                        IS_LENGTH(128),
                                        ],
                            ),
-                     s3_comments(
+                     CommentsField(
                         represent = lambda v: T(v) if v is not None \
                                                    else NONE,
                         ),
-                     *s3_meta_fields())
+                     )
 
         # CRUD Strings
         ADD_THEME = T("Create Theme")
@@ -2307,16 +2309,17 @@ class ProjectThemeModel(DataModel):
 
         # Reusable Field
         represent = S3Represent(lookup=tablename, translate=True)
-        theme_id = S3ReusableField("theme_id", "reference %s" % tablename,
-                                   label = T("Theme"),
-                                   ondelete = "CASCADE",
-                                   represent = represent,
-                                   requires = IS_EMPTY_OR(
+        theme_id = FieldTemplate("theme_id", "reference %s" % tablename,
+                                 label = T("Theme"),
+                                 ondelete = "CASCADE",
+                                 represent = represent,
+                                 requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "project_theme.id",
                                                           represent,
-                                                          sort=True)),
-                                   sortby = "name",
-                                   )
+                                                          sort = True,
+                                                          )),
+                                 sortby = "name",
+                                 )
 
         # Components
         add_components(tablename,
@@ -2363,7 +2366,7 @@ class ProjectThemeModel(DataModel):
                                         empty = False,
                                         ondelete = "CASCADE",
                                         ),
-                     *s3_meta_fields())
+                     )
 
         crud_strings[tablename] = Storage(
             label_create = T("Add Sector"),
@@ -2397,7 +2400,7 @@ class ProjectThemeModel(DataModel):
                            readable = theme_percentages,
                            writable = theme_percentages,
                            ),
-                     *s3_meta_fields())
+                     )
 
         crud_strings[tablename] = Storage(
             label_create = T("Add Theme"),
@@ -2431,7 +2434,7 @@ class ProjectThemeModel(DataModel):
                      self.project_activity_id(empty = False,
                                               ondelete = "CASCADE",
                                               ),
-                     *s3_meta_fields())
+                     )
 
         crud_strings[tablename] = Storage(
             label_create = T("New Theme"),
@@ -2472,7 +2475,7 @@ class ProjectThemeModel(DataModel):
                            readable = theme_percentages,
                            writable = theme_percentages,
                            ),
-                     *s3_meta_fields())
+                     )
 
         crud_strings[tablename] = Storage(
             label_create = T("New Theme"),
@@ -2582,16 +2585,16 @@ class ProjectActivityModel(DataModel):
                      self.gis_location_id(readable = not mode_task,
                                           writable = not mode_task,
                                           ),
-                     s3_date(#"date", # default
-                             label = T("Start Date"),
-                             set_min = "#project_activity_end_date",
-                             ),
-                     s3_date("end_date",
-                             label = T("End Date"),
-                             set_max = "#project_activity_date",
-                             start_field = "project_activity_date",
-                             default_interval = 12,
-                             ),
+                     DateField(#"date", # default
+                               label = T("Start Date"),
+                               set_min = "#project_activity_end_date",
+                               ),
+                     DateField("end_date",
+                               label = T("End Date"),
+                               set_max = "#project_activity_date",
+                               #start_field = "project_activity_date",
+                               #default_interval = 12,
+                               ),
                      # Which contact is this?
                      # Implementing Org should be a human_resource_id
                      # Beneficiary could be a person_id
@@ -2614,8 +2617,8 @@ class ProjectActivityModel(DataModel):
                            ),
                      # @ToDo: Move to compute using stats_year
                      Field.Method("year", self.project_activity_year),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # CRUD Strings
         ACTIVITY_TOOLTIP = T("If you don't see the activity in the list, you can add a new one by clicking link 'Create Activity'.")
@@ -2786,21 +2789,22 @@ class ProjectActivityModel(DataModel):
                   )
 
         # Reusable Field
-        activity_id = S3ReusableField("activity_id", "reference %s" % tablename,
-                        comment = S3PopupLink(ADD_ACTIVITY,
-                                              c = "project",
-                                              f = "activity",
-                                              tooltip = ACTIVITY_TOOLTIP,
-                                              ),
-                        label = T("Activity"),
-                        ondelete = "CASCADE",
-                        represent = represent,
-                        requires = IS_EMPTY_OR(
-                                    IS_ONE_OF(db, "project_activity.id",
-                                              represent,
-                                              sort=True)),
-                        sortby="name",
-                        )
+        activity_id = FieldTemplate("activity_id", "reference %s" % tablename,
+                                    comment = S3PopupLink(ADD_ACTIVITY,
+                                                          c = "project",
+                                                          f = "activity",
+                                                          tooltip = ACTIVITY_TOOLTIP,
+                                                          ),
+                                    label = T("Activity"),
+                                    ondelete = "CASCADE",
+                                    represent = represent,
+                                    requires = IS_EMPTY_OR(
+                                                    IS_ONE_OF(db, "project_activity.id",
+                                                              represent,
+                                                              sort = True,
+                                                              )),
+                                    sortby="name",
+                                    )
 
         # Components
         add_components(tablename,
@@ -2884,7 +2888,7 @@ class ProjectActivityModel(DataModel):
                      self.project_activity_type_id(empty = False,
                                                    ondelete = "CASCADE",
                                                    ),
-                     *s3_meta_fields())
+                     )
 
         crud_strings[tablename] = Storage(
             label_create = T("Add Activity Type"),
@@ -2914,7 +2918,7 @@ class ProjectActivityModel(DataModel):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        return {"project_activity_id": S3ReusableField.dummy("activity_id"),
+        return {"project_activity_id": FieldTemplate.dummy("activity_id"),
                 }
 
     # ---------------------------------------------------------------------
@@ -3084,8 +3088,8 @@ class ProjectActivityTypeModel(DataModel):
                                        IS_LENGTH(128),
                                        ],
                            ),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # CRUD Strings
         ADD_ACTIVITY_TYPE = T("Create Activity Type")
@@ -3103,22 +3107,22 @@ class ProjectActivityTypeModel(DataModel):
 
         # Reusable Fields
         represent = S3Represent(lookup=tablename, translate=True)
-        activity_type_id = S3ReusableField("activity_type_id", "reference %s" % tablename,
-                                           label = T("Activity Type"),
-                                           ondelete = "SET NULL",
-                                           represent = represent,
-                                           requires = IS_EMPTY_OR(
+        activity_type_id = FieldTemplate("activity_type_id", "reference %s" % tablename,
+                                         label = T("Activity Type"),
+                                         ondelete = "SET NULL",
+                                         represent = represent,
+                                         requires = IS_EMPTY_OR(
                                                         IS_ONE_OF(db, "project_activity_type.id",
                                                                   represent,
-                                                                  sort=True)
-                                                        ),
-                                           sortby = "name",
-                                           comment = S3PopupLink(title = ADD_ACTIVITY_TYPE,
-                                                                 c = "project",
-                                                                 f = "activity_type",
-                                                                 tooltip = T("If you don't see the type in the list, you can add a new one by clicking link 'Create Activity Type'."),
-                                                                 ),
-                                           )
+                                                                  sort = True,
+                                                                  )),
+                                         sortby = "name",
+                                         comment = S3PopupLink(title = ADD_ACTIVITY_TYPE,
+                                                               c = "project",
+                                                               f = "activity_type",
+                                                               tooltip = T("If you don't see the type in the list, you can add a new one by clicking link 'Create Activity Type'."),
+                                                               ),
+                                         )
 
         if current.deployment_settings.get_project_sectors():
             # Component (for Custom Form)
@@ -3158,7 +3162,7 @@ class ProjectActivityTypeModel(DataModel):
                                         empty = False,
                                         ondelete = "CASCADE",
                                         ),
-                     *s3_meta_fields())
+                     )
 
         # ---------------------------------------------------------------------
         # Activity Type <> Project Location Link Table
@@ -3171,7 +3175,7 @@ class ProjectActivityTypeModel(DataModel):
                      self.project_location_id(empty = False,
                                               ondelete = "CASCADE",
                                               ),
-                     *s3_meta_fields())
+                     )
 
         # ---------------------------------------------------------------------
         # Activity Type <> Project Link Table
@@ -3184,7 +3188,7 @@ class ProjectActivityTypeModel(DataModel):
                      self.project_project_id(empty = False,
                                              ondelete = "CASCADE",
                                              ),
-                     *s3_meta_fields())
+                     )
 
         crud_strings[tablename] = Storage(
             label_create = T("Add Activity Type"),
@@ -3239,7 +3243,7 @@ class ProjectActivityOrganisationModel(DataModel):
                                 represent = lambda opt: \
                                             project_organisation_roles.get(opt,
                                                                            NONE)),
-                          *s3_meta_fields())
+                          )
 
         # CRUD Strings
         current.response.s3.crud_strings[tablename] = Storage(
@@ -3320,7 +3324,7 @@ class ProjectActivityDemographicsModel(DataModel):
                                 represent = IS_INT_AMOUNT.represent,
                                 requires = IS_EMPTY_OR(IS_INT_IN_RANGE(0, None)),
                                 ),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("activity_id",
@@ -3357,7 +3361,7 @@ class ProjectActivitySectorModel(DataModel):
                                                    # Default:
                                                    #ondelete = "CASCADE",
                                                    ),
-                          *s3_meta_fields())
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("activity_id",
@@ -3392,8 +3396,8 @@ class ProjectActivityTagModel(DataModel):
                           Field("value",
                                 label = T("Value"),
                                 ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("activity_id",
@@ -3452,9 +3456,9 @@ class ProjectTaskModel(DataModel):
                            label = T("Short Description"),
                            requires = IS_NOT_EMPTY()
                            ),
-                     s3_date(),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     DateField(),
+                     CommentsField(),
+                     )
 
         # CRUD Strings
         ADD_MILESTONE = T("Create Milestone")
@@ -3476,20 +3480,21 @@ class ProjectTaskModel(DataModel):
                                 fields=["name", "date"],
                                 labels="%(name)s: %(date)s",
                                 )
-        milestone_id = S3ReusableField("milestone_id", "reference %s" % tablename,
-                                       label = T("Milestone"),
-                                       ondelete = "RESTRICT",
-                                       represent = represent,
-                                       requires = IS_EMPTY_OR(
+        milestone_id = FieldTemplate("milestone_id", "reference %s" % tablename,
+                                     label = T("Milestone"),
+                                     ondelete = "RESTRICT",
+                                     represent = represent,
+                                     requires = IS_EMPTY_OR(
                                                     IS_ONE_OF(db, "project_milestone.id",
-                                                              represent)),
-                                       sortby = "name",
-                                       comment = S3PopupLink(c = "project",
-                                                             f = "milestone",
-                                                             title = ADD_MILESTONE,
-                                                             tooltip = T("A project milestone marks a significant date in the calendar which shows that progress towards the overall objective is being made."),
-                                                             ),
-                                       )
+                                                              represent,
+                                                              )),
+                                     sortby = "name",
+                                     comment = S3PopupLink(c = "project",
+                                                           f = "milestone",
+                                                           title = ADD_MILESTONE,
+                                                           tooltip = T("A project milestone marks a significant date in the calendar which shows that progress towards the overall objective is being made."),
+                                                           ),
+                                     )
 
         configure(tablename,
                   deduplicate = S3Duplicate(primary = ("name",),
@@ -3580,12 +3585,12 @@ class ProjectTaskModel(DataModel):
                                 filter_opts = ("pr_person", "pr_group", "org_organisation"),
                                 represent = assignee_represent,
                                 ),
-                     s3_datetime("date_due",
-                                 label = T("Date Due"),
-                                 represent = "date",
-                                 readable = staff,
-                                 writable = staff,
-                                 ),
+                     DateTimeField("date_due",
+                                   label = T("Date Due"),
+                                   represent = "date",
+                                   readable = staff,
+                                   writable = staff,
+                                   ),
                      Field("time_estimated", "double",
                            label = "%s (%s)" % (T("Time Estimate"),
                                                 T("hours")),
@@ -3619,8 +3624,7 @@ class ProjectTaskModel(DataModel):
                            writable = staff,
                            ),
                      Field.Method("task_id", self.project_task_task_id),
-                     s3_comments(),
-                     *s3_meta_fields(),
+                     CommentsField(),
                      on_define = lambda table: \
                         [table.created_on.set_attributes(represent = lambda dt: \
                             S3DateTime.date_represent(dt, utc=True)),
@@ -3831,20 +3835,21 @@ class ProjectTaskModel(DataModel):
 
         # Reusable field
         represent = project_TaskRepresent(show_link=True)
-        task_id = S3ReusableField("task_id", "reference %s" % tablename,
-                                  label = T("Task"),
-                                  ondelete = "CASCADE",
-                                  represent = represent,
-                                  requires = IS_EMPTY_OR(
+        task_id = FieldTemplate("task_id", "reference %s" % tablename,
+                                label = T("Task"),
+                                ondelete = "CASCADE",
+                                represent = represent,
+                                requires = IS_EMPTY_OR(
                                                 IS_ONE_OF(db, "project_task.id",
-                                                          represent)),
-                                  sortby = "name",
-                                  comment = S3PopupLink(c = "project",
-                                                        f = "task",
-                                                        title = ADD_TASK,
-                                                        tooltip = T("A task is a piece of work that an individual or team can do in 1-2 days."),
-                                                        ),
-                                  )
+                                                          represent,
+                                                          )),
+                                sortby = "name",
+                                comment = S3PopupLink(c = "project",
+                                                      f = "task",
+                                                      title = ADD_TASK,
+                                                      tooltip = T("A task is a piece of work that an individual or team can do in 1-2 days."),
+                                                      ),
+                                )
 
         # Representation with project name, for time log form
         task_represent_project = project_TaskRepresent(show_project=True)
@@ -3913,7 +3918,7 @@ class ProjectTaskModel(DataModel):
                            label = T("Comment"),
                            requires = IS_NOT_EMPTY(),
                            ),
-                     *s3_meta_fields())
+                     )
 
         # Resource Configuration
         configure(tablename,
@@ -3938,10 +3943,10 @@ class ProjectTaskModel(DataModel):
                      self.pr_person_id(default=auth.s3_logged_in_person(),
                                        widget = SQLFORM.widgets.options.widget
                                        ),
-                     s3_datetime(default="now",
-                                 past=8760, # Hours, so 1 year
-                                 future=0
-                                 ),
+                     DateTimeField(default = "now",
+                                   past = 8760, # Hours, so 1 year
+                                   future = 0
+                                   ),
                      Field("hours", "double",
                            label = T("Effort (Hours)"),
                            represent = lambda v: NONE if not v else \
@@ -3954,8 +3959,8 @@ class ProjectTaskModel(DataModel):
                            ),
                      Field.Method("day", project_time_day),
                      Field.Method("week", project_time_week),
-                     s3_comments(),
-                     *s3_meta_fields())
+                     CommentsField(),
+                     )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -4050,7 +4055,7 @@ class ProjectTaskModel(DataModel):
     def defaults():
         """ Safe defaults for model-global names if module is disabled """
 
-        return {"project_task_id": S3ReusableField.dummy("task_id"),
+        return {"project_task_id": FieldTemplate.dummy("task_id"),
                 "project_task_active_statuses": [],
                 }
 
@@ -4409,8 +4414,8 @@ class ProjectTaskTagModel(DataModel):
                           Field("value",
                                 label = T("Value"),
                                 ),
-                          s3_comments(),
-                          *s3_meta_fields())
+                          CommentsField(),
+                          )
 
         self.configure(tablename,
                        deduplicate = S3Duplicate(primary = ("task_id",
