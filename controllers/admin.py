@@ -52,19 +52,19 @@ def user():
         ADMIN = True
         pe_ids = None
 
-    elif s3_has_role("ORG_ADMIN"):
-        pe_ids = auth.get_managed_orgs()
-        if pe_ids is None:
-            # OrgAdmin with default realm, but user not affiliated with any org
-            auth.permission.fail()
-        elif pe_ids is not True:
-            # OrgAdmin for certain organisations
+    elif auth.s3_has_roles(("ORG_ADMIN", "ORG_GROUP_ADMIN")):
+        pe_ids = auth.permission.permitted_realms("auth_user", "update")
+        if pe_ids:
+            # Restricted to certain organisations
             otable = s3db.org_organisation
             s3.filter = (otable.pe_id.belongs(pe_ids)) & \
                         (table.organisation_id == otable.id)
+        elif pe_ids is not None:
+            # Not allowed for any organisations
+            auth.permission.fail()
         else:
-            # OrgAdmin with site-wide permission
-            pe_ids = None
+            # Allowed for all organisations
+            pass
     else:
         auth.permission.fail()
 

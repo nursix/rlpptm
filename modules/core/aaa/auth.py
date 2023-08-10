@@ -45,7 +45,7 @@ from gluon.utils import web2py_uuid
 from s3dal import Row, Rows, Query, Field, original_tablename
 
 from ..controller import CRUDRequest
-from ..model import S3MetaFields, CommentsField
+from ..model import MetaFields, CommentsField
 from ..tools import IS_ISO639_2_LANGUAGE_CODE, S3Represent, S3Tracker, \
                     s3_addrow, s3_mark_required, s3_str
 
@@ -302,10 +302,10 @@ Thank you"""
                       readable=False, writable=False),
                 CommentsField(readable=False, writable=False),
                 # Additional meta fields required for sync:
-                S3MetaFields.uuid(),
-                #S3MetaFields.mci(),
-                S3MetaFields.created_on(),
-                S3MetaFields.modified_on(),
+                MetaFields.uuid(),
+                #MetaFields.mci(),
+                MetaFields.created_on(),
+                MetaFields.modified_on(),
                 ]
 
             userfield = settings.login_userfield
@@ -366,11 +366,11 @@ Thank you"""
                       label = messages.label_description,
                       ),
                 # Additional meta fields required for sync:
-                S3MetaFields.created_on(),
-                S3MetaFields.modified_on(),
-                S3MetaFields.deleted(),
-                #S3MetaFields.deleted_fk(),
-                #S3MetaFields.deleted_rb(),
+                MetaFields.created_on(),
+                MetaFields.modified_on(),
+                MetaFields.deleted(),
+                #MetaFields.deleted_fk(),
+                #MetaFields.deleted_rb(),
                 migrate = migrate,
                 fake_migrate = fake_migrate,
                 )
@@ -398,7 +398,7 @@ Thank you"""
                       ),
                 migrate = migrate,
                 fake_migrate = fake_migrate,
-                *S3MetaFields.sync_meta_fields())
+                *MetaFields.sync_meta_fields())
             settings.table_membership = db[settings.table_membership_name]
 
         # Define Eden permission table
@@ -461,7 +461,7 @@ Thank you"""
                       ),
                 migrate = migrate,
                 fake_migrate = fake_migrate,
-                *S3MetaFields.sync_meta_fields())
+                *MetaFields.sync_meta_fields())
             settings.table_event = db[settings.table_event_name]
 
     # -------------------------------------------------------------------------
@@ -3854,10 +3854,18 @@ Please go to %(url)s to approve this user."""
     # -------------------------------------------------------------------------
     def get_managed_orgs(self):
         """
-            Get the pe_ids of all managed organisations (to authorize
-            role assignments)
+            Get the pe_ids of all managed organisations, e.g. for filters
 
-            TODO use this in admin/user controller
+            Returns:
+                - True if unrestricted (i.e. site-wide role)
+                - list of pe_ids if restricted
+                - None if user does not manage any orgs
+
+            Note:
+                The result only means that the user has a *_ADMIN role
+                for those organisations, but that does not imply any
+                particular permissions =>
+                use auth.permission.permitted_realms for access control
         """
 
         user = self.user
@@ -3870,7 +3878,7 @@ Please go to %(url)s to approve this user."""
         if has_role(sr.ADMIN):
             return True
 
-        elif has_role(sr.ORG_ADMIN):
+        elif self.s3_has_roles((sr.ORG_ADMIN, sr.ORG_GROUP_ADMIN)):
             if not self.permission.entity_realm:
                 organisation_id = user.organisation_id
                 if not organisation_id:
@@ -3886,9 +3894,15 @@ Please go to %(url)s to approve this user."""
                                                  )
                 pe_ids.append(pe_id)
             else:
-                pe_ids = self.user.realms[sr.ORG_ADMIN]
-                if pe_ids is None:
-                    return True
+                pe_ids = set()
+                for role in (sr.ORG_ADMIN, sr.ORG_GROUP_ADMIN):
+                    if role not in self.user.realms:
+                        continue
+                    realm = self.user.realms[role]
+                    if realm is None:
+                        return True
+                    pe_ids.update(realm)
+                pe_ids = list(pe_ids) if pe_ids else None
             return pe_ids
 
         else:
