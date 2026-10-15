@@ -138,7 +138,10 @@ if not failed:
         # Restore links
         for row in rows:
             dist, fltr = row[ndtable], row[uftable]
-            dist.update_record(saved_filter_id=fltr.id)
+            dist.update_record(saved_filter_id=fltr.id,
+                               modified_on = ndtable.modified_on,
+                               modified_by = ndtable.modified_by,
+                               )
             fixed += 1
             info(".")
         # Remove orphaned distribution records
@@ -166,11 +169,17 @@ if not failed:
         items = db(query).select(sitable.id)
         item_ids = {item.id for item in items}
 
-        updated += db(query).update(um=unit_code)
+        updated += db(query).update(um = unit_code,
+                                    modified_on = sitable.modified_on,
+                                    modified_by = sitable.modified_by,
+                                    )
 
         query = (sptable.item_id.belongs(item_ids)) & (sptable.deleted == False)
 
-        fixed += db(query).update(quantity=sptable.quantity*factor)
+        fixed += db(query).update(quantity = sptable.quantity*factor,
+                                  modified_on = sptable.modified_on,
+                                  modified_by = sptable.modified_by,
+                                  )
 
     infoln("...done (%s units updated, %s pack quantities fixed)" % (updated, fixed))
 
@@ -219,7 +228,10 @@ if not failed:
             unmapped.append(item.um)
             info("?")
         elif item.um != unit_code:
-            item.update_record(um=unit_code)
+            item.update_record(um = unit_code,
+                               modified_on = sitable.modified_on,
+                               modified_by = sitable.modified_by,
+                               )
             updated += 1
             info("+")
         else:
