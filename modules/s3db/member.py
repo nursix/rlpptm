@@ -35,7 +35,6 @@ import datetime
 from gluon import *
 from gluon.storage import Storage
 from ..core import *
-from s3layouts import S3PopupLink
 
 # =============================================================================
 class MemberModel(DataModel):
@@ -124,11 +123,11 @@ class MemberModel(DataModel):
                                                                   )),
                                            sortby = "name",
                                            writable = types,
-                                           comment = S3PopupLink(f = "membership_type",
-                                                                 label = ADD_MEMBERSHIP_TYPE,
-                                                                 title = ADD_MEMBERSHIP_TYPE,
-                                                                 tooltip = T("Add a new membership type to the catalog."),
-                                                                 ),
+                                           comment = PopupLink(f = "membership_type",
+                                                               label = ADD_MEMBERSHIP_TYPE,
+                                                               title = ADD_MEMBERSHIP_TYPE,
+                                                               tooltip = T("Add a new membership type to the catalog."),
+                                                               ),
                                            )
 
         configure(tablename,
@@ -158,7 +157,7 @@ class MemberModel(DataModel):
                       self.pr_person_id(
                         comment = None,
                         ondelete = "CASCADE",
-                        widget = S3AddPersonWidget(controller="member"),
+                        widget = PersonSelector(controller="member"),
                         empty = False,
                       ),
                       membership_type_id(),

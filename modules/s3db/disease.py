@@ -45,7 +45,6 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..core import *
-from s3layouts import S3PopupLink
 
 # Monitoring upgrades {new_level:previous_levels}
 MONITORING_UPGRADE = {"OBSERVATION": ("NONE",
@@ -114,9 +113,9 @@ class DiseaseDataModel(DataModel):
                                                         represent,
                                                         ),
                                    sortby = "name",
-                                   comment = S3PopupLink(f = "disease",
-                                                         tooltip = T("Add a new disease to the catalog"),
-                                                         ),
+                                   comment = PopupLink(f = "disease",
+                                                       tooltip = T("Add a new disease to the catalog"),
+                                                       ),
                                    )
 
         self.add_components(tablename,
@@ -252,7 +251,7 @@ class DiseaseDataModel(DataModel):
             msg_list_empty = T("No Testing Devices currently registered"),
             )
 
-        # Reusable field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename)
         device_id = FieldTemplate("device_id", "reference %s" % tablename,
                                   label = T("Testing Device"),
@@ -274,8 +273,7 @@ class DiseaseDataModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """ Safe defaults for names in case the module is disabled """
 
         dummy = FieldTemplate.dummy
@@ -424,7 +422,7 @@ class DiseaseMonitoringModel(DataModel):
             msg_list_empty = T("No Demographics currently defined"),
             )
 
-        # Reusable Field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename)
         demographic_id = FieldTemplate("demographic_id", "reference %s" % tablename,
                                        label = T("Demographic"),
@@ -490,13 +488,13 @@ class DiseaseMonitoringModel(DataModel):
                            "date",
                            "tests_total",
                            "tests_positive",
-                           S3SQLInlineComponent("testing_demographic",
-                                                label = T("Details"),
-                                                fields = ["demographic_id",
-                                                          "tests_total",
-                                                          "tests_positive",
-                                                          ],
-                                                ),
+                           InlineComponent("testing_demographic",
+                                           label = T("Details"),
+                                           fields = ["demographic_id",
+                                                     "tests_total",
+                                                     "tests_positive",
+                                                     ],
+                                           ),
                            "comments",
                            ]
         else:
@@ -507,7 +505,7 @@ class DiseaseMonitoringModel(DataModel):
                            "tests_positive",
                            "comments",
                            ]
-        crud_form = S3SQLCustomForm(*crud_fields)
+        crud_form = CustomForm(*crud_fields)
 
         # Filter Widgets
         filter_widgets = [TextFilter(["site_id$name", "comments"],
@@ -685,8 +683,7 @@ class DiseaseMonitoringModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """ Safe defaults for names in case the module is disabled """
 
         dummy = FieldTemplate.dummy
@@ -744,7 +741,7 @@ class DiseaseMonitoringModel(DataModel):
         query = None
         for fn, v in context.items():
             if v:
-                q = (table[fn] == context[fn])
+                q = (table[fn] == v)
                 query = query & q if query else q
         if query:
             if record_id:
@@ -915,15 +912,6 @@ class DiseaseCertificateModel(DataModel):
         #
         return None
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
-        """ Safe defaults for names in case the module is disabled """
-
-        #dummy = FieldTemplate.dummy
-
-        return None
-
 # =============================================================================
 class DiseaseCaseTrackingModel(DataModel):
 
@@ -1006,9 +994,9 @@ class DiseaseCaseTrackingModel(DataModel):
                            ),
                      person_id(empty = False,
                                ondelete = "CASCADE",
-                               widget = S3AddPersonWidget(controller = "pr",
-                                                          pe_label = use_case_id,
-                                                          ),
+                               widget = PersonSelector(controller = "pr",
+                                                       pe_label = use_case_id,
+                                                       ),
                                ),
                      self.disease_disease_id(comment = None),
                      #DateField(), # date registered == created_on?
@@ -1075,7 +1063,7 @@ class DiseaseCaseTrackingModel(DataModel):
                      CommentsField(),
                      )
 
-        # Reusable Field
+        # Foreign Key Template
         represent = disease_CaseRepresent()
         case_id = FieldTemplate("case_id", "reference %s" % tablename,
                                 label = T("Case"),
@@ -1084,9 +1072,9 @@ class DiseaseCaseTrackingModel(DataModel):
                                                 IS_ONE_OF(db, "disease_case.id",
                                                           represent,
                                                           )),
-                                comment = S3PopupLink(f = "case",
-                                                      tooltip = T("Add a new case"),
-                                                      ),
+                                comment = PopupLink(f = "case",
+                                                    tooltip = T("Add a new case"),
+                                                    ),
                                 )
 
         # Components
@@ -1122,20 +1110,20 @@ class DiseaseCaseTrackingModel(DataModel):
                        ]
 
         # CRUD form
-        crud_form = S3SQLCustomForm("disease_id",
-                                    case_number,
-                                    "person_id",
-                                    "location_id",
-                                    "illness_status",
-                                    "symptom_debut",
-                                    "hospitalized",
-                                    "intensive_care",
-                                    "diagnosis_status",
-                                    "diagnosis_date",
-                                    "monitoring_level",
-                                    "monitoring_until",
-                                    "comments",
-                                    )
+        crud_form = CustomForm("disease_id",
+                               case_number,
+                               "person_id",
+                               "location_id",
+                               "illness_status",
+                               "symptom_debut",
+                               "hospitalized",
+                               "intensive_care",
+                               "diagnosis_status",
+                               "diagnosis_date",
+                               "monitoring_level",
+                               "monitoring_until",
+                               "comments",
+                               )
 
 
 
@@ -1232,16 +1220,16 @@ class DiseaseCaseTrackingModel(DataModel):
         crud_fields = ["case_id",
                        "date",
                        "illness_status",
-                       S3SQLInlineLink("symptom",
-                                       field = "symptom_id",
-                                       label = T("Symptoms"),
-                                       multiple = True,
-                                       ),
+                       InlineLink("symptom",
+                                  field = "symptom_id",
+                                  label = T("Symptoms"),
+                                  multiple = True,
+                                  ),
                        "comments",
                        ]
 
         configure(tablename,
-                  crud_form = S3SQLCustomForm(*crud_fields),
+                  crud_form = CustomForm(*crud_fields),
                   list_fields = ["date",
                                  "illness_status",
                                  (T("Symptoms"), "symptom.name"),
@@ -1428,8 +1416,7 @@ class DiseaseCaseTrackingModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """ Safe defaults for names in case the module is disabled """
 
         return {"disease_case_id": FieldTemplate.dummy("case_id"),
@@ -1648,7 +1635,7 @@ class disease_CaseRepresent(S3Represent):
 
     def __init__(self):
 
-        super(disease_CaseRepresent, self).__init__(lookup = "disease_case")
+        super().__init__(lookup = "disease_case")
 
     # -------------------------------------------------------------------------
     def lookup_rows(self, key, values, fields=None):
@@ -1789,9 +1776,9 @@ class DiseaseContactTracingModel(DataModel):
                                                               represent,
                                                               )),
                                    sortby = "date",
-                                   comment = S3PopupLink(f = "tracing",
-                                                         tooltip = T("Add a new contact tracing information"),
-                                                         ),
+                                   comment = PopupLink(f = "tracing",
+                                                       tooltip = T("Add a new contact tracing information"),
+                                                       ),
                                    )
 
         self.add_components(tablename,
@@ -1849,9 +1836,9 @@ class DiseaseContactTracingModel(DataModel):
         tablename = "disease_exposure"
         define_table(tablename,
                      self.pr_person_id(empty = False,
-                                       widget = S3AddPersonWidget(controller = "pr",
-                                                                  pe_label = use_case_id,
-                                                                  ),
+                                       widget = PersonSelector(controller = "pr",
+                                                               pe_label = use_case_id,
+                                                               ),
                                        ),
                      DateTimeField(
                          comment = DIV(_class="tooltip",
@@ -1916,12 +1903,6 @@ class DiseaseContactTracingModel(DataModel):
             msg_list_empty = T("No Exposure Information currently registered"))
 
         # Pass names back to global scope (s3.*)
-        return None
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
-
         return None
 
     # -------------------------------------------------------------------------
@@ -2176,11 +2157,11 @@ class DiseaseStatsModel(DataModel):
                                 readable = True,
                                 writable = True,
                                 empty = False,
-                                comment = S3PopupLink(c = "disease",
-                                                      f = "statistic",
-                                                      vars = {"child": "parameter_id"},
-                                                      title = ADD_STATISTIC,
-                                                      ),
+                                comment = PopupLink(c = "disease",
+                                                    f = "statistic",
+                                                    vars = {"child": "parameter_id"},
+                                                    title = ADD_STATISTIC,
+                                                    ),
                                 ),
                      location_id(
                          requires = IS_LOCATION(),

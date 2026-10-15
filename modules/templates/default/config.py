@@ -103,7 +103,7 @@ def config(settings):
     #settings.auth.registration_requests_image = True
     # Uncomment this to direct newly-registered users to their volunteer page to be able to add extra details
     # NB This requires Verification/Approval to be Off
-    # @ToDo: Extend to all optional Profile settings: Homepage, Twitter, Facebook, Mobile Phone, Image
+    # @ToDo: Extend to all optional Profile settings: Homepage, Mobile Phone, Image
     #settings.auth.registration_volunteer = True
     # Terms of Service to be able to Register on the system
     # https://termsfeed.com/terms-conditions/generator/
@@ -464,10 +464,6 @@ def config(settings):
     #settings.ui.default_cancel_button = True
     # Uncomment to disable responsive behavior of datatables
     #settings.ui.datatables_responsive = False
-    # Uncomment to enable double scroll bars on non-responsive datatables
-    #settings.ui.datatables_double_scroll = True
-    # Uncomment to modify the label of the Permalink
-    #settings.ui.label_permalink = "Permalink"
     # Uncomment to modify the main menu logo
     #settings.ui.menu_logo = URL(c="static", f="img", args=["S3menulogo.png"])
     # Configure business hours to indicate in organizer (can be a list)
@@ -476,6 +472,8 @@ def config(settings):
     #settings.ui.organizer_time_format = "H:mm"
     # Configure the snap raster width in organizer (hh:mm:ss)
     #settings.ui.organizer_snap_duration = "00:15:00"
+    # Uncomment this to show profile pictures in checkpoint UI only on demand
+    #settings.ui.checkpoint_show_picture = False
 
     # -------------------------------------------------------------------------
     # Sync
@@ -646,83 +644,112 @@ def config(settings):
     # -------------------------------------------------------------------------
     # Disaster Victim Registry / Case Management
 
-    # Uncomment to use the term Beneficiary instead of Case
+    # Use the term Beneficiary instead of Case
     #settings.dvr.label = "Beneficiary"
 
-    # Uncomment this to enable tracking of transfer origin/destination sites
+    # Manage case flags
+    #settings.dvr.case_flags = True
+    # Use org-specific case flags
+    #settings.dvr.case_flags_org_specific = True
+
+    # Enable tracking of transfer origin/destination sites
     #settings.dvr.track_transfer_sites = True
-    # Uncomment this to enable features to manage transferability of cases
+    # Enable features to manage transferability of cases
     #settings.dvr.manage_transferability = True
 
-    # Uncomment this to enable household size in cases, set to "auto" for automatic counting
-    #settings.dvr.household_size = True
-
-    # Uncomment this to expose flags to mark appointment types as mandatory
-    #settings.dvr.mandatory_appointments = True
-    # Uncomment this to have appointments with personal presence update last_seen_on
-    #settings.dvr.appointments_update_last_seen_on = True
-    # Uncomment this to automatically update the case status when appointments are completed
-    #settings.dvr.appointments_update_case_status = True
-    # Uncomment this to automatically close appointments when registering certain case events
-    #settings.dvr.case_events_close_appointments = True
-
-    # Uncomment this to have allowance payments update last_seen_on
-    #settings.dvr.payments_update_last_seen_on = True
-
-    # Uncomment this to use service types for group/case activites
-    #settings.dvr.activity_use_service_type = True
-    # Uncomment this to use sectors in group/case activities
-    #settings.dvr.activity_sectors = True
-    # Uncomment this to use case activity types
-    #settings.dvr.activity_types = True
-    # Uncomment this to use hierarchical case activity types
-    #settings.dvr.activity_types_hierarchical = True
-    # Uncomment this to use status field in case activities
-    #settings.dvr.case_activity_use_status = True
-    # Uncomment this to disable follow-up fields in case activities
-    #settings.dvr.case_activity_follow_up = False
-
-    # Uncomment this to include case activity docs on beneficiary documents-tab
+    # Include case activity docs on beneficiary documents-tab
     #settings.dvr.case_include_activity_docs = True
-    # Uncomment this to include case group docs on beneficiary documents-tab
+    # Include case group docs on beneficiary documents-tab
     #settings.dvr.case_include_group_docs = True
 
-    # Uncomment this if Case activities use multiple Needs
-    #settings.dvr.case_activity_needs_multiple = True
-    # Uncomment this to use service types for needs
-    #settings.dvr_needs_use_service_type = True
-    # Uncomment this to use hierarchical need types
-    #settings.dvr.needs_hierarchical = True
-    # Uncomment this to use hierarchical vulnerability types
-    #settings.dvr.vulnerability_types_hierarchical = True
+    # Enable household size in cases, set to "auto" for automatic counting
+    #settings.dvr.household_size = True
 
-    # Uncomment this to manage individual response actions in case activities
+    # Use org-specific need types
+    #settings.dvr.need_types_org_specific = True
+
+    # Appointments use date+time
+    #settings.dvr.appointments_use_time = True
+    # Use org-specific appointment types
+    #settings.dvr.appointment_types_org_specific = True
+    # Expose flags to mark appointment types as mandatory
+    #settings.dvr.mandatory_appointments = True
+    # Appointments with personal presence update last_seen_on
+    #settings.dvr.appointments_update_last_seen_on = True
+    # Automatically update the case status when appointments are completed
+    #settings.dvr.appointments_update_case_status = True
+
+    # Use org-specific case event types
+    #settings.dvr.case_event_types_org_specific = True
+    # Automatically close appointments when registering certain case events
+    #settings.dvr.case_events_close_appointments = True
+
+    # Allowance payments update last_seen_on
+    #settings.dvr.payments_update_last_seen_on = True
+
+    # Register vulnerabilities in case files
+    #settings.dvr.vulnerabilities = True
+
+    # Which subject type to use for case activities (subject|need|both)
+    #settings.dvr.case_activity_subject_type = "need"
+    # Allow marking case activities as emergencies
+    #settings.dvr.case_activity_emergency = True
+    # Disable recording of free-text need details
+    #settings.dvr.case_activity_need_details = False
+    # Enable/disable linking of case activities to relevant vulnerabilities
+    #settings.dvr.case_activity_vulnerabilities = True
+    # Enable/disable free-text response details
+    #settings.dvr.case_activity_response_details = True
+    # Disable case activity inline updates
+    #settings.dvr.case_activity_updates = False
+    # Disable case activity status
+    #settings.dvr.case_activity_status = False
+    # Enable/disable recording of free-text case activity outcome
+    #settings.dvr.case_activity_outcome = True
+    # Enable/disable recording of improvement level in case activities
+    #settings.dvr.case_activity_achievement = True
+    # Use service types for case activites
+    #settings.dvr.case_activity_use_service_type = True
+    # Use sectors in group/case activities
+    #settings.dvr.case_activity_sectors = True
+    # Disable follow-up fields in case activities
+    #settings.dvr.case_activity_follow_up = False
+    # Allow uploading of documents in individual case activities
+    #settings.dvr.case_activity_documents = True
+
+    # Manage individual response actions in case activities
     #settings.dvr.manage_response_actions = True
-    # Uncomment this to not use response action types
+    # Disable response action types
     #settings.dvr.response_types = False
-    # Uncomment this to use response themes
+    # Use hierarchical response action types
+    #settings.dvr.response_types_hierarchical = True
+    # Response actions are usually planned in advance (e.g. default status = open)
+    #settings.dvr.response_planning = True
+    # Use a separate due-date for responses
+    #settings.dvr.response_due_date = True
+    # Use date+time for responses (instead of just date)
+    #settings.dvr.response_use_time = True
+    # Link response actions to vulnerabilities addressed
+    #settings.dvr.response_vulnerabilities = True
+    # Use response themes
     #settings.dvr.response_themes = True
-    # Uncomment this to not use org-specific response themes
+    # Disable org-specific response themes
     #settings.dvr.response_themes_org_specific = False
-    # Uncomment this to link response themes to org sectors
+    # Link response themes to org sectors
     #settings.dvr.response_themes_sectors = True
-    # Uncomment this to link response themes to needs
+    # Link response themes to needs
     #settings.dvr.response_themes_needs = True
+    # Document response action details per theme
+    #settings.dvr.response_themes_details = True
+    # Document response action efforts per theme
+    # settings.response_themes_efforts = True
     # Uncomment this to automatically link responses to case activities
     #settings.dvr.response_activity_autolink = True
-    # Uncomment this to activate features for response planning
-    #settings.dvr.response_planning = True
-    # Uncomment this to use a separate due-date for responses
-    #settings.dvr.response_due_date = True
-    # Uncomment this to use date+time for responses (instead of just date)
-    #settings.dvr.response_use_time = True
 
     # Configure a regular expression pattern for ID Codes (QR Codes)
     #settings.dvr.id_code_pattern = "(?P<label>[^,]*),(?P<first_name>[^,]*),(?P<last_name>[^,]*),(?P<date_of_birth>[^,]*)"
     # Uncomment this to show a warning during event registration if the person is not currently checked-in
     #settings.dvr.event_registration_checkin_warning = True
-    # Uncomment this to show profile pictures in event registration UI only on demand
-    #settings.dvr.event_registration_show_picture = False
 
     # -------------------------------------------------------------------------
     # Events
@@ -767,17 +794,17 @@ def config(settings):
     #settings.pr.import_update_requires_email = False
     # Uncomment this to enable support for third gender
     #settings.pr.hide_third_gender = False
-    # Uncomment to a fuzzy search for duplicates in the new AddPersonWidget2
+    # Uncomment to a fuzzy search for duplicates in the new PersonSelector
     #settings.pr.lookup_duplicates = True
-    # Uncomment to hide fields in S3AddPersonWidget[2]
+    # Uncomment to hide fields in PersonSelector
     #settings.pr.request_dob = False
     #settings.pr.request_email = False
     #settings.pr.request_gender = False
-    # Uncomment to show field in S3AddPersonWidget
+    # Uncomment to show field in PersonSelector
     #settings.pr.request_home_phone = True
     # Uncomment to modify the order of Names
     #settings.pr.name_format = "%(last_name)s, %(first_name)s %(middle_name)s"
-    # Uncomment to prevent selecting existing users in the old S3AddPersonWidget
+    # Uncomment to prevent selecting existing users in the old PersonSelector
     #settings.pr.select_existing = False
     # Uncomment to prevent showing HR details in S3PersonAutocompleteWidget results
     #settings.pr.search_shows_hr_details = False
@@ -792,39 +819,53 @@ def config(settings):
 
     # -------------------------------------------------------------------------
     # Organisations
+    #
+
     # Uncomment to use an Autocomplete for Organisation lookup fields
     #settings.org.autocomplete = True
+
     # Enable the Organisation Sector field
     #settings.org.sector = True
     # But hide it from the rheader
     #settings.org.sector_rheader = False
+
     # Enable the use of Organisation Branches
     #settings.org.branches = True
     # Show branches as tree rather than as table
     #settings.org.branches_tree_view = True
+
     # Make Facility Types Hierarchical
     #settings.org.facility_types_hierarchical = True
+    # Uncomment to make Facility codes unique
+    #settings.org.facility_code_unique = True
+
     # Enable the use of Organisation Groups & what their name is
     #settings.org.groups = "Coalition"
     #settings.org.groups = "Network"
+
     # Organisation Location context
     #settings.org.organisation_location_context = "organisation_location.location_id"
+
     # Make Organisation Types Hierarchical
     #settings.org.organisation_types_hierarchical = True
     # Make Organisation Types Multiple
     #settings.org.organisation_types_multiple = True
     # Show Organisation Types in the rheader
     #settings.org.organisation_type_rheader = True
+
     # Enable the use of Organisation Regions
     #settings.org.regions = True
     # Make Organisation Regions Hierarchical
     #settings.org.regions_hierarchical = True
     # Enable the use of Organisation Region Countries
     #settings.org.region_countries = True
+
     # Uncomment to show a Tab for Organisation Resources
     #settings.org.resources_tab = True
+
     # Make Services Hierarchical
     #settings.org.services_hierarchical = True
+
     # Set the length of the auto-generated org/site code the default is 10
     #settings.org.site_code_len = 3
     # Set the label for Sites
@@ -839,22 +880,13 @@ def config(settings):
     #settings.org.site_inv_req_tabs = False
     # Uncomment to allow Sites to be staffed by Volunteers
     #settings.org.site_volunteers = True
-    # Enable certain fields just for specific Organisations
-    # Requires a call to settings.set_org_dependent_field(field)
-    # empty list => disabled for all (including Admin)
-    #settings.org.dependent_fields = \
-    #    {#"<table name>.<field name>"  : ["<Organisation Name>"],
-    #     "pr_person_details.mother_name"             : [],
-    #     "pr_person_details.father_name"             : [],
-    #     "vol_volunteer.active"                      : [],
-    #     "vol_volunteer_cluster.vol_cluster_type_id"      : [],
-    #     "vol_volunteer_cluster.vol_cluster_id"          : [],
-    #     "vol_volunteer_cluster.vol_cluster_position_id" : [],
-    #     }
+
+    # Site types for presence tracking
+    #settings.org.site_presence_site_types = ("cr_shelter", )
+
     # Uncomment to make Office codes unique
     #settings.org.office_code_unique = True
-    # Uncomment to make Facility codes unique
-    #settings.org.facility_code_unique = True
+
     # Uncomment to use Tags for Organisations, Offices & Facilities
     #settings.org.tags = True
 
@@ -953,16 +985,10 @@ def config(settings):
     #settings.inv.facility_label = "Facility"
     # Uncomment if you need a simpler (but less accountable) process for managing stock levels
     #settings.inv.direct_stock_edits = True
-    # Uncomment to have Warehouse Types be Organisation-dependent
-    #settings.inv.org_dependent_warehouse_types = True
     # Uncomment to call Stock Adjustments, 'Stock Counts'
     #settings.inv.stock_count = True
     # Use the term 'Order' instead of 'Shipment'
     #settings.inv.shipment_name = "order"
-    # Uncomment to validate for Unique Warehouse Codes
-    #settings.inv.warehouse_code_unique = True
-    # Uncomment to not track pack values
-    #settings.inv.track_pack_values = False
     #settings.inv.show_mode_of_transport = True
     #settings.inv.send_show_org = False
     #settings.inv.send_show_time_in = True
@@ -1089,6 +1115,8 @@ def config(settings):
     #settings.supply.catalog_multi = False
     # Disable the use of Alternative Items
     #settings.supply.use_alt_name = False
+    # Uncomment to not track pack values
+    #settings.supply.track_pack_values = False
 
     # -------------------------------------------------------------------------
     # Projects
@@ -1230,11 +1258,6 @@ def config(settings):
             access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
             module_type = None  # This item is handled separately for the menu
         )),
-        ("translate", Storage(
-            name_nice = T("Translation"),
-            #description = "Selective translation of strings based on module.",
-            module_type = None,
-        )),
         ("gis", Storage(
             name_nice = T("Map"),
             #description = "Situation Awareness & Geospatial Analysis",
@@ -1324,20 +1347,25 @@ def config(settings):
         #    #description = "Activate Events (e.g. from Scenario templates) for allocation of appropriate Resources (Human, Assets & Facilities).",
         #    module_type = 10,
         #)),
-        #("br", Storage(
-        #    name_nice = T("Beneficiary Registry"),
-        #    #description = "Allow affected individuals & households to register to receive compensation and distributions",
-        #    module_type = 10,
-        #)),
         #("cr", Storage(
         #    name_nice = T("Shelters"),
         #    #description = "Tracks the location, capacity and breakdown of victims in Shelters",
+        #    module_type = 10
+        #)),
+        #("dvr", Storage(
+        #    name_nice = T("Beneficiary Registry"),
+        #    #description = "Disaster Victim Registry",
         #    module_type = 10
         #)),
         #("hms", Storage(
         #    name_nice = T("Hospitals"),
         #    #description = "Helps to monitor status of hospitals",
         #    module_type = 10
+        #)),
+        #("med", Storage(
+        #    name_nice = T("Medical Journal"),
+        #    #description = "Emergency Medical Journal",
+        #    module_type = None, # No menu entry
         #)),
         #("member", Storage(
         #    name_nice = T("Members"),
@@ -1382,12 +1410,6 @@ def config(settings):
         #   name_nice = T("Security"),
         #   #description = "Security Management System",
         #   module_type = 10,
-        #)),
-        # Deprecated: Replaced by BR
-        #("dvr", Storage(
-        #    name_nice = T("Beneficiary Registry"),
-        #    #description = "Disaster Victim Registry",
-        #    module_type = 10
         #)),
         # Deprecated: Replaced by event
         #("irs", Storage(

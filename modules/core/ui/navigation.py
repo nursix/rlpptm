@@ -133,6 +133,9 @@ class S3NavigationItem:
                 mandatory: item is always active
                 ltr: item is always rendered LTR
                 attributes: attributes to use in layout
+
+            Keyword Args:
+                ignore_args: ignore args when matching current request
         """
 
         # Label
@@ -232,6 +235,8 @@ class S3NavigationItem:
         self.ltr = ltr                  # Item is always rendered LTR
         self.authorized = None          # True|False after authorization
 
+        self._applicable = None         # Outcome of the check-hook
+
         # Role restriction
         self.restrict = restrict
         if restrict is not None:
@@ -317,10 +322,10 @@ class S3NavigationItem:
         item.controller = self.controller
         item.function = self.function
 
-        item.match_controller = [c for c in self.match_controller]
-        item.match_function = [f for f in self.match_function]
+        item.match_controller = list(self.match_controller)
+        item.match_function = list(self.match_function)
 
-        item.args = [a for a in self.args]
+        item.args = list(self.args)
         item.vars = Storage(**self.vars)
 
         item.extension = self.extension
@@ -342,7 +347,7 @@ class S3NavigationItem:
         item.link = self.link
         item.mandatory = self.mandatory
         if self.restrict is not None:
-            item.restrict = [r for r in self.restrict]
+            item.restrict = list(self.restrict)
         else:
             item.restrict = None
 
@@ -420,14 +425,14 @@ class S3NavigationItem:
 
         authorized = False
 
+        # Check required roles
         restrict = self.restrict
-        if restrict:
-            authorized = current.auth.s3_has_roles(restrict)
-        else:
-            authorized = True
+        authorized = current.auth.s3_has_roles(restrict) if restrict else True
 
-        if self.accessible_url() == False:
-            authorized = False
+        # Check URL accessible
+        if authorized:
+            authorized = self.accessible_url() is not False
+
         return authorized
 
     # -------------------------------------------------------------------------
@@ -471,25 +476,34 @@ class S3NavigationItem:
             if root.selected is None:
                 root.check_selected(request)
 
-        return True if self.selected else False
+        return bool(self.selected)
 
     # -------------------------------------------------------------------------
-    def check_hook(self):
+    @property
+    def applicable(self):
         """
-            Run hooked-in checks
+            The result of the check-hook (lazy property)
+
+            Returns:
+                boolean
         """
 
-        cond = True
-        check = self.check
-        if check is not None:
-            if not isinstance(check, (list, tuple)):
-                check = [check]
-            for condition in check:
-                if callable(condition) and not condition(self):
-                    cond = False
-                elif not condition:
-                    cond = False
-        return cond
+        applicable = self._applicable
+        if applicable is None:
+
+            applicable = True
+
+            check = self.check
+            if check is not None:
+                if not isinstance(check, (list, tuple)):
+                    check = [check]
+                for condition in check:
+                    if callable(condition) and not condition(self) or not condition:
+                        applicable = False
+                        break
+            self._applicable = applicable
+
+        return applicable
 
     # -------------------------------------------------------------------------
     # Tag methods, allows to enable/disable/alter items by tag
@@ -680,7 +694,7 @@ class S3NavigationItem:
             return 0
 
         # Check hook and enabled
-        check = self.check_hook()
+        check = self.applicable
         if check:
             enabled = self.check_enabled()
             if not enabled:
@@ -700,9 +714,11 @@ class S3NavigationItem:
         if not c and self.parent is None:
             return 1
 
+        # Additional preference score
+        preference = 0
 
         rvars = request.get_vars
-        controller = request.controller
+        rcontroller = controller = request.controller
         function = request.function
 
         # Handle "viewing" (foreign controller in a tab)
@@ -721,6 +737,10 @@ class S3NavigationItem:
         # Controller
         if controller == c or controller in mc:
             level = 1
+        if rcontroller == c and controller in mc:
+            # Add preference score if both match
+            # e.g. custom rest controller with viewing-tab
+            preference += 1
 
         # Function
         if level == 1:
@@ -728,11 +748,11 @@ class S3NavigationItem:
             mf = self.get("match_function")
             if function == f or function in mf:
                 level = 2
-            elif f == "index" or "index" in mf:
-                # "weak" match: homepage link matches any function
-                return 1
+            elif f == "index" or "index" in mf or "*" in mf:
+                # "weak" match: homepage link or * matches any function
+                level = 1
             elif f is not None:
-                return 0
+                level = 0
 
         # Args and vars
         # Match levels (=order of preference):
@@ -744,20 +764,19 @@ class S3NavigationItem:
         #   5 = args match but vars mismatch
         #   6 = args match and no vars in item
         #   7 = args match and vars match
-        if level == 2:
+        if level == 2 and not self.opts.ignore_args:
             extra = 1
             for k, v in link_vars.items():
                 if k not in rvars or k in rvars and rvars[k] != s3_str(v):
                     extra = 0
                     break
-                else:
-                    extra = 2
+                extra = 2
             rargs = request.args
             if rargs:
                 if args:
-                    largs = [a for a in request.args if not a.isdigit()]
+                    largs = [a for a in rargs if not a.isdigit()]
                     if len(args) == len(largs) and \
-                       all([args[i] == largs[i] for i in range(len(args))]):
+                       all(args[i] == largs[i] for i in range(len(args))):
                         level = 5
                     else:
                         if len(rargs) >= len(args) > 0 and \
@@ -774,7 +793,7 @@ class S3NavigationItem:
                 level = 5
             level += extra
 
-        return level
+        return level + preference
 
     # -------------------------------------------------------------------------
     def branch(self, request=None):
@@ -969,9 +988,7 @@ class S3NavigationItem:
             # Check custom conditions (hook), these methods
             # can alter any prior flags, which can then only be
             # overridden by the class' check_enabled method
-            cond = self.check_hook()
-
-            if cond:
+            if self.applicable:
                 # Run the class' check_enabled method:
                 # if this returns False, then this overrides any prior status
                 enabled = self.check_enabled()
@@ -1189,8 +1206,7 @@ class S3NavigationItem:
 
         items = []
         for item in self.components:
-            if not flags or \
-               all([getattr(item, f) == flags[f] for f in flags]):
+            if not flags or all(getattr(item, f) == flags[f] for f in flags):
                 items.append(item)
         return items
 
@@ -1204,8 +1220,7 @@ class S3NavigationItem:
         """
 
         for item in self.components:
-            if not flags or \
-               all([getattr(item, f) == flags[f] for f in flags]):
+            if not flags or all(getattr(item, f) == flags[f] for f in flags):
                 return item
         return None
 
@@ -1221,8 +1236,7 @@ class S3NavigationItem:
         components = list(self.components)
         components.reverse()
         for item in components:
-            if not flags or \
-               all([getattr(item, f) == flags[f] for f in flags]):
+            if not flags or all(getattr(item, f) == flags[f] for f in flags):
                 return item
         return None
 
@@ -1278,12 +1292,12 @@ class S3NavigationItem:
 
         if not flags:
             return len(self.preceding()) == 0
-        if not all([getattr(self, f) == flags[f] for f in flags]):
+        if not all(getattr(self, f) == flags[f] for f in flags):
             return False
         preceding = self.preceding()
         if preceding:
             for item in preceding:
-                if all([getattr(item, f) == flags[f] for f in flags]):
+                if all(getattr(item, f) == flags[f] for f in flags):
                     return False
         return True
 
@@ -1299,12 +1313,12 @@ class S3NavigationItem:
 
         if not flags:
             return len(self.following()) == 0
-        if not all([getattr(self, f) == flags[f] for f in flags]):
+        if not all(getattr(self, f) == flags[f] for f in flags):
             return False
         following = self.following()
         if following:
             for item in following:
-                if all([getattr(item, f) == flags[f] for f in flags]):
+                if all(getattr(item, f) == flags[f] for f in flags):
                     return False
         return True
 
@@ -1346,8 +1360,7 @@ class S3NavigationItem:
         preceding = self.preceding()
         preceding.reverse()
         for item in preceding:
-            if not flags or \
-               all([getattr(item, f) == flags[f] for f in flags]):
+            if not flags or all(getattr(item, f) == flags[f] for f in flags):
                 return item
         return None
 
@@ -1362,8 +1375,7 @@ class S3NavigationItem:
 
         following = self.following()
         for item in following:
-            if not flags or \
-               all([getattr(item, f) == flags[f] for f in flags]):
+            if not flags or all(getattr(item, f) == flags[f] for f in flags):
                 return item
         return None
 
@@ -1385,8 +1397,7 @@ def s3_rheader_resource(r):
             tablename = r.tablename
             record = r.record
         else:
-            db = current.db
-            record = db[tablename][record_id]
+            record = current.s3db[tablename][record_id]
     else:
         tablename = r.tablename
         record = r.record
@@ -1453,16 +1464,18 @@ class S3ComponentTabs:
         if not record_id and r.record:
             record_id = r.record[r.table._id]
 
+        request = current.request
         for i, tab in enumerate(tabs):
 
             # Determine the query variables for the tab URL
-            vars_match = tab.vars_match(r)
+            # - applying original GET vars to prevent session filter creep
+            vars_match = tab.vars_match(request)
             if vars_match:
-                _vars = Storage(r.get_vars)
+                _vars = Storage(request.get_vars)
             else:
                 _vars = Storage(tab.vars)
-                if "viewing" in r.get_vars:
-                    _vars.viewing = r.get_vars.viewing
+                if "viewing" in request.get_vars:
+                    _vars.viewing = request.get_vars.viewing
 
             # Determine the controller function for the tab URL
             if tab.function is None:
@@ -1479,7 +1492,7 @@ class S3ComponentTabs:
             # Is this the current tab?
             component = tab.component
             here = False
-            if function == r.name or function == r.function:
+            if function in (r.name, r.function):
                 here = r.method == component or not mtab
             if component:
                 if r.component and \
@@ -1501,6 +1514,8 @@ class S3ComponentTabs:
                 _class = "tab_last"
             else:
                 _class = "tab_other"
+            if tab._class:
+                _class = "%s %s" % (_class, tab._class)
 
             # Complete the tab URL with args, deal with "viewing"
             if component:
@@ -1522,7 +1537,7 @@ class S3ComponentTabs:
                         args = [record_id]
                 else:
                     if "viewing" not in _vars and record_id:
-                        args = [record_id]
+                        args = [record_id, tab.method] if tab.method else [record_id]
                 _href = URL(function, args=args, vars=_vars)
                 _id = "rheader_tab_%s" % function
 
@@ -1645,12 +1660,14 @@ class S3ComponentTab:
 
         self.native = False
         self.method = None
+        self._class = None
 
         if len(tab) > 2:
             tab_vars = self.vars = Storage(tab[2])
             if "native" in tab_vars:
-                self.native = True if tab_vars["native"] else False
-                del tab_vars["native"]
+                self.native = bool(tab_vars.pop("native"))
+            if "_class" in tab_vars:
+                self._class = tab_vars.pop("_class")
             if len(tab) > 3:
                 # Component Method
                 self.method = tab[3]
@@ -1768,7 +1785,7 @@ class S3ScriptItem(S3NavigationItem):
                 script: script to inject into jquery_ready when rendered
         """
 
-        super(S3ScriptItem, self).__init__(attributes)
+        super().__init__(attributes)
         self.script = script
 
     # -------------------------------------------------------------------------

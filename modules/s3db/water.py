@@ -25,19 +25,54 @@
     OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__all__ = ("WaterModel",)
+__all__ = ("WaterModel",
+           "WaterWellModel",
+           )
 
 from gluon import *
 from gluon.storage import Storage
 from ..core import *
-from s3layouts import S3PopupLink
+from core.ui.layouts import PopupLink
+
+# =============================================================================
+class WaterWellModel(DataModel):
+
+    names = (#"water_well_type",
+             "water_well",
+             #"water_well_status",
+             )
+
+    def model(self):
+
+        T = current.T
+        db = current.db
+
+        crud_strings = current.response.s3.crud_strings
+        define_table = self.define_table
+        location_id = self.gis_location_id
+
+        # -----------------------------------------------------------------------------
+        # Well
+        #
+        tablename = "water_well"
+        define_table(tablename,
+                     Field("name",
+                           label = T("Name"),
+                           requires = IS_NOT_EMPTY(),
+                           ),
+                     location_id(
+                        widget = LocationSelector(catalog_layers = True,
+                                                  points = True,
+                                                  )
+                        ),
+                     CommentsField(),
+                     )
 
 # =============================================================================
 class WaterModel(DataModel):
     """
         Water Sources
     """
-
     names = ("water_zone_type",
              "water_zone",
              "water_river",
@@ -103,17 +138,17 @@ class WaterModel(DataModel):
                                        IS_ONE_OF(db, "water_zone_type.id",
                                                  zone_type_represent,
                                                  sort=True)),
-                           comment = S3PopupLink(c = "water",
-                                                 f = "zone_type",
-                                                 label = ADD_ZONE_TYPE,
-                                                 tooltip = T("Select a Zone Type from the list or click 'Add Zone Type'"),
-                                                 ),
+                           comment = PopupLink(c = "water",
+                                               f = "zone_type",
+                                               label = ADD_ZONE_TYPE,
+                                               tooltip = T("Select a Zone Type from the list or click 'Add Zone Type'"),
+                                               ),
                            ),
                      location_id(
-                        widget = S3LocationSelector(catalog_layers = True,
-                                                    points = False,
-                                                    polygons = True,
-                                                    ),
+                        widget = LocationSelector(catalog_layers = True,
+                                                  points = False,
+                                                  polygons = True,
+                                                  ),
                      ),
                      CommentsField(),
                      )
@@ -141,10 +176,10 @@ class WaterModel(DataModel):
                            requires = IS_NOT_EMPTY(),
                            ),
                      location_id(
-                        widget = S3LocationSelector(catalog_layers = True,
-                                                    points = False,
-                                                    polygons = True,
-                                                    )
+                        widget = LocationSelector(catalog_layers = True,
+                                                  points = False,
+                                                  polygons = True,
+                                                  )
                      ),
                      CommentsField(),
                      )
@@ -168,10 +203,10 @@ class WaterModel(DataModel):
         #                         ondelete = "RESTRICT",
         #                         represent = represent,
         #                         requires = IS_EMPTY_OR(IS_ONE_OF(db, "water_river.id", represent)),
-        #                         comment = S3PopupLink(c = "water",
-        #                                               f = "river",
-        #                                               title = ADD_RIVER,
-        #                                               ),
+        #                         comment = PopupLink(c = "water",
+        #                                             f = "river",
+        #                                             title = ADD_RIVER,
+        #                                             ),
         #                         )
 
         # -----------------------------------------------------------------------------

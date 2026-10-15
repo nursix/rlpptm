@@ -12,15 +12,16 @@
 #
 import os
 import sys
+
 sys.path.insert(0, os.path.abspath('../../../web2py'))
 sys.path.insert(0, os.path.abspath('../../modules'))
 
 
 # -- Project information -----------------------------------------------------
 
-project = 'Eden ASP'
-copyright = '2021, Eden ASP Team'
-author = 'Eden ASP Team'
+project = 'Sahana Eden'
+copyright = '2024, Sahana Software Foundation'
+author = 'Sahana Eden Team'
 
 
 # -- General configuration ---------------------------------------------------

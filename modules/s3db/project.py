@@ -66,7 +66,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..core import *
-from s3layouts import S3PopupLink
+from core.ui.layouts import PopupLink
 
 # =============================================================================
 class ProjectModel(DataModel):
@@ -267,40 +267,40 @@ class ProjectModel(DataModel):
         if mode_3w:
             lappend((T("Locations"), "location.location_id"))
         if settings.get_project_sectors():
-            cappend(S3SQLInlineLink("sector",
-                                    label = T("Sectors"),
-                                    field = "sector_id",
-                                    cols = 4,
-                                    translate = True,
-                                    ))
+            cappend(InlineLink("sector",
+                               label = T("Sectors"),
+                               field = "sector_id",
+                               cols = 4,
+                               translate = True,
+                               ))
             lappend((T("Sectors"), "sector_project.sector_id"))
             rappend("count(sector_project.sector_id)")
             report_row_default = "sector_project.sector_id"
             report_fact_default = "count(organisation_id)"
         if mode_drr and settings.get_project_hazards():
             lappend((T("Hazards"), "hazard_project.hazard_id"))
-            cappend(S3SQLInlineLink("hazard",
-                                    label = T("Hazards"),
-                                    field = "hazard_id",
-                                    help_field = project_hazard_help_fields,
-                                    cols = 4,
-                                    translate = True,
-                                    ))
+            cappend(InlineLink("hazard",
+                               label = T("Hazards"),
+                               field = "hazard_id",
+                               help_field = project_hazard_help_fields,
+                               cols = 4,
+                               translate = True,
+                               ))
             rappend("count(hazard_project.hazard_id)")
             report_row_default = "hazard_project.hazard_id"
             report_fact_default = "count(organisation_id)"
         if settings.get_project_themes():
-            cappend(S3SQLInlineLink("theme",
-                                    label = T("Themes"),
-                                    field = "theme_id",
-                                    help_field = project_theme_help_fields,
-                                    cols = 4,
-                                    translate = True,
-                                    # Filter Theme by Sector
-                                    #match = {
-                                    #    "theme_id:project_theme_sector.sector_id": "sector_project.sector_id",
-                                    #    },
-                                    #script = '''
+            cappend(InlineLink("theme",
+                               label = T("Themes"),
+                               field = "theme_id",
+                               help_field = project_theme_help_fields,
+                               cols = 4,
+                               translate = True,
+                               # Filter Theme by Sector
+                               #match = {
+                               #    "theme_id:project_theme_sector.sector_id": "sector_project.sector_id",
+                               #    },
+                               #script = '''
 #$.filterOptionsS3({
 # 'trigger':{'alias':'sector','name':'sector_id','inlineType':'link'},
 # 'target':{'alias':'theme','name':'theme_id','inlineType':'link'},
@@ -310,7 +310,7 @@ class ProjectModel(DataModel):
 # 'showEmptyField':false,
 # 'tooltip':'project_theme_help_fields(id,name)'
 #})'''
-                                    ))
+                               ))
             lappend((T("Themes"), "theme.name"))
             rappend("count(theme.name)")
         if multi_orgs:
@@ -341,7 +341,7 @@ class ProjectModel(DataModel):
         if not mode_3w:
             lappend("location.location_id")
 
-        crud_form = S3SQLCustomForm(*crud_fields)
+        crud_form = CustomForm(*crud_fields)
 
         report_fields = list_fields
 
@@ -384,7 +384,7 @@ class ProjectModel(DataModel):
                   update_realm = True,
                   )
 
-        # Reusable Field
+        # Foreign Key Template
         if use_codes:
             project_represent = S3Represent(lookup=tablename,
                                             field_sep = ": ",
@@ -402,10 +402,10 @@ class ProjectModel(DataModel):
                                                           updateable = True,
                                                           )),
                                   sortby = "name",
-                                  comment = S3PopupLink(c = "project",
-                                                        f = "project",
-                                                        tooltip = T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
-                                                        ),
+                                  comment = PopupLink(c = "project",
+                                                      f = "project",
+                                                      tooltip = T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
+                                                      ),
                                   )
 
         # Custom Methods
@@ -534,8 +534,7 @@ class ProjectModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """ Safe defaults for model-global names if module is disabled """
 
         return {"project_project_id": FieldTemplate.dummy("project_id"),
@@ -950,12 +949,12 @@ class ProjectBeneficiaryModel(DataModel):
                                 represent = parameter_represent,
                                 readable = True,
                                 writable = True,
-                                comment = S3PopupLink(c = "project",
-                                                      f = "beneficiary_type",
-                                                      vars = {"child": "parameter_id"},
-                                                      title = ADD_BNF_TYPE,
-                                                      tooltip = T("Please record Beneficiary according to the reporting needs of your project"),
-                                                      ),
+                                comment = PopupLink(c = "project",
+                                                    f = "beneficiary_type",
+                                                    vars = {"child": "parameter_id"},
+                                                    title = ADD_BNF_TYPE,
+                                                    tooltip = T("Please record Beneficiary according to the reporting needs of your project"),
+                                                    ),
                                 ),
                      # Populated automatically from project_location
                      self.gis_location_id(readable = False,
@@ -1111,7 +1110,7 @@ class ProjectBeneficiaryModel(DataModel):
                   super_entity = "stats_data",
                   )
 
-        # Reusable Field
+        # Foreign Key Template
         beneficiary_id = FieldTemplate("beneficiary_id", "reference %s" % tablename,
                                        label = T("Beneficiaries"),
                                        ondelete = "SET NULL",
@@ -1122,11 +1121,11 @@ class ProjectBeneficiaryModel(DataModel):
                                                               sort = True,
                                                               )),
                                        sortby = "name",
-                                       comment = S3PopupLink(c = "project",
-                                                             f = "beneficiary",
-                                                             title = ADD_BNF,
-                                                             tooltip = T("If you don't see the beneficiary in the list, you can add a new one by clicking link 'Add Beneficiaries'."),
-                                                             ),
+                                       comment = PopupLink(c = "project",
+                                                           f = "beneficiary",
+                                                           title = ADD_BNF,
+                                                           tooltip = T("If you don't see the beneficiary in the list, you can add a new one by clicking link 'Add Beneficiaries'."),
+                                                           ),
                                        )
 
         # Components
@@ -1289,7 +1288,7 @@ class ProjectHazardModel(DataModel):
             msg_list_empty = T("No Hazards currently registered"),
             )
 
-        # Reusable Field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename, translate=True)
         hazard_id = FieldTemplate("hazard_id", "reference %s" % tablename,
                                   sortby = "name",
@@ -1480,15 +1479,15 @@ class ProjectLocationModel(DataModel):
                      self.gis_location_id(
                         represent = self.gis_LocationRepresent(sep=", "),
                         requires = IS_LOCATION(),
-                        # S3LocationSelector doesn't support adding new locations dynamically
+                        # LocationSelector doesn't support adding new locations dynamically
                         # - if this isn't required, can set to use this widget in the template
                         widget = S3LocationAutocompleteWidget(),
-                        comment = S3PopupLink(c = "gis",
-                                              f = "location",
-                                              label = T("Create Location"),
-                                              title = T("Location"),
-                                              tooltip = messages.AUTOCOMPLETE_HELP,
-                                              ),
+                        comment = PopupLink(c = "gis",
+                                            f = "location",
+                                            label = T("Create Location"),
+                                            title = T("Location"),
+                                            tooltip = messages.AUTOCOMPLETE_HELP,
+                                            ),
                      ),
                      # % breakdown by location
                      Field("percentage", "decimal(3,2)",
@@ -1678,7 +1677,7 @@ class ProjectLocationModel(DataModel):
                                         },
                       )
 
-        # Reusable Field
+        # Foreign Key Template
         project_location_represent = project_LocationRepresent()
         project_location_id = FieldTemplate("project_location_id", "reference %s" % tablename,
                                             label = LOCATION,
@@ -1690,11 +1689,11 @@ class ProjectLocationModel(DataModel):
                                                                       updateable = True,
                                                                       sort = True,
                                                                       )),
-                                            comment = S3PopupLink(ADD_LOCATION,
-                                                                  c = "project",
-                                                                  f = "location",
-                                                                  tooltip = LOCATION_TOOLTIP,
-                                                                  ),
+                                            comment = PopupLink(ADD_LOCATION,
+                                                                c = "project",
+                                                                f = "location",
+                                                                tooltip = LOCATION_TOOLTIP,
+                                                                ),
                                             )
 
         # ---------------------------------------------------------------------
@@ -1704,7 +1703,7 @@ class ProjectLocationModel(DataModel):
         define_table(tablename,
                      project_location_id(),
                      self.pr_person_id(comment = None,
-                                       widget = S3AddPersonWidget(controller="pr"),
+                                       widget = PersonSelector(controller="pr"),
                                        empty = False,
                                        ),
                      )
@@ -1785,8 +1784,7 @@ class ProjectLocationModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """ Safe defaults for model-global names if module is disabled """
 
         return {"project_location_id": FieldTemplate.dummy("project_location_id"),
@@ -1898,23 +1896,23 @@ class ProjectOrganisationModel(DataModel):
         tablename = "project_organisation"
         self.define_table(tablename,
                           self.project_project_id(
-                            comment = S3PopupLink(c = "project",
-                                                  f = "project",
-                                                  vars = {"prefix": "project"},
-                                                  tooltip = T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
-                                                  ),
+                            comment = PopupLink(c = "project",
+                                                f = "project",
+                                                vars = {"prefix": "project"},
+                                                tooltip = T("If you don't see the project in the list, you can add a new one by clicking link 'Create Project'."),
+                                                ),
                           ),
                           self.org_organisation_id(
                                 requires = self.org_organisation_requires(
                                                 required=True,
                                                 ),
                                 widget = None,
-                                comment = S3PopupLink(c = "org",
-                                                      f = "organisation",
-                                                      label = T("Create Organization"),
-                                                      title = messages.ORGANISATION,
-                                                      tooltip = organisation_help,
-                                                      ),
+                                comment = PopupLink(c = "org",
+                                                    f = "organisation",
+                                                    label = T("Create Organization"),
+                                                    title = messages.ORGANISATION,
+                                                    tooltip = organisation_help,
+                                                    ),
                           ),
                           Field("role", "integer",
                                 label = T("Role"),
@@ -2180,13 +2178,13 @@ class ProjectStatusModel(DataModel):
             msg_list_empty = T("No Statuses currently defined"),
             )
 
-        # Reusable Field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename, translate=True)
         status_id = FieldTemplate("status_id", "reference %s" % tablename,
-                                  comment = S3PopupLink(title = ADD_STATUS,
-                                                        c = "project",
-                                                        f = "status",
-                                                        ),
+                                  comment = PopupLink(title = ADD_STATUS,
+                                                      c = "project",
+                                                      f = "status",
+                                                      ),
                                   label = T("Status"),
                                   ondelete = "SET NULL",
                                   represent = represent,
@@ -2307,7 +2305,7 @@ class ProjectThemeModel(DataModel):
             msg_list_empty = T("No Themes currently registered"),
             )
 
-        # Reusable Field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename, translate=True)
         theme_id = FieldTemplate("theme_id", "reference %s" % tablename,
                                  label = T("Theme"),
@@ -2334,10 +2332,10 @@ class ProjectThemeModel(DataModel):
                                      },
                        )
 
-        crud_form = S3SQLCustomForm(
+        crud_form = CustomForm(
                         "name",
                         # Project Sectors
-                        S3SQLInlineComponent(
+                        InlineComponent(
                             "theme_sector",
                             label = T("Sectors to which this Theme can apply"),
                             fields = ["sector_id"],
@@ -2600,7 +2598,7 @@ class ProjectActivityModel(DataModel):
                      # Beneficiary could be a person_id
                      # Either way label should be clear
                      self.pr_person_id(label = T("Contact Person"),
-                                       widget = S3AddPersonWidget(controller="pr"),
+                                       widget = PersonSelector(controller="pr"),
                                        ),
                      Field("time_estimated", "double",
                            label = "%s (%s)" % (T("Time Estimate"),
@@ -2673,11 +2671,11 @@ class ProjectActivityModel(DataModel):
         list_index = 1
         if settings.get_project_activity_sectors():
             crud_fields.insert(crud_index,
-                               S3SQLInlineLink("sector",
-                                               field = "sector_id",
-                                               label = T("Sectors"),
-                                               widget = "groupedopts",
-                                               ))
+                               InlineLink("sector",
+                                          field = "sector_id",
+                                          label = T("Sectors"),
+                                          widget = "groupedopts",
+                                          ))
             crud_index += 1
             list_fields.insert(list_index,
                                (T("Sectors"), "sector_activity.sector_id"))
@@ -2687,11 +2685,11 @@ class ProjectActivityModel(DataModel):
             filter_widgets.append(OptionsFilter("sector_activity.sector_id"))
         if settings.get_project_activity_types():
             crud_fields.insert(crud_index,
-                               S3SQLInlineLink("activity_type",
-                                               field = "activity_type_id",
-                                               label = T("Activity Types"),
-                                               widget = "groupedopts",
-                                               ))
+                               InlineLink("activity_type",
+                                          field = "activity_type_id",
+                                          label = T("Activity Types"),
+                                          widget = "groupedopts",
+                                          ))
             crud_index += 1
             list_fields.insert(list_index,
                                (T("Activity Types"), "activity_activity_type.activity_type_id"))
@@ -2756,7 +2754,7 @@ class ProjectActivityModel(DataModel):
             # Highest-level of Hierarchy
             default_row = "location_id$%s" % levels[0]
 
-        crud_form = S3SQLCustomForm(*crud_fields)
+        crud_form = CustomForm(*crud_fields)
 
         report_options = {"rows": report_fields,
                           "cols": report_fields,
@@ -2788,13 +2786,13 @@ class ProjectActivityModel(DataModel):
                   update_realm = True,
                   )
 
-        # Reusable Field
+        # Foreign Key Template
         activity_id = FieldTemplate("activity_id", "reference %s" % tablename,
-                                    comment = S3PopupLink(ADD_ACTIVITY,
-                                                          c = "project",
-                                                          f = "activity",
-                                                          tooltip = ACTIVITY_TOOLTIP,
-                                                          ),
+                                    comment = PopupLink(ADD_ACTIVITY,
+                                                        c = "project",
+                                                        f = "activity",
+                                                        tooltip = ACTIVITY_TOOLTIP,
+                                                        ),
                                     label = T("Activity"),
                                     ondelete = "CASCADE",
                                     represent = represent,
@@ -2830,8 +2828,6 @@ class ProjectActivityModel(DataModel):
                        project_activity_data = "activity_id",
                        # Demographic
                        project_activity_demographic = "activity_id",
-                       # Distributions
-                       supply_distribution = "activity_id",
                        # Events
                        event_event = {"link": "event_activity",
                                       "joinby": "activity_id",
@@ -2914,8 +2910,7 @@ class ProjectActivityModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """ Safe defaults for model-global names if module is disabled """
 
         return {"project_activity_id": FieldTemplate.dummy("activity_id"),
@@ -3105,7 +3100,7 @@ class ProjectActivityTypeModel(DataModel):
             msg_list_empty = T("No Activity Types Found"),
             )
 
-        # Reusable Fields
+        # Foreign Key Templates
         represent = S3Represent(lookup=tablename, translate=True)
         activity_type_id = FieldTemplate("activity_type_id", "reference %s" % tablename,
                                          label = T("Activity Type"),
@@ -3117,11 +3112,11 @@ class ProjectActivityTypeModel(DataModel):
                                                                   sort = True,
                                                                   )),
                                          sortby = "name",
-                                         comment = S3PopupLink(title = ADD_ACTIVITY_TYPE,
-                                                               c = "project",
-                                                               f = "activity_type",
-                                                               tooltip = T("If you don't see the type in the list, you can add a new one by clicking link 'Create Activity Type'."),
-                                                               ),
+                                         comment = PopupLink(title = ADD_ACTIVITY_TYPE,
+                                                             c = "project",
+                                                             f = "activity_type",
+                                                             tooltip = T("If you don't see the type in the list, you can add a new one by clicking link 'Create Activity Type'."),
+                                                             ),
                                          )
 
         if current.deployment_settings.get_project_sectors():
@@ -3130,10 +3125,10 @@ class ProjectActivityTypeModel(DataModel):
                                 project_activity_type_sector = "activity_type_id",
                                 )
 
-            crud_form = S3SQLCustomForm(
+            crud_form = CustomForm(
                             "name",
                             # Sectors
-                            S3SQLInlineComponent(
+                            InlineComponent(
                                 "activity_type_sector",
                                 label=T("Sectors to which this Activity Type can apply"),
                                 fields=["sector_id"],
@@ -3290,11 +3285,11 @@ class ProjectActivityDemographicsModel(DataModel):
         #
         if current.s3db.table("stats_demographic"):
             title = current.response.s3.crud_strings["stats_demographic"].label_create
-            parameter_id_comment = S3PopupLink(c = "stats",
-                                               f = "demographic",
-                                               vars = {"child": "parameter_id"},
-                                               title = title,
-                                               )
+            parameter_id_comment = PopupLink(c = "stats",
+                                             f = "demographic",
+                                             vars = {"child": "parameter_id"},
+                                             title = title,
+                                             )
         else:
             parameter_id_comment = None
 
@@ -3475,7 +3470,7 @@ class ProjectTaskModel(DataModel):
             msg_list_empty = T("No Milestones Found"),
             )
 
-        # Reusable Field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename,
                                 fields=["name", "date"],
                                 labels="%(name)s: %(date)s",
@@ -3489,11 +3484,11 @@ class ProjectTaskModel(DataModel):
                                                               represent,
                                                               )),
                                      sortby = "name",
-                                     comment = S3PopupLink(c = "project",
-                                                           f = "milestone",
-                                                           title = ADD_MILESTONE,
-                                                           tooltip = T("A project milestone marks a significant date in the calendar which shows that progress towards the overall objective is being made."),
-                                                           ),
+                                     comment = PopupLink(c = "project",
+                                                         f = "milestone",
+                                                         title = ADD_MILESTONE,
+                                                         tooltip = T("A project milestone marks a significant date in the calendar which shows that progress towards the overall objective is being made."),
+                                                         ),
                                      )
 
         configure(tablename,
@@ -3778,15 +3773,15 @@ class ProjectTaskModel(DataModel):
         if task_time:
             cextend(("time_estimated",
                      "status",
-                     S3SQLInlineComponent("time",
-                                          label = T("Time Log"),
-                                          fields = ["date",
-                                                    "person_id",
-                                                    "hours",
-                                                    "comments"
-                                                    ],
-                                          orderby = "date"
-                                          ),
+                     InlineComponent("time",
+                                     label = T("Time Log"),
+                                     fields = ["date",
+                                               "person_id",
+                                               "hours",
+                                               "comments"
+                                               ],
+                                     orderby = "date"
+                                     ),
                      "time_actual",
                      "comments",
                      ))
@@ -3796,7 +3791,7 @@ class ProjectTaskModel(DataModel):
                      ))
 
         # Custom Form
-        crud_form = S3SQLCustomForm(*crud_fields)
+        crud_form = CustomForm(*crud_fields)
 
         report_options = {"rows": list_fields,
                           "cols": list_fields,
@@ -3833,7 +3828,7 @@ class ProjectTaskModel(DataModel):
                   update_onaccept = self.project_task_update_onaccept,
                   )
 
-        # Reusable field
+        # Foreign Key Template
         represent = project_TaskRepresent(show_link=True)
         task_id = FieldTemplate("task_id", "reference %s" % tablename,
                                 label = T("Task"),
@@ -3844,11 +3839,11 @@ class ProjectTaskModel(DataModel):
                                                           represent,
                                                           )),
                                 sortby = "name",
-                                comment = S3PopupLink(c = "project",
-                                                      f = "task",
-                                                      title = ADD_TASK,
-                                                      tooltip = T("A task is a piece of work that an individual or team can do in 1-2 days."),
-                                                      ),
+                                comment = PopupLink(c = "project",
+                                                    f = "task",
+                                                    title = ADD_TASK,
+                                                    tooltip = T("A task is a piece of work that an individual or team can do in 1-2 days."),
+                                                    ),
                                 )
 
         # Representation with project name, for time log form
@@ -3907,9 +3902,7 @@ class ProjectTaskModel(DataModel):
         define_table(tablename,
                      Field("parent", "reference project_comment",
                            readable = False,
-                           requires = IS_EMPTY_OR(
-                                        IS_ONE_OF(db, "project_comment.id"
-                                       )),
+                           requires = IS_EMPTY_OR(IS_IN_DB(db, "%s.id" % tablename)),
                            ),
                      task_id(empty = False,
                              ondelete = "CASCADE",
@@ -4051,8 +4044,7 @@ class ProjectTaskModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """ Safe defaults for model-global names if module is disabled """
 
         return {"project_task_id": FieldTemplate.dummy("task_id"),
@@ -4439,12 +4431,11 @@ class project_LocationRepresent(S3Represent):
         self.multi_country = len(settings.get_gis_countries()) != 1
         self.use_codes = settings.get_project_codes()
 
-        super(project_LocationRepresent, self).__init__(
-                                            lookup = "project_location",
-                                            show_link = show_link,
-                                            translate = translate,
-                                            multiple = multiple,
-                                            )
+        super().__init__(lookup = "project_location",
+                         show_link = show_link,
+                         translate = translate,
+                         multiple = multiple,
+                         )
 
     # -------------------------------------------------------------------------
     def lookup_rows(self, key, values, fields=None):
@@ -4548,13 +4539,12 @@ class project_ActivityRepresent(S3Represent):
             self.code = False
             fields = ["name"]
 
-        super(project_ActivityRepresent,
-              self).__init__(lookup = "project_activity",
-                             fields = fields,
-                             show_link = show_link,
-                             translate = translate,
-                             multiple = multiple,
-                             )
+        super().__init__(lookup = "project_activity",
+                         fields = fields,
+                         show_link = show_link,
+                         translate = translate,
+                         multiple = multiple,
+                         )
 
     # -------------------------------------------------------------------------
     def custom_lookup_rows(self, key, values, fields=None):
@@ -4630,10 +4620,10 @@ class project_TaskRepresent(S3Represent):
 
         task_url = URL(c="project", f="task", args=["[id]"])
 
-        super(project_TaskRepresent, self).__init__(lookup = "project_task",
-                                                    show_link = show_link,
-                                                    linkto = task_url,
-                                                    )
+        super().__init__(lookup = "project_task",
+                         show_link = show_link,
+                         linkto = task_url,
+                         )
 
         self.show_project = show_project
         if show_project:
@@ -5165,7 +5155,7 @@ def project_task_controller():
             if r.component_name == "req":
                 if current.deployment_settings.has_module("hrm"):
                     r.component.table.type.default = 3
-                if r.method != "update" and r.method != "read":
+                if r.method not in {"update", "read"}:
                     # Hide fields which don't make sense in a Create form
                     s3db.req_create_form_mods()
             elif r.component_name == "human_resource":
@@ -5185,7 +5175,7 @@ def project_task_controller():
             if not r.component and r.method != "import":
                 # Maintain vars: why?
                 update_url = URL(args=["[id]"], vars=get_vars)
-                S3CRUD.action_buttons(r, update_url=update_url)
+                BasicCRUD.action_buttons(r, update_url=update_url)
         return output
     s3.postp = postp
 
@@ -5282,54 +5272,40 @@ def project_project_filters(org_label):
     append_filter = filter_widgets.append
 
     if settings.get_project_sectors():
-        if settings.get_ui_label_cluster():
-            sector = T("Cluster")
-        else:
-            sector = T("Sector")
-        append_filter(
-            OptionsFilter("sector_project.sector_id",
-                          label = sector,
-                          location_filter = True,
-                          none = True,
-                          hidden = True,
-                          )
-        )
+        append_filter(OptionsFilter("sector_project.sector_id",
+                                    label = T("Sector"),
+                                    location_filter = True,
+                                    none = True,
+                                    hidden = True,
+                                    ))
 
     mode_drr = settings.get_project_mode_drr()
     if mode_drr and settings.get_project_hazards():
-        append_filter(
-            OptionsFilter("hazard_project.hazard_id",
-                          label = T("Hazard"),
-                          help_field = project_hazard_help_fields,
-                          cols = 4,
-                          hidden = True,
-                          )
-        )
+        append_filter(OptionsFilter("hazard_project.hazard_id",
+                                    label = T("Hazard"),
+                                    help_field = project_hazard_help_fields,
+                                    cols = 4,
+                                    hidden = True,
+                                    ))
 
     if settings.get_project_mode_3w() and \
        settings.get_project_themes():
-        append_filter(
-            OptionsFilter("theme_project.theme_id",
-                          label = T("Theme"),
-                          help_field = project_theme_help_fields,
-                          cols = 4,
-                          hidden = True,
-                          )
-        )
+        append_filter(OptionsFilter("theme_project.theme_id",
+                                    label = T("Theme"),
+                                    help_field = project_theme_help_fields,
+                                    cols = 4,
+                                    hidden = True,
+                                    ))
 
     if settings.get_project_multiple_organisations():
-        append_filter(
-            OptionsFilter("partner.organisation_id",
-                          label = T("Partners"),
-                          hidden = True,
-                          )
-        )
-        append_filter(
-            OptionsFilter("donor.organisation_id",
-                          label = T("Donors"),
-                          hidden = True,
-                          )
-        )
+        append_filter(OptionsFilter("partner.organisation_id",
+                                    label = T("Partners"),
+                                    hidden = True,
+                                    ))
+        append_filter(OptionsFilter("donor.organisation_id",
+                                    label = T("Donors"),
+                                    hidden = True,
+                                    ))
 
     return filter_widgets
 

@@ -63,7 +63,7 @@ class PatientModel(DataModel):
                           person_id(empty = False,
                                     comment = None,
                                     label = T("Patient"),
-                                    widget = S3AddPersonWidget(),
+                                    widget = PersonSelector(),
                                     ),
                           Field("country",
                                 label = T("Current Location Country"),
@@ -109,7 +109,7 @@ class PatientModel(DataModel):
 
         patient_represent = patient_PatientRepresent(lookup = "patient_patient")
 
-        # Reusable Field for Component Link
+        # Foreign Key Template for Component Link
         patient_id = FieldTemplate("patient_id", "reference %s" % tablename,
                                    ondelete = "RESTRICT",
                                    represent = patient_represent,
@@ -165,7 +165,7 @@ class PatientModel(DataModel):
                           person_id(empty = False,
                                     comment = None,
                                     label = T("Accompanying Relative"),
-                                    widget = S3AddPersonWidget(),
+                                    widget = PersonSelector(),
                                     ),
                           CommentsField(),
                           )
@@ -196,7 +196,7 @@ class PatientModel(DataModel):
                                      writable = False),
                           person_id(comment = None,
                                     label = T("Home Relative"),
-                                    widget = S3AddPersonWidget(),
+                                    widget = PersonSelector(),
                                     ),
                           #person_id(label = T("Home Relative")),
                           self.gis_location_id(

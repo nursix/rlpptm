@@ -7,12 +7,24 @@
 
          CSV column..................Format..........Content
 
+         Organisation................string..........Organisation Name
+         Branch......................string..........Organisation Branch Name (optional)
+         ...SubBranch,SubSubBranch...etc (indefinite depth, must specify all from root)
+
+         Event Class.................string..........Event Class (A|C|F)
          Code........................string..........Type Code
          Name........................string..........Type Name
          Inactive....................string..........is currently not selectable
                                                      true|false
          Default.....................string..........is default type
                                                      true|false
+         Multiple....................string..........allow registration for multiple
+                                                     family members at once
+                                                     true|false
+         Residents Only..............string..........allow registration only for currently
+                                                     checked-in shelter residents
+                                                     true|false
+
          Minimum Interval............number..........minimum interval (hours)
          Maximum per Day.............integer.........maximum number per day
          Excluded By.................string..........comma-separated list of event
@@ -26,11 +38,21 @@
          Comments....................string..........Comments
 
     *********************************************************************** -->
+    <xsl:import href="../orgh.xsl"/>
+
     <xsl:output method="xml"/>
 
     <!-- ****************************************************************** -->
     <xsl:template match="/">
         <s3xml>
+            <!-- Import the organisation hierarchy -->
+            <xsl:for-each select="table/row[1]">
+                <xsl:call-template name="OrganisationHierarchy">
+                    <xsl:with-param name="level">Organisation</xsl:with-param>
+                    <xsl:with-param name="rows" select="//table/row"/>
+                </xsl:call-template>
+            </xsl:for-each>
+
             <xsl:apply-templates select="./table/row"/>
         </s3xml>
     </xsl:template>
@@ -42,10 +64,21 @@
         <xsl:variable name="Name" select="col[@field='Name']/text()"/>
 
         <resource name="dvr_case_event_type">
-
             <xsl:attribute name="tuid">
                 <xsl:value-of select="concat('TYPE:', $Code)"/>
             </xsl:attribute>
+
+            <!-- Link to Organisation -->
+            <reference field="organisation_id" resource="org_organisation">
+                <xsl:attribute name="tuid">
+                    <xsl:call-template name="OrganisationID"/>
+                </xsl:attribute>
+            </reference>
+
+            <xsl:variable name="event_class" select="col[@field='Event Class']/text()"/>
+            <data field="event_class">
+                <xsl:value-of select="$event_class"/>
+            </data>
 
             <data field="code">
                 <xsl:value-of select="$Code"/>
@@ -76,6 +109,34 @@
                 <xsl:attribute name="value">
                     <xsl:choose>
                         <xsl:when test="$is_default='true'">
+                            <xsl:value-of select="'true'"/>
+                        </xsl:when>
+                        <xsl:otherwise>
+                            <xsl:value-of select="'false'"/>
+                        </xsl:otherwise>
+                    </xsl:choose>
+                </xsl:attribute>
+            </data>
+
+            <xsl:variable name="multiple" select="col[@field='Multiple']/text()"/>
+            <data field="register_multiple">
+                <xsl:attribute name="value">
+                    <xsl:choose>
+                        <xsl:when test="$multiple='true'">
+                            <xsl:value-of select="'true'"/>
+                        </xsl:when>
+                        <xsl:otherwise>
+                            <xsl:value-of select="'false'"/>
+                        </xsl:otherwise>
+                    </xsl:choose>
+                </xsl:attribute>
+            </data>
+
+            <xsl:variable name="residents" select="col[@field='Residents Only']/text()"/>
+            <data field="residents_only">
+                <xsl:attribute name="value">
+                    <xsl:choose>
+                        <xsl:when test="$residents='true'">
                             <xsl:value-of select="'true'"/>
                         </xsl:when>
                         <xsl:otherwise>

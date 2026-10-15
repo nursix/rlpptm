@@ -55,7 +55,6 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..core import *
-from s3layouts import S3PopupLink
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -148,6 +147,7 @@ class GISLocationModel(DataModel):
                   label = T("Parent"),
                   ondelete = "RESTRICT",
                   represent = gis_location_represent,
+                  requires = IS_EMPTY_OR(IS_IN_DB(db, "%s.id" % tablename)),
                   widget = S3LocationAutocompleteWidget(level=hierarchy_level_keys),
                   ),
             # Materialised Path
@@ -301,7 +301,7 @@ class GISLocationModel(DataModel):
 
         # CRUD Strings
         current.response.s3.crud_strings[tablename] = Storage(
-            label_create = messages.ADD_LOCATION,
+            label_create = T("Create Location"),
             title_display = T("Location Details"),
             title_list = T("Locations"),
             title_update = T("Edit Location"),
@@ -313,15 +313,14 @@ class GISLocationModel(DataModel):
             msg_record_deleted = T("Location deleted"),
             msg_list_empty = T("No Locations currently available"))
 
-        # Reusable field to include in other table definitions
+        # Foreign Key Template to include in other table definitions
         location_id = FieldTemplate("location_id", "reference %s" % tablename,
                                     label = T("Location"),
                                     ondelete = "RESTRICT",
                                     represent = gis_location_represent,
                                     requires = IS_EMPTY_OR(IS_LOCATION()),
                                     sortby = "name",
-                                    widget = S3LocationSelector(show_address = True,
-                                                                ),
+                                    widget = LocationSelector(show_address=True),
                                     # Alternate simple Autocomplete (e.g. used by pr_person_presence)
                                     #widget = S3LocationAutocompleteWidget(),
                                     )
@@ -1703,7 +1702,7 @@ class GISConfigModel(DataModel):
             msg_record_deleted = T("Marker deleted"),
             msg_list_empty = T("No Markers currently available"))
 
-        # Reusable field to include in other table definitions
+        # Foreign Key Template to include in other table definitions
         # @ToDo: Widget to include icons in dropdown: http://jqueryui.com/selectmenu/#custom_render
         marker_represent = gis_MarkerRepresent()
         marker_id = FieldTemplate("marker_id", "reference %s" % tablename,
@@ -1717,16 +1716,16 @@ class GISConfigModel(DataModel):
                                                           )),
                                   sortby = "name",
                                   widget = S3SelectWidget(icons=self.gis_marker_options),
-                                  comment=S3PopupLink(c = "gis",
-                                                      f = "marker",
-                                                      #vars = {"child": "marker_id",
-                                                      #        "parent": "symbology"},
-                                                      label = ADD_MARKER,
-                                                      title = T("Marker"),
-                                                      tooltip = "%s|%s|%s" % (T("Defines the icon used for display of features on interactive map & KML exports."),
-                                                                              T("A Marker assigned to an individual Location is set if there is a need to override the Marker assigned to the Feature Class."),
-                                                                              T("If neither are defined, then the Default Marker is used.")),
-                                                      ),
+                                  comment=PopupLink(c = "gis",
+                                                    f = "marker",
+                                                    #vars = {"child": "marker_id",
+                                                    #        "parent": "symbology"},
+                                                    label = ADD_MARKER,
+                                                    title = T("Marker"),
+                                                    tooltip = "%s|%s|%s" % (T("Defines the icon used for display of features on interactive map & KML exports."),
+                                                                            T("A Marker assigned to an individual Location is set if there is a need to override the Marker assigned to the Feature Class."),
+                                                                            T("If neither are defined, then the Default Marker is used.")),
+                                                    ),
                                   )
 
         # Components
@@ -1799,7 +1798,7 @@ class GISConfigModel(DataModel):
             msg_record_deleted = T("Projection deleted"),
             msg_list_empty = T("No Projections currently defined"))
 
-        # Reusable field to include in other table definitions
+        # Foreign Key Template to include in other table definitions
         represent = S3Represent(lookup=tablename)
         projection_id = FieldTemplate("projection_id", "reference %s" % tablename,
                                       sortby="name",
@@ -1809,14 +1808,14 @@ class GISConfigModel(DataModel):
                                                               )),
                                       represent = represent,
                                       label = T("Projection"),
-                                      comment=S3PopupLink(c = "gis",
-                                                          f = "projection",
-                                                          label = ADD_PROJECTION,
-                                                          title = T("Projection"),
-                                                          tooltip = "%s|%s|%s" % (T("The system supports 2 projections by default:"),
-                                                                                  T("Spherical Mercator (900913) is needed to use OpenStreetMap/Google/Bing base layers."),
-                                                                                  T("WGS84 (EPSG 4236) is required for many WMS servers.")),
-                                                          ),
+                                      comment=PopupLink(c = "gis",
+                                                        f = "projection",
+                                                        label = ADD_PROJECTION,
+                                                        title = T("Projection"),
+                                                        tooltip = "%s|%s|%s" % (T("The system supports 2 projections by default:"),
+                                                                                T("Spherical Mercator (900913) is needed to use OpenStreetMap/Google/Bing base layers."),
+                                                                                T("WGS84 (EPSG 4236) is required for many WMS servers.")),
+                                                        ),
                                       ondelete = "RESTRICT",
                                       )
 
@@ -1968,7 +1967,7 @@ class GISConfigModel(DataModel):
                            ),
                      )
 
-        # Reusable field - used by Events & Scenarios
+        # Foreign Key Template - used by Events & Scenarios
         represent = S3Represent(lookup=tablename)
         config_id = FieldTemplate("config_id", "reference %s" % tablename,
                                   label = T("Map Profile"),
@@ -2390,10 +2389,10 @@ class GISConfigModel(DataModel):
             except ImportError:
                 # Native Python version
                 native = True
-                import struct
 
         if native:
             # Fallbacks
+            import struct
             width = height = -1
             stream = image.file
             if extension == "bmp":
@@ -2460,8 +2459,7 @@ class gis_MarkerRepresent(S3Represent):
 
     def __init__(self):
 
-        super(gis_MarkerRepresent, self).__init__(lookup="gis_marker",
-                                                  fields=["image"])
+        super().__init__(lookup="gis_marker", fields=["image"])
 
     def represent_row(self, row):
         """
@@ -2733,7 +2731,7 @@ class GISLayerEntityModel(DataModel):
                      #Field("sld", "text"),
                      )
 
-        # Reusable field
+        # Foreign Key Template
         #represent = S3Represent(lookup=tablename)
         #style_id = FieldTemplate("style_id", "reference %s" % tablename,
         #                         label = T("Map Style"),
@@ -5183,11 +5181,11 @@ class gis_LocationRepresent(S3Represent):
         self.controller = controller
         self.func = func
 
-        super(gis_LocationRepresent,
-              self).__init__(lookup = "gis_location",
-                             show_link = show_link,
-                             translate = translate,
-                             multiple = multiple)
+        super().__init__(lookup = "gis_location",
+                         show_link = show_link,
+                         translate = translate,
+                         multiple = multiple,
+                         )
 
     # -------------------------------------------------------------------------
     def link(self, k, v, row=None):
@@ -5348,7 +5346,7 @@ class gis_LocationRepresent(S3Represent):
     # -------------------------------------------------------------------------
     def alt_represent_row(self, row):
         """
-            Different Entry point for S3LocationSelector(intends to use represent_row)
+            Different Entry point for LocationSelector (intends to use represent_row)
             - Lookup L10n, path
             - then call represent_row
         """
@@ -5470,7 +5468,6 @@ class gis_LocationRepresent(S3Represent):
                 represent = "%s (%s)" % (name, current.messages.COUNTRY)
             elif level in ("L1", "L2", "L3", "L4", "L5"):
                 # Lookup the hierarchy for labels
-                s3db = current.s3db
                 L0_name = row.L0
                 if L0_name:
                     if row.path:
@@ -5643,7 +5640,7 @@ def gis_marker_retrieve_file_properties(filename, path=None):
         if len(_path) > 1:
             _path, filename = _path
         else:
-            _path, filename = "", filename
+            _path = ""
         path = os.path.join(path, _path)
     return {"path": path, "filename": filename}
 

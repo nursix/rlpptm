@@ -1,0 +1,2 @@
+Name,Description,Controller,Function,Marker,GPS Marker,Popup Format,Attributes,Filter,Aggregate,Points,Trackable,Style,Individual,Folder,Visible,Enabled,Refresh,Cluster Threshold
+Needs Reports,Needs Assessments,req,need,assessment,,{refno}<br>{name},"refno,name",,,True,,,,,False,,,

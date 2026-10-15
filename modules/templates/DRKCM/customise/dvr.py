@@ -8,10 +8,11 @@ import datetime
 
 from collections import OrderedDict
 
-from gluon import current, IS_EMPTY_OR, IS_IN_SET, IS_LENGTH
+from gluon import current, IS_EMPTY_OR, IS_FLOAT_IN_RANGE, IS_IN_SET, IS_LENGTH
 from gluon.storage import Storage
 
-from core import FS, IS_ONE_OF
+from core import FS, IS_ONE_OF, PopupLink, CustomForm, \
+                 get_form_record_data, get_form_record_id
 
 from ..uioptions import get_ui_options
 
@@ -104,6 +105,8 @@ def dvr_case_onaccept(form):
         if row:
             person_id = row.person_id
             site_id = row.site_id
+        else:
+            return
     else:
         site_id = form_vars.site_id
 
@@ -111,24 +114,8 @@ def dvr_case_onaccept(form):
 
         set_realm_entity = current.auth.set_realm_entity
 
-        # Configure components to inherit realm_entity
-        # from the person record
-        s3db.configure("pr_person",
-                       realm_components = ("case_activity",
-                                           "case_details",
-                                           "dvr_flag",
-                                           "case_language",
-                                           "case_note",
-                                           "residence_status",
-                                           "address",
-                                           "contact",
-                                           "contact_emergency",
-                                           "group_membership",
-                                           "image",
-                                           "person_details",
-                                           "person_tag",
-                                           ),
-                       )
+        from .pr import pr_person_set_realm_components
+        pr_person_set_realm_components()
 
         # Force-update the realm entity for the person
         set_realm_entity("pr_person", person_id, force_update=True)
@@ -138,7 +125,6 @@ def dvr_case_onaccept(form):
         s3db.configure("dvr_case_activity",
                        realm_components = ("case_activity_need",
                                            "case_activity_update",
-                                           "response_action",
                                            ),
                        )
 
@@ -520,7 +506,7 @@ def configure_case_activity_sector(r, table, case_root_org):
 def configure_case_activity_subject(r,
                                     table,
                                     case_root_org,
-                                    person_id,
+                                    person_id, *,
                                     use_need = False,
                                     use_subject = False,
                                     autolink = False,
@@ -552,7 +538,8 @@ def configure_case_activity_subject(r,
 
         # Expose need_id
         field = table.need_id
-        field.label = T("Counseling Reason")
+        if not use_subject:
+            field.label = T("Counseling Reason")
         field.readable = True
         field.writable = not activity_id or not autolink
 
@@ -609,7 +596,7 @@ def configure_inline_responses(person_id,
             use_theme: use theme(s) with responses
 
         Returns:
-            S3SQLInlineComponent
+            InlineComponent
     """
 
     T = current.T
@@ -619,23 +606,30 @@ def configure_inline_responses(person_id,
 
     rtable = s3db.dvr_response_action
 
-    from core import S3SQLInlineComponent, S3SQLVerticalSubFormLayout
+    from core import InlineComponent, SubFormLayoutVertical
 
     if use_theme and settings.get_dvr_response_themes_details():
         # Expose response_action_theme inline
 
-        # Filter action_id in inline response_themes to same beneficiary
-        ltable = s3db.dvr_response_action_theme
-        field = ltable.action_id
-        dbset = db(rtable.person_id == person_id) if person_id else db
-        field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "dvr_response_action.id",
-                                               field.represent,
-                                               orderby = ~rtable.start_date,
-                                               sort = False,
-                                               ))
+        if settings.get_dvr_response_themes_efforts():
+            # Cannot edit inline theme details
+            readonly = True
+        else:
+            # Can add and edit inline theme details
+            readonly = False
+
+            # Filter action_id in inline response_themes to same beneficiary
+            ltable = s3db.dvr_response_action_theme
+            field = ltable.action_id
+            dbset = db(rtable.person_id == person_id) if person_id else db
+            field.requires = IS_EMPTY_OR(IS_ONE_OF(dbset, "dvr_response_action.id",
+                                                   field.represent,
+                                                   orderby = ~rtable.start_date,
+                                                   sort = False,
+                                                   ))
 
         # Inline-component
-        inline_responses = S3SQLInlineComponent(
+        inline_responses = InlineComponent(
                                 "response_action_theme",
                                 fields = ["action_id",
                                           "theme_id",
@@ -643,8 +637,8 @@ def configure_inline_responses(person_id,
                                           ],
                                 label = T("Themes"),
                                 orderby = "action_id",
+                                readonly = readonly,
                                 )
-
     else:
         # Expose response_action inline
 
@@ -685,18 +679,18 @@ def configure_inline_responses(person_id,
         if settings.get_dvr_response_types():
             response_action_fields.insert(1, "response_type_id")
 
-        inline_responses = S3SQLInlineComponent(
+        inline_responses = InlineComponent(
                                 "response_action",
                                 fields = response_action_fields,
                                 label = T("Actions"),
-                                layout = S3SQLVerticalSubFormLayout,
+                                layout = SubFormLayoutVertical,
                                 explicit_add = T("Add Action"),
                                 )
 
     return inline_responses
 
 # -------------------------------------------------------------------------
-def dvr_case_activity_resource(r, tablename):
+def configure_case_activity(r):
 
     T = current.T
     s3db = current.s3db
@@ -728,9 +722,25 @@ def dvr_case_activity_resource(r, tablename):
         end_date = None
         outcome = None
 
+    # Deployment-specific terminology for case activities
+    crud_strings = current.response.s3.crud_strings["dvr_case_activity"]
+    crud_strings.update({
+        "label_create": T("Add Counseling Reason"),
+        "title_display": T("Counseling Reason Details"),
+        "title_list": T("Counseling Reasons"),
+        "title_update": T("Edit Counseling Reason"),
+        "title_report": T("Activity Statistic"),
+        "label_list_button": T("List Counseling Reasons"),
+        "label_delete_button": T("Delete Counseling Reason"),
+        "msg_record_created": T("Counseling Reason added"),
+        "msg_record_modified": T("Counseling Reason updated"),
+        "msg_record_deleted": T("Counseling Reason deleted"),
+        })
+
     # Need type and subject
-    use_need = ui_options_get("activity_use_need")
-    use_subject = ui_options_get("activity_use_subject") or not use_need
+    subject_type = ui_options_get("activity_subject_type")
+    use_need = subject_type in ("need", "both")
+    use_subject = subject_type in ("subject", "both") or not use_need
 
     need_label = T("Counseling Reason") if not use_subject else T("Need Type")
 
@@ -743,10 +753,9 @@ def dvr_case_activity_resource(r, tablename):
     if r.interactive or r.representation in ("aadata", "json", "xlsx", "pdf"):
 
         # Fields and CRUD-Form
-        from core import S3SQLCustomForm, \
-                         S3SQLInlineComponent, \
-                         S3SQLInlineLink, \
-                         S3SQLVerticalSubFormLayout
+        from core import InlineComponent, \
+                         InlineLink, \
+                         SubFormLayoutVertical
 
         # Get person_id, case_activity_id and case activity record
         person_id = case_activity_id = case_activity = None
@@ -775,7 +784,7 @@ def dvr_case_activity_resource(r, tablename):
 
         # Configure sector_id
         field = table.sector_id
-        if ui_options_get("activity_use_sector"):
+        if activity_use_sector:
             configure_case_activity_sector(r, table, case_root_org)
         else:
             field.readable = field.writable = False
@@ -795,24 +804,22 @@ def dvr_case_activity_resource(r, tablename):
         field = table.need_details
         field.readable = field.writable = ui_options_get("activity_need_details")
 
-        # Embed PSS vulnerability
-        # - separate suspected diagnosis / (confirmed) diagnosis
-        if ui_options_get("activity_pss_vulnerability"):
-            vulnerability = S3SQLInlineLink("vulnerability_type",
-                                            label = T("Suspected Diagnosis"),
-                                            field = "vulnerability_type_id",
-                                            selectedList = 5,
-                                            #multiple = False,
-                                            )
-            diagnosis = S3SQLInlineLink("diagnosis",
-                                        label = T("Diagnosis"),
-                                        field = "vulnerability_type_id",
-                                        selectedList = 5,
-                                        #multiple = False,
-                                        )
+        # Embed PSS Diagnoses
+        if ui_options_get("activity_pss_diagnoses"):
+            suspected_diagnosis = InlineLink("suspected_diagnosis",
+                                             label = T("Suspected Diagnosis"),
+                                             field = "diagnosis_id",
+                                             selectedList = 5,
+                                             #multiple = False,
+                                             )
+            confirmed_diagnosis = InlineLink("confirmed_diagnosis",
+                                             label = T("Diagnosis"),
+                                             field = "diagnosis_id",
+                                             selectedList = 5,
+                                             #multiple = False,
+                                             )
         else:
-            vulnerability = None
-            diagnosis = None
+            suspected_diagnosis = confirmed_diagnosis = None
 
         # Customise Priority
         from ..helpers import PriorityRepresent
@@ -860,8 +867,8 @@ def dvr_case_activity_resource(r, tablename):
                            "sector_id",
                            need_id,
                            subject,
-                           vulnerability,
-                           diagnosis,
+                           suspected_diagnosis,
+                           confirmed_diagnosis,
                            (T("Initial Situation Details"), ("need_details")),
                            "start_date",
                            priority_field,
@@ -907,8 +914,8 @@ def dvr_case_activity_resource(r, tablename):
                            "sector_id",
                            need_id,
                            subject,
-                           vulnerability,
-                           diagnosis,
+                           suspected_diagnosis,
+                           confirmed_diagnosis,
                            (T("Initial Situation Details"), ("need_details")),
                            "start_date",
                            priority_field,
@@ -916,33 +923,33 @@ def dvr_case_activity_resource(r, tablename):
                            inline_responses,
                            "followup",
                            "followup_date",
-                           S3SQLInlineComponent("case_activity_update",
-                                                label = T("Progress"),
-                                                fields = ["date",
-                                                          (T("Occasion"), "update_type_id"),
-                                                          "human_resource_id",
-                                                          "comments",
-                                                          ],
-                                                layout = S3SQLVerticalSubFormLayout,
-                                                explicit_add = T("Add Entry"),
-                                                ),
+                           InlineComponent("case_activity_update",
+                                           label = T("Progress"),
+                                           fields = ["date",
+                                                     (T("Occasion"), "update_type_id"),
+                                                     "human_resource_id",
+                                                     "comments",
+                                                     ],
+                                           layout = SubFormLayoutVertical,
+                                           explicit_add = T("Add Entry"),
+                                           ),
                            status_id,
                            end_date,
                            outcome,
-                           S3SQLInlineComponent("document",
-                                                name = "file",
-                                                label = T("Attachments"),
-                                                fields = ["file", "comments"],
-                                                filterby = {"field": "file",
-                                                            "options": "",
-                                                            "invert": True,
-                                                            },
-                                                ),
+                           InlineComponent("document",
+                                           name = "file",
+                                           label = T("Attachments"),
+                                           fields = ["file", "comments"],
+                                           filterby = {"field": "file",
+                                                       "options": "",
+                                                       "invert": True,
+                                                       },
+                                           ),
                            "comments",
                            ]
 
         s3db.configure("dvr_case_activity",
-                       crud_form = S3SQLCustomForm(*crud_fields),
+                       crud_form = CustomForm(*crud_fields),
                        orderby = "dvr_case_activity.priority" \
                                  if use_priority else "dvr_case_activity.start_date desc",
                        )
@@ -994,8 +1001,6 @@ def dvr_case_activity_resource(r, tablename):
                                         use_priority = use_priority,
                                         use_theme = use_theme,
                                         )
-        crud_strings = current.response.s3.crud_strings["dvr_case_activity"]
-        crud_strings["title_report"] = T("Activity Statistic")
 
     # Configure components to inherit realm entity
     # from the case activity record
@@ -1005,6 +1010,27 @@ def dvr_case_activity_resource(r, tablename):
                                        "response_action",
                                        ),
                    )
+
+# -------------------------------------------------------------------------
+def dvr_case_activity_resource(r, tablename):
+
+    s3db = current.s3db
+
+    # Add custom components
+    s3db.add_components("dvr_case_activity",
+                        dvr_diagnosis = (
+                                {"name": "suspected_diagnosis",
+                                 "link": "dvr_diagnosis_suspected",
+                                 "joinby": "case_activity_id",
+                                 "key": "diagnosis_id",
+                                 },
+                                {"name": "confirmed_diagnosis",
+                                 "link": "dvr_diagnosis_confirmed",
+                                 "joinby": "case_activity_id",
+                                 "key": "diagnosis_id",
+                                 },
+                                ),
+                        )
 
 # -------------------------------------------------------------------------
 def dvr_case_activity_controller(**attr):
@@ -1022,19 +1048,12 @@ def dvr_case_activity_controller(**attr):
 
         resource = r.resource
 
-        # Retain list_fields from resource customisation
-        # - otherwise standard_prep would override
-        list_fields = resource.get_config("list_fields")
-
         # Call standard prep
-        if callable(standard_prep):
-            result = standard_prep(r)
-        else:
-            result = True
+        result = standard_prep(r) if callable(standard_prep) else True
 
-        # Restore list_fields
-        if list_fields:
-            resource.configure(list_fields=list_fields)
+        # Reconfigure dvr_case_activity
+        # - overriding some default prep modifications
+        configure_case_activity(r)
 
         # Configure person tags
         from .pr import configure_person_tags
@@ -1148,10 +1167,7 @@ def dvr_case_appointment_controller(**attr):
     def custom_prep(r):
 
         # Call standard prep
-        if callable(standard_prep):
-            result = standard_prep(r)
-        else:
-            result = True
+        result = standard_prep(r) if callable(standard_prep) else True
 
         resource = r.resource
 
@@ -1286,6 +1302,10 @@ def dvr_need_resource(r, tablename):
 
     table = current.s3db.dvr_need
 
+    # Expose code
+    field = table.code
+    field.readable = field.writable = True
+
     # Expose organisation_id (only relevant for ADMINs)
     field = table.organisation_id
     field.readable = field.writable = True
@@ -1312,38 +1332,120 @@ def dvr_need_resource(r, tablename):
 def response_action_onvalidation(form):
     """
         Onvalidation for response actions:
+            - make sure an initial consultation is documented before
+              any follow-up consultations
             - enforce hours for closed-statuses (org-specific UI option)
     """
 
+    T = current.T
+
+    db = current.db
+    s3db = current.s3db
+
+    table = s3db.dvr_response_action
+    ttable = s3db.dvr_response_type
+    stable = s3db.dvr_response_status
+
+    # Get form record data
+    data = get_form_record_data(form, table, ["person_id",
+                                              "response_type_id",
+                                              "status_id",
+                                              ])
+
     ui_options = get_ui_options()
-    if ui_options.get("response_effort_required"):
+    if ui_options.get("response_types"):
+        record_id = get_form_record_id(form)
 
-        db = current.db
-        s3db = current.s3db
+        follow_up_types = ("FUP", "FUP+I")
+        query = (ttable.id == data.get("response_type_id"))
+        row = db(query).select(ttable.code,
+                               ttable.is_consultation,
+                               limitby = (0, 1),
+                               ).first()
 
-        form_vars = form.vars
+        # If this is a follow-up consultation, make sure that an initial
+        # consultation has already been documented for the client
+        if row and row.is_consultation and row.code in follow_up_types:
+            initial_types = ("INI", "INI+I")
+            join = [ttable.on((ttable.id == table.response_type_id) & \
+                              (ttable.is_consultation == True) & \
+                              (ttable.code.belongs(initial_types))),
+                    stable.on((stable.id == table.status_id) & \
+                              (stable.is_canceled == False)),
+                    ]
+            query = (table.person_id == data.get("person_id")) & \
+                    (table.deleted == False)
+            if record_id:
+                query = (table.id != record_id) & query
+            initial = db(query).select(table.id, join=join, limitby=(0, 1)).first()
+            if not initial:
+                form.errors["response_type_id"] = T("No initial consultation registered yet")
 
-        # Get the new status
-        if "status_id" in form_vars:
-            status_id = form_vars.status_id
-        else:
-            status_id = s3db.dvr_response_action.status_id.default
+    if ui_options.get("response_effort_required") and not \
+       current.deployment_settings.get_dvr_response_themes_efforts():
 
         try:
-            hours = form_vars.hours
+            hours = form.vars.hours
         except AttributeError:
             # No hours field in form, so no point validating it
             return
 
         if hours is None:
             # If new status is closed, require hours
-            stable = s3db.dvr_response_status
-            query = (stable.id == status_id)
-            status = db(query).select(stable.is_closed,
-                                      limitby = (0, 1),
-                                      ).first()
+            query = (stable.id == data.get("status_id"))
+            status = db(query).select(stable.is_closed, limitby=(0, 1)).first()
             if status and status.is_closed:
-                form.errors["hours"] = current.T("Please specify the effort spent")
+                form.errors["hours"] = T("Please specify the effort spent")
+
+# -------------------------------------------------------------------------
+def response_action_postprocess(default_postprocess):
+    """
+        Custom extension for response action postprocess:
+        - warns if the action concerns a vulnerability report but
+          no vulnerabilities have been specified
+
+        Args:
+            default_postprocess: the default postprocess
+
+        Returns:
+            the extended postprocess
+    """
+
+    def postprocess(form):
+
+        if callable(default_postprocess):
+            default_postprocess(form)
+
+        record_id = get_form_record_id(form)
+        if not record_id:
+            return
+
+        db = current.db
+        s3db = current.s3db
+
+        table = s3db.dvr_response_action
+        ttable = s3db.dvr_response_type
+        ltable = s3db.dvr_vulnerability_response_action
+
+        join = ttable.on((ttable.id == table.response_type_id) & \
+                         (ttable.code.belongs(("VRBAMF", "VRRP")))
+                         )
+        left = ltable.on((ltable.action_id == table.id) & \
+                         (ltable.vulnerability_id != None) & \
+                         (ltable.deleted == False)
+                         )
+        query = (table.id == record_id) & (table.deleted == False)
+        row = db(query).select(table.id,
+                               table.person_id,
+                               ltable.id,
+                               join = join,
+                               left = left,
+                               limitby = (0, 1),
+                               ).first()
+        if row and not row[ltable].id:
+            current.response.warning = current.T("No vulnerabilities specified!")
+
+    return postprocess
 
 # -------------------------------------------------------------------------
 def response_date_dt_orderby(field, direction, orderby, left_joins):
@@ -1391,15 +1493,15 @@ def configure_response_action_reports(ui_options,
         themes = need = None
 
     # Vulnerability Axis
-    if ui_options_get("activity_pss_vulnerability"):
-        vulnerability = (T("Suspected Diagnosis"),
-                         "case_activity_id$vulnerability_type__link.vulnerability_type_id",
-                         )
-        diagnosis = (T("Diagnosis"),
-                     "case_activity_id$diagnosis__link.vulnerability_type_id",
-                     )
+    if ui_options_get("activity_pss_diagnoses"):
+        suspected_diagnosis = (T("Suspected Diagnosis"),
+                               "case_activity_id$diagnosis_suspected__link.diagnosis_id",
+                               )
+        confirmed_diagnosis = (T("Diagnosis"),
+                               "case_activity_id$diagnosis_confirmed__link.diagnosis_id",
+                               )
     else:
-        vulnerability = diagnosis = None
+        suspected_diagnosis = confirmed_diagnosis = None
 
     # Custom Report Options
     facts = ((T("Number of Actions"), "count(id)"),
@@ -1411,8 +1513,8 @@ def configure_response_action_reports(ui_options,
             "person_id$person_details.nationality",
             "person_id$person_details.marital_status",
             (T("Size of Family"), "person_id$dvr_case.household_size"),
-            vulnerability,
-            diagnosis,
+            suspected_diagnosis,
+            confirmed_diagnosis,
             response_type,
             themes,
             need,
@@ -1443,7 +1545,7 @@ def configure_response_action_reports(ui_options,
                            )
 
 # -------------------------------------------------------------------------
-def configure_response_action_filters(r,
+def configure_response_action_filters(r, *,
                                       use_theme = False,
                                       use_time = False,
                                       use_response_type = False,
@@ -1502,7 +1604,7 @@ def configure_response_action_filters(r,
                       ),
         DateFilter("start_date",
                    hidden = not is_report,
-                   hide_time = not use_time,
+                   hide_time = True, #not use_time,
                    ),
         OptionsFilter("person_id$person_details.nationality",
                       label = T("Client Nationality"),
@@ -1515,6 +1617,18 @@ def configure_response_action_filters(r,
         ]
 
     if use_theme:
+        settings = current.deployment_settings
+        themes_details = settings.get_dvr_response_themes_details()
+        themes_sectors = settings.get_dvr_response_themes_sectors()
+        if themes_details and themes_sectors:
+            from ..helpers import response_theme_sectors
+            filter_widgets.insert(-2,
+                OptionsFilter("response_action_theme.theme_id$sector_id",
+                              header = True,
+                              hidden = True,
+                              options = response_theme_sectors,
+                              ))
+
         filter_widgets.insert(-2,
             OptionsFilter("response_theme_ids",
                           header = True,
@@ -1524,6 +1638,8 @@ def configure_response_action_filters(r,
                                                        org_filter = True,
                                                        ),
                           ))
+
+
     if use_response_type:
         filter_widgets.insert(3,
             HierarchyFilter("response_type_id",
@@ -1581,7 +1697,7 @@ def configure_response_action_filters(r,
                    )
 
 # -------------------------------------------------------------------------
-def configure_response_action_theme(ui_options,
+def configure_response_action_theme(ui_options, *,
                                     case_root_org = None,
                                     person_id = None,
                                     record_id = None,
@@ -1616,7 +1732,7 @@ def configure_response_action_theme(ui_options,
         query = (ttable.organisation_id == case_root_org) & query
 
     themes_needs = settings.get_dvr_response_themes_needs()
-    if ui_options.get("activity_use_need") and themes_needs:
+    if ui_options.get("activity_subject_type") in ("need", "both") and themes_needs:
         # Limit themes to those matching the need of the activity
         if case_activity:
             need_id = case_activity.need_id
@@ -1748,8 +1864,9 @@ def configure_response_action_view(ui_options,
             field.readable = field.writable = False
         else:
             # Show activity_id (read-only)
-            use_need = ui_options_get("activity_use_need")
-            use_subject = ui_options_get("activity_use_subject")
+            subject_type = ui_options_get("activity_subject_type")
+            use_need = subject_type in ("need", "both")
+            use_subject = subject_type in ("subject", "both")
             field.label = T("Counseling Reason")
             field.represent = s3db.dvr_CaseActivityRepresent(
                                         show_as = "need" if use_need else "subject",
@@ -1782,7 +1899,7 @@ def configure_response_action_view(ui_options,
 
 # -------------------------------------------------------------------------
 def configure_response_action_tab(person_id,
-                                  ui_options,
+                                  ui_options, *,
                                   response_type = None,
                                   use_due_date = False,
                                   use_theme = False,
@@ -1819,14 +1936,16 @@ def configure_response_action_tab(person_id,
         field.readable = False
 
         list_fields = ["start_date",
+                       response_type,
                        (T("Themes"), "dvr_response_action_theme.id"),
                        "human_resource_id",
                        "hours",
                        "status_id",
                        ]
         pdf_fields = ["start_date",
-                      #"human_resource_id",
+                       response_type,
                       (T("Themes"), "dvr_response_action_theme.id"),
+                      #"human_resource_id",
                       ]
     else:
         # Show case_activity_id
@@ -1834,13 +1953,15 @@ def configure_response_action_tab(person_id,
         field.readable = True
 
         # Adjust representation to perspective
-        if ui_options_get("activity_use_need"):
+        subject_type = ui_options_get("activity_subject_type")
+        use_need = subject_type in ("need", "both")
+        use_subject = subject_type in ("subject", "both")
+        if use_need:
             field.label = T("Counseling Reason")
             show_as = "need"
         else:
             field.label = T("Subject")
             show_as = "subject"
-        use_subject = ui_options_get("activity_use_subject")
 
         represent = s3db.dvr_CaseActivityRepresent(show_as = show_as,
                                                    show_link = True,
@@ -1870,8 +1991,7 @@ def configure_response_action_tab(person_id,
                                        )
 
             # Allow in-popup creation of new activities for the case
-            from s3layouts import S3PopupLink
-            field.comment = S3PopupLink(label = T("Create Counseling Reason"),
+            field.comment = PopupLink(label = T("Create Counseling Reason"),
                                         c = "dvr",
                                         f = "case_activity",
                                         vars = {"~.person_id": person_id,
@@ -1927,6 +2047,7 @@ def dvr_response_action_resource(r, tablename):
 
     use_theme = ui_options_get("response_use_theme")
     themes_details = use_theme and settings.get_dvr_response_themes_details()
+    themes_efforts = use_theme and settings.get_dvr_response_themes_efforts()
 
     # Represent for dvr_response_action_theme.id
     if themes_details:
@@ -1952,7 +2073,7 @@ def dvr_response_action_resource(r, tablename):
         crud_strings = current.response.s3.crud_strings["dvr_response_action"]
         crud_strings["title_report"] = T("Action Statistic")
 
-    if r.interactive or r.representation in ("aadata", "xlsx", "xls", "pdf", "s3json"):
+    if r.interactive or r.representation in ("aadata", "xlsx", "xls", "pdf", "json", "s3json"):
 
         human_resource_id = current.auth.s3_logged_in_human_resource()
 
@@ -1962,12 +2083,16 @@ def dvr_response_action_resource(r, tablename):
         field.represent = s3db.hrm_HumanResourceRepresent(show_link=False)
         field.widget = None
 
+        ltable = s3db.dvr_response_action_theme
+
         # Require explicit unit in hours-widget above 4 hours
         from core import S3HoursWidget
-        field = table.hours
-        field.widget = S3HoursWidget(precision = 2,
-                                     explicit_above = 4,
-                                     )
+        for f in (table.hours, ltable.hours):
+            f.widget = S3HoursWidget(precision=2, explicit_above=4)
+
+        # Require input when documenting effort per theme
+        if themes_efforts:
+            ltable.hours.requires = IS_FLOAT_IN_RANGE(0.0, None)
 
         # Use separate due-date field?
         use_due_date = settings.get_dvr_response_due_date()
@@ -2057,7 +2182,7 @@ def dvr_response_action_resource(r, tablename):
                                "end": "end_date",
                                "use_time": use_time,
                                },
-                   pdf_format = "list" if themes_details else "table",
+                   pdf_format = "list",
                    orderby = "dvr_response_action.start_date desc, dvr_response_action.created_on desc",
                    )
 
@@ -2071,6 +2196,13 @@ def dvr_response_action_resource(r, tablename):
                              "onvalidation",
                              response_action_onvalidation,
                              )
+
+    # Custom postprocess to warn for missing vulnerability links
+    if settings.get_dvr_response_vulnerabilities():
+        crud_form = s3db.get_config("dvr_response_action", "crud_form")
+        if isinstance(crud_form, CustomForm):
+            postprocess = crud_form.opts.get("postprocess")
+            crud_form.opts["postprocess"] = response_action_postprocess(postprocess)
 
 # -------------------------------------------------------------------------
 def dvr_response_action_controller(**attr):
@@ -2099,26 +2231,48 @@ def dvr_response_action_controller(**attr):
                 return False
 
         if not r.id:
+            # pisets = {pitype: (method, icon, title)}
+            pisets = {None: ("indicators",
+                             "line-chart",
+                             T("Performance Indicators"),
+                             ),
+                      "rp": ("indicators_rp",
+                             "line-chart",
+                             "%s %s" % (T("Performance Indicators"), "RP"),
+                             ),
+                      "bamf": ("indicators_bamf",
+                               "tachometer",
+                               "%s %s" % (T("Performance Indicators"), "BAMF"),
+                               ),
+                      }
+
             from ..stats import PerformanceIndicatorExport
-            pitype = get_ui_options().get("response_performance_indicators")
-            s3db.set_method("dvr_response_action",
-                            method = "indicators",
-                            action = PerformanceIndicatorExport(pitype),
-                            )
-            export_formats = list(settings.get_ui_export_formats())
-            export_formats.append(("indicators.xls",
-                                   "fa fa-line-chart",
-                                   T("Performance Indicators"),
-                                   ))
-            s3.formats["indicators.xls"] = r.url(method="indicators")
-            settings.ui.export_formats = export_formats
+            pitypes = get_ui_options().get("response_performance_indicators")
+            if not isinstance(pitypes, (tuple, list)):
+                pitypes = [pitypes]
+
+            for pitype in pitypes:
+                piset = pisets.get(pitype)
+                if not piset:
+                    continue
+                method, icon, title = piset
+                s3db.set_method("dvr_response_action",
+                                method = method,
+                                action = PerformanceIndicatorExport(pitype),
+                                )
+                export_formats = list(settings.get_ui_export_formats())
+                fmt = "%s.xls" % method
+                export_formats.append((fmt, "fa fa-%s" % icon, title))
+                s3.formats[fmt] = r.url(method=method)
+                settings.ui.export_formats = export_formats
+
         return result
     s3.prep = custom_prep
 
     # Custom rheader
     if current.request.controller == "dvr":
-        from ..rheaders import drk_dvr_rheader
-        attr["rheader"] = drk_dvr_rheader
+        from ..rheaders import dvr_rheader
+        attr["rheader"] = dvr_rheader
 
     return attr
 
@@ -2181,6 +2335,13 @@ def dvr_response_theme_resource(r, tablename):
         )
 
 # -------------------------------------------------------------------------
+def dvr_response_type_resource(r, tablename):
+
+    table = current.s3db.dvr_response_type
+    field = table.code
+    field.readable = field.writable = True
+
+# -------------------------------------------------------------------------
 def dvr_service_contact_resource(r, tablename):
 
     s3db = current.s3db
@@ -2197,28 +2358,13 @@ def dvr_service_contact_resource(r, tablename):
     field.readable = field.writable = True
 
 # -------------------------------------------------------------------------
-def dvr_vulnerability_type_resource(r, tablename):
+def dvr_vulnerability_resource(r, tablename):
 
-    T = current.T
+    table = current.s3db.dvr_vulnerability
 
-    table = current.s3db.dvr_vulnerability_type
-
-    # Adjust labels
-    field = table.name
-    field.label = T("Diagnosis")
-
-    # Custom CRUD Strings
-    current.response.s3.crud_strings["dvr_vulnerability_type"] = Storage(
-        label_create = T("Create Diagnosis"),
-        title_display = T("Diagnosis Details"),
-        title_list = T("Diagnoses"),
-        title_update = T("Edit Diagnosis"),
-        label_list_button = T("List Diagnoses"),
-        label_delete_button = T("Delete Diagnosis"),
-        msg_record_created = T("Diagnosis created"),
-        msg_record_modified = T("Diagnosis updated"),
-        msg_record_deleted = T("Diagnosis deleted"),
-        msg_list_empty = T("No Diagnoses currently defined"),
-        )
+    # Expose human_resource_id and set default
+    field = table.human_resource_id
+    field.default = current.auth.s3_logged_in_human_resource()
+    field.readable = field.writable = True
 
 # END =========================================================================

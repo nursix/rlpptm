@@ -33,7 +33,7 @@ from urllib.parse import quote as urllib_quote
 from gluon import current, URL, DIV, XML, A, HTTP
 from gluon.languages import regex_translate
 
-from ..tools import JSONERRORS, JSONSEPARATORS, s3_include_ext, s3_include_underscore, s3_str
+from ..tools import JSONERRORS, JSONSEPARATORS, include_ext_js, include_underscore_js, s3_str
 
 from .base import GIS
 from .layers import LayerArcREST, LayerBing, LayerCoordinate, LayerEmpty, LayerFeature, \
@@ -379,7 +379,7 @@ class MAP(DIV):
                     #i18n["gis_search_no_internet"] = T("Geonames.org search requires Internet connectivity!")
 
             # Show NAV controls?
-            # e.g. removed within S3LocationSelector[Widget]
+            # e.g. removed within LocationSelector
             nav = opts_get("nav", None)
             if nav is None:
                 nav = settings.get_gis_nav_controls()
@@ -415,7 +415,7 @@ class MAP(DIV):
                 i18n["gis_print_tip"] = T("Take a screenshot of the map which can be printed")
 
             # Show Save control?
-            # e.g. removed within S3LocationSelector[Widget]
+            # e.g. removed within LocationSelector
             if opts_get("save") is True and auth.s3_logged_in():
                 options["save"] = True
                 i18n["gis_save"] = T("Save: Default Lat, Lon & Zoom for the Viewport")
@@ -442,7 +442,7 @@ class MAP(DIV):
                 self.opts["save"] = "float"
 
         # Show Save control?
-        # e.g. removed within S3LocationSelector[Widget]
+        # e.g. removed within LocationSelector
         if opts_get("save") == "float" and auth.s3_logged_in():
             permit = auth.s3_has_permission
             if permit("create", ctable):
@@ -799,7 +799,7 @@ class MAP(DIV):
 
         # Add ExtJS
         # @ToDo: Do this conditionally on whether Ext UI is used
-        s3_include_ext()
+        include_ext_js()
 
         dumps = json.dumps
         s3 = current.response.s3
@@ -829,7 +829,7 @@ class MAP(DIV):
             js_global_append(js_globals)
 
         # Underscore for Popup Templates
-        s3_include_underscore()
+        include_underscore_js()
 
         debug = s3.debug
         scripts = s3.scripts
@@ -1273,7 +1273,7 @@ class MAP2(DIV):
         s3 = current.response.s3
 
         # Underscore for Popup Templates
-        s3_include_underscore()
+        include_underscore_js()
 
         # OpenLayers
         script = "/%s/static/scripts/gis/ol.js" % appname

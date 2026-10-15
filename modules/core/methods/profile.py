@@ -38,11 +38,11 @@ from ..resource import FS
 from ..tools import get_crud_string, s3_str
 from ..ui import ICON
 
-from .crud import S3CRUD
+from .crud import BasicCRUD
 from .report import S3Report
 
 # =============================================================================
-class S3Profile(S3CRUD):
+class S3Profile(BasicCRUD):
     """
         Interactive Method Handler for Profile Pages
 
@@ -71,10 +71,10 @@ class S3Profile(S3CRUD):
             if r.record:
                 # Initialize CRUD form
                 self.settings = current.response.s3.crud
-                self.sqlform = sqlform = self.resource.get_config("crud_form")
-                if not sqlform:
-                    from ..ui import S3SQLDefaultForm
-                    self.sqlform = S3SQLDefaultForm()
+                self.form = form = self.resource.get_config("crud_form")
+                if not form:
+                    from ..ui import DefaultForm
+                    self.form = DefaultForm()
 
                 # Render page
                 output = self.profile(r, **attr)
@@ -828,12 +828,12 @@ class S3Profile(S3CRUD):
         else:
             readonly = not current.auth.s3_has_permission("create", tablename)
 
-        sqlform = widget.get("sqlform", None)
-        if not sqlform:
-            sqlform = resource.get_config("crud_form")
-        if not sqlform:
-            from ..ui import S3SQLDefaultForm
-            sqlform = S3SQLDefaultForm()
+        crud_form = widget.get("crud_form", None)
+        if not crud_form:
+            crud_form = resource.get_config("crud_form")
+        if not crud_form:
+            from ..ui import DefaultForm
+            crud_form = DefaultForm()
 
         get_config = current.s3db.get_config
         if record_id:
@@ -849,14 +849,14 @@ class S3Profile(S3CRUD):
             onaccept = get_config(tablename, "create_onaccept") or \
                        get_config(tablename, "onaccept")
 
-        form = sqlform(request = r,
-                       resource = resource,
-                       record_id = record_id,
-                       readonly = readonly,
-                       format = "html",
-                       onvalidation = onvalidation,
-                       onaccept = onaccept,
-                       )
+        form = crud_form(request = r,
+                         resource = resource,
+                         record_id = record_id,
+                         readonly = readonly,
+                         format = "html",
+                         onvalidation = onvalidation,
+                         onaccept = onaccept,
+                         )
         _class = self._lookup_class(r, widget)
 
         # Render the widget

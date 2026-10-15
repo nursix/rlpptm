@@ -32,7 +32,7 @@ def human_resource():
     """
         HR Controller
         - combined
-        Used for Summary view, Imports, S3AddPersonWidget and the service record
+        Used for Summary view, Imports, PersonSelector and the service record
     """
 
     # Custom method for Service Record
@@ -165,7 +165,7 @@ def job_title():
     def prep(r):
         if r.representation in ("xlsx", "xls"):
             # Export format should match Import format
-            current.messages["NONE"] = ""
+            messages["NONE"] = ""
             table = s3db.hrm_job_title
             table.organisation_id.represent = \
                 s3db.org_OrganisationRepresent(acronym = False,
@@ -273,6 +273,8 @@ def training():
 def training_event():
     """ Training Events Controller """
 
+    from core import S3PersonAutocompleteWidget
+
     table = s3db.hrm_training
     table.person_id.widget = S3PersonAutocompleteWidget(controller="vol")
 
@@ -284,6 +286,8 @@ def competency():
 
     # Filter to just Volunteers
     s3.filter = FS("person_id$human_resource.type") == 2
+
+    from core import S3PersonAutocompleteWidget
 
     field = s3db.hrm_competency.person_id
     field.widget = S3PersonAutocompleteWidget(ajax_filter = "~.human_resource.type=2")
@@ -465,7 +469,7 @@ def award():
 # -----------------------------------------------------------------------------
 def volunteer_award():
     """
-        Used for returning options to the S3PopupLink PopUp
+        Used for returning options to the PopupLink PopUp
     """
 
     # We use component form instead
@@ -502,7 +506,7 @@ def cluster_position():
 
 # -----------------------------------------------------------------------------
 def volunteer_cluster():
-    """ ONLY FOR RETURNING options to the S3PopupLink PopUp """
+    """ ONLY FOR RETURNING options to the PopupLink PopUp """
 
     return crud_controller()
 

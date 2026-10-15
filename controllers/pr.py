@@ -30,14 +30,6 @@ def person():
                 #(s3db.auth_user.id == s3db.pr_person_user.user_id) & \
                 #(s3db.auth_user.registration_key != "disabled")
 
-    # Organisation Dependent Fields
-    # @ToDo: Deprecate (only used by IFRC template)
-    #set_org_dependent_field = settings.set_org_dependent_field
-    #set_org_dependent_field("pr_person_details", "father_name")
-    #set_org_dependent_field("pr_person_details", "mother_name")
-    #set_org_dependent_field("pr_person_details", "affiliations")
-    #set_org_dependent_field("pr_person_details", "company")
-
     def prep(r):
         if r.representation == "json" and \
            not r.component and session.s3.filter_staff:
@@ -52,7 +44,7 @@ def person():
                 table.pe_label.readable = table.pe_label.writable = False
                 table.missing.readable = table.missing.writable = False
 
-                # S3SQLCustomForm breaks popup return, so disable
+                # CustomForm breaks popup return, so disable
                 s3db.clear_config("pr_person", "crud_form")
 
             if r.component:

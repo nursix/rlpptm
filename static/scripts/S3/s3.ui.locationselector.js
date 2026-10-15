@@ -11,7 +11,7 @@
 (function($, undefined) {
 
     "use strict";
-    var locationselectorID = 0;
+    var selectLocationID = 0;
 
     // Global cache for location data (shared with other location selectors)
     var hierarchyLocations = {},
@@ -21,7 +21,7 @@
     /**
      * LocationSelector widget
      */
-    $.widget('s3.locationselector', {
+    $.widget('s3.selectLocation', {
 
         /**
          * Default options
@@ -66,11 +66,11 @@
 
             //var el = $(this.element);
 
-            this.id = locationselectorID;
-            locationselectorID += 1;
+            this.id = selectLocationID;
+            selectLocationID += 1;
 
             // Namespace for events
-            this.eventNamespace = '.locationselector';
+            this.eventNamespace = '.selectLocation';
         },
 
         /**
@@ -710,7 +710,7 @@
             this.input.data('input', this._hasData());
 
             if (this.fieldname.slice(0, 4) == 'sub_') {
-                // This is an S3SQLInlineComponent => trigger change event
+                // This is an InlineComponent => trigger change event
                 this.input.trigger('change', mapInput && 'user' || 'implicit');
             }
         },

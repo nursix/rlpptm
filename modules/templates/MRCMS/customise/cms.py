@@ -22,11 +22,7 @@ def lookup_newsletter_recipients(resource):
             a list of pe_ids of the recipients
     """
 
-    if resource.tablename == "org_facility":
-        rows = resource.select(["organisation_id$pe_id"], as_rows=True)
-        return [row.org_organisation.pe_id for row in rows]
-
-    elif resource.tablename == "org_organisation":
+    if resource.tablename == "org_organisation":
         rows = resource.select(["pe_id"], as_rows=True)
         return [row.pe_id for row in rows]
 
@@ -109,7 +105,7 @@ def cms_newsletter_controller(**attr):
             query = accessible_pe_query(instance_types = types,
                                         method = "read",
                                         c = "org",
-                                        f = "facility",
+                                        f = "organisation",
                                         )
 
             # Filter out existing recipients
@@ -135,19 +131,19 @@ def cms_post_resource(r, tablename):
 
     table = s3db.cms_post
 
-    from core import S3SQLCustomForm, \
-                     S3SQLInlineComponent, \
-                     S3SQLInlineLink, \
+    from core import CustomForm, \
+                     InlineComponent, \
+                     InlineLink, \
                      s3_text_represent
 
     field = table.body
+    field.label = T("Content")
     field.represent = lambda v, row=None: \
-                        s3_text_represent(v, lines=20, _class = "cms-item-body")
+                             s3_text_represent(v, lines=20, _class = "cms-item-body")
 
     record = r.record
     if r.tablename == "cms_series" and \
         record and record.name == "Announcements":
-        table = s3db.cms_post
         field = table.priority
         field.readable = field.writable = True
 
@@ -156,10 +152,10 @@ def cms_post_resource(r, tablename):
                        "priority",
                        "date",
                        "expired",
-                       S3SQLInlineLink("roles",
-                                       label = T("Roles"),
-                                       field = "group_id",
-                                       ),
+                       InlineLink("roles",
+                                  label = T("Roles"),
+                                  field = "group_id",
+                                  ),
                        ]
         list_fields = ["date",
                        "priority",
@@ -173,15 +169,15 @@ def cms_post_resource(r, tablename):
         crud_fields = ["name",
                        "body",
                        "date",
-                       S3SQLInlineComponent("document",
-                                            name = "file",
-                                            label = T("Attachments"),
-                                            fields = ["file", "comments"],
-                                            filterby = {"field": "file",
-                                                        "options": "",
-                                                        "invert": True,
-                                                        },
-                                            ),
+                       InlineComponent("document",
+                                       name = "file",
+                                       label = T("Attachments"),
+                                       fields = ["file", "comments"],
+                                       filterby = {"field": "file",
+                                                   "options": "",
+                                                   "invert": True,
+                                                   },
+                                       ),
                        "comments",
                        ]
         list_fields = ["post_module.module",
@@ -193,7 +189,7 @@ def cms_post_resource(r, tablename):
         orderby = "cms_post.name"
 
     s3db.configure("cms_post",
-                   crud_form = S3SQLCustomForm(*crud_fields),
+                   crud_form = CustomForm(*crud_fields),
                    list_fields = list_fields,
                    orderby = orderby,
                    )
@@ -210,19 +206,25 @@ def cms_post_controller(**attr):
         result = standard_prep(r) if callable(standard_prep) else True
 
         table = r.table
-        context = r.get_vars.get("resource")
-        if context == "Privacy":
-            page = URL(c="default", f="index", args=["privacy"])
-            r.resource.configure(create_next = page,
-                                 update_next = page,
-                                 )
-            table.name.default = "Privacy Notice"
-        elif context == "Legal":
-            page = URL(c="default", f="index", args=["legal"])
-            r.resource.configure(create_next = page,
-                                 update_next = page,
-                                 )
-            table.name.default = "Legal Notice"
+
+        get_vars = r.get_vars
+        module, context = get_vars.get("module"), get_vars.get("resource")
+
+        if module == "default":
+            if context == "Contact":
+                page, name = "contact", "Contact Information"
+            elif context == "Privacy":
+                page, name = "privacy", "Privacy Notice"
+            elif context == "Legal":
+                page, name = "legal", "Legal Notice"
+            else:
+                page, name = None, None
+            if page and name:
+                url = URL(c="default", f="index", args=[page])
+                r.resource.configure(create_next=url, update_next=url)
+                table.name.default = name
+
+
         return result
     s3.prep = prep
 

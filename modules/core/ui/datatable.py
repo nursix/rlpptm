@@ -30,13 +30,17 @@ __all__ = ("DataTable",
 
 import re
 
-from gluon import current, URL, \
-                  A, DIV, FORM, INPUT, SPAN, TABLE, TBODY, TD, TH, THEAD, TR
+from gluon import current, URL, xmlescape, \
+                  A, BUTTON, DIV, FORM, INPUT, LABEL, SPAN, \
+                  TABLE, TBODY, TD, TH, THEAD, TR
+
 from gluon.serializers import json as jsons
 
 from s3dal import Expression, S3DAL
 
 from ..tools import s3_orderby_fields, s3_set_extension, s3_str
+
+from .icons import ICON
 
 # =============================================================================
 class DataTable:
@@ -302,6 +306,9 @@ class DataTable:
                 ** Searching
                 dt_searching: Enable or disable filtering of data.
 
+                ** Variable Columns
+                dt_available_cols: [[index, label, selector, active], ...]
+
                 ** Row Actions
                 dt_row_actions: list of actions (each a dict), overrides
                                 current.response.s3.actions
@@ -340,10 +347,6 @@ class DataTable:
                            for example: {"warning" : [1,3,6,7,9], "alert" : [2,10,13]}
                 dt_col_widths: dictionary of columns to apply a width to
                                for example: {1 : 15, 2 : 20}
-
-                ** Other Features
-                dt_double_scroll: Render double scroll bars (top+bottom), only available
-                                  with settings.ui.datatables_responsive=False
         """
 
         request = current.request
@@ -401,7 +404,7 @@ class DataTable:
         bulk_col = attr_get("dt_bulk_col", 0)
         bulk_actions = attr_get("dt_bulk_actions")
         if bulk_actions:
-            if not isinstance(bulk_actions, list):
+            if not isinstance(bulk_actions, (tuple, list)):
                 bulk_actions = [bulk_actions]
             config.update(bulkActions = bulk_actions,
                           bulkCol = bulk_col,
@@ -486,47 +489,57 @@ class DataTable:
                 a FORM instance
         """
 
-        request = current.request
         s3 = current.response.s3
         settings = current.deployment_settings
 
-        # Append table ID to response.s3.dataTableID
-        table_ids = s3.dataTableID
+        # Append table ID to response.s3.datatable_id
+        table_ids = s3.datatable_id
         if not table_ids or not isinstance(table_ids, list):
-            s3.dataTableID = [table_id]
+            s3.datatable_id = [table_id]
         elif table_id not in table_ids:
             table_ids.append(table_id)
 
-        attr_get = attr.get
+        # Flags for optional JavaScript
+        script_opts = s3.datatable_opts
+        if not script_opts or not isinstance(script_opts, dict):
+            script_opts = s3.datatable_opts = {}
 
-        # Double Scroll
-        if not settings.get_ui_datatables_responsive():
-            double_scroll = attr_get("dt_double_scroll")
-            if double_scroll is None:
-                double_scroll = settings.get_ui_datatables_double_scroll()
-            if double_scroll:
-                if s3.debug:
-                    script = "/%s/static/scripts/jquery.doubleScroll.js" % request.application
-                else:
-                    script = "/%s/static/scripts/jquery.doubleScroll.min.js" % request.application
-                if script not in s3.scripts:
-                    s3.scripts.append(script)
-                table.add_class("doublescroll")
+        attr_get = attr.get
+        base_url = attr_get("dt_base_url")
 
         # Build the form
         form = FORM(_class="dt-wrapper")
+
+        # Responsive?
+        if settings.get_ui_datatables_responsive():
+            script_opts["responsive"] = True
+        else:
+            form.add_class("scrollable")
 
         # Form key (XSRF protection for Ajax actions)
         formkey = attr_get("dt_formkey")
         if formkey:
             form["hidden"] = {"_formkey": formkey}
 
-        # Export formats
+        # Links and Export Formats
+        elements = cls.links(list_url = attr.get("dt_list_url"),
+                             select_url = attr_get("dt_select_url"),
+                             )
+        if elements:
+            elements.append(SPAN(" | ", _class="separator"))
+
         if not s3.no_formats:
-            form.append(cls.export_formats(base_url = attr_get("dt_base_url"),
-                                           permalink = attr_get("dt_permalink"),
-                                           rfields = rfields,
-                                           ))
+            exports = cls.exports(base_url = base_url,
+                                  rfields = rfields,
+                                  )
+            if len(exports):
+                elements.append(exports)
+            else:
+                elements = elements[:-1]
+
+        if elements:
+            form.append(DIV(*elements, _class="dt-export-options"))
+
         # The HTML table
         form.append(table)
 
@@ -551,6 +564,12 @@ class DataTable:
             add_hidden("mode", "dataTable_bulkMode", "Inclusive")
             add_hidden("selected", "dataTable_bulkSelection", "[%s]" % bulk_selected)
             add_hidden("filterURL", "dataTable_filterURL", config["ajaxUrl"])
+
+        # Variable columns selector
+        available_cols = attr.get("dt_available_cols")
+        if available_cols:
+            script_opts["variable_columns"] = True
+            form.append(cls.column_selector(available_cols, base_url=base_url))
 
         # InitComplete callback (processed in views/dataTables.html)
         callback = settings.get_ui_datatables_initComplete()
@@ -598,7 +617,7 @@ class DataTable:
                 if colname == "BULK":
                     append(str(bulk_checkbox(row[dbid])))
                 else:
-                    append(s3_str(row[colname]))
+                    append(s3_str(xmlescape(row[colname])))
             addrow(details)
 
         output = {"recordsTotal": totalrows,
@@ -650,6 +669,114 @@ class DataTable:
 
     # -------------------------------------------------------------------------
     @staticmethod
+    def column_selector(available_cols, base_url=None):
+        """
+            Produces a column selector for variable columns
+
+            Args:
+                available_columns: the available columns, a list of tuples
+                                   (index, label, selector, active)
+                base_url: the base URL of the data table
+            Returns:
+                columns selector subform
+        """
+
+        T = current.T
+
+        if not base_url:
+            base_url = current.request.url
+        # TODO sanitize URL => drop extensions from path, remove query part
+        lookup_url = base_url.split("?")[0].rstrip("/") + "/columns.json"
+
+        # The column options
+        options = TBODY(_class="column-options")
+        all_selected = True
+        for index, label, selector, status in available_cols:
+
+            if not status:
+                all_selected = False
+
+            col = LABEL(INPUT(_type="checkbox",
+                              _value=index,
+                              _class = "column-select",
+                              data = {"selector": selector, "index": index},
+                              value = status,
+                              ),
+                        label,
+                        _class = "available-column",
+                        )
+
+            row = (TR(TD(col, _colspan=2),
+                      TD(ICON("fa fa-caret-up"), _class = "column-left"),
+                      TD(ICON("fa fa-caret-down"), _class = "column-right"),
+                      ))
+            options.append(row)
+
+        # Select/Deselect All option
+        from gluon import SELECT, OPTION
+        select_all = THEAD(TR(TD(LABEL(INPUT(_type="checkbox",
+                                             _class = "column-select-all",
+                                             value = all_selected,
+                                             ),
+                                       T("All"),
+                                       _class = "available-column",
+                                       ),
+                                  ),
+                                # ColumnConfigManager
+                                TD(DIV(_class="throbber cfg-select-throbber"),
+                                   SELECT(OPTION(T("No Saved Configurations"),
+                                                 _disabled = "disabled",
+                                                 _selected = "selected",
+                                                 _value = "",
+                                                 _class = "cfg-select-empty",
+                                                 ),
+                                          _class = "cfg-select cfg-select-options",
+                                          ),
+                                   INPUT(_class="cfg-save cfg-save-name hide"),
+                                   ),
+                                TD(ICON("fa fa-floppy-o",
+                                        _title=T("Save"),
+                                        _class="cfg-select cfg-select-save",
+                                        ),
+                                   ICON("fa fa-check-square",
+                                        _title=T("Save"),
+                                        _class="cfg-save cfg-save-submit hide",
+                                        ),
+                                   ),
+                                TD(ICON("fa fa-trash-o",
+                                        _title=T("Delete"),
+                                        _class="cfg-select cfg-select-delete",
+                                        ),
+                                   ICON("fa fa-close",
+                                        _title=T("Cancel"),
+                                        _class="cfg-save cfg-save-cancel hide",
+                                        ),
+                                   ),
+                                ))
+
+        # Complete subform
+        subform = DIV(TABLE(select_all, options),
+                      DIV(BUTTON(T("Submit"),
+                                 _class = "submit-form-btn small primary button",
+                                 _type = "button",
+                                 ),
+                          A(T("Cancel"),
+                            _class = "cancel-form-btn action-lnk",
+                            _href = "javascript:void(0)",
+                            ),
+                          A(T("Reset"),
+                            _class = "reset-form-btn action-lnk",
+                            _href = "javascript:void(0)",
+                            ),
+                          ),
+                      data = {"url": lookup_url},
+                      _class="column-selector columns hide",
+                      )
+
+        return subform
+
+    # -------------------------------------------------------------------------
+    @staticmethod
     def bulk_checkbox(dbid):
         """
             Constructs a checkbox to select a row for bulk action
@@ -669,21 +796,47 @@ class DataTable:
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def export_formats(base_url = None,
-                       permalink = None,
-                       rfields = None,
-                       ):
+    def links(select_url=None, list_url=None):
+        """
+            Construct method links
+
+            Args:
+                select_url: link to the bulk-select method
+                list_url: link to the default list method (suppressed by select_url)
+
+            Returns:
+                a list of elements to construct a DIV with
+        """
+
+        T = current.T
+
+        links = []
+
+        if select_url:
+            link = A(T("Select"), _href=select_url)
+            links.extend([link, " | "])
+
+        elif list_url:
+            link = A(T("List"), _href=list_url)
+            links.extend([link, " | "])
+
+        return links[:-1]
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def exports(base_url=None, rfields = None):
         """
             Constructs the export options widget
 
             Args:
                 base_url: the base URL of the datatable (without
                           method or query vars) to construct export URLs
-                permalink: the search result URL (including filters) for
-                           the user to bookmark
                 rfields: the table columns (list of S3ResourceField) to
                          auto-detect export format options, e.g. KML if
                          there is a location reference
+
+            Returns:
+                a SPAN with export options
 
             Notes:
                 - the overall list of possible export formats (and their
@@ -719,13 +872,12 @@ class DataTable:
             default_url = "%s?%s" % (default_url, query)
 
         # Construct row of export icons
-        # - icons appear in reverse order due to float-right
-        icons = SPAN(_class = "list_formats")
+        options = SPAN(_class="list_formats")
 
         # All export formats
         export_formats = settings.get_ui_export_formats()
         if export_formats:
-            icons.append("%s:" % T("Export as"))
+            options.append("%s:" % T("Export as"))
 
             # Default available formats
             default_formats = ("xlsx", "pdf")
@@ -768,31 +920,13 @@ class DataTable:
                     else:
                         title = EXPORT % {"format": fmt.upper()}
 
-                icons.append(DIV(_class = css_class,
-                                 _title = title,
-                                 data = {"url": url,
-                                         "extension": fmt.split(".")[-1],
-                                         },
-                                 ))
-
-        export_options = DIV(_class = "dt-export-options")
-
-        # Append the permalink (if any)
-        if permalink is not None:
-            label = settings.get_ui_label_permalink()
-            if label:
-                link = A(T(label),
-                         _href = permalink,
-                         _class = "permalink",
-                         )
-                export_options.append(link)
-                if len(icons):
-                    export_options.append(" | ")
-
-        # Append the icons
-        export_options.append(icons)
-
-        return export_options
+                options.append(DIV(_class = css_class,
+                                   _title = title,
+                                   data = {"url": url,
+                                           "extension": fmt.split(".")[-1],
+                                           },
+                                   ))
+        return options
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -825,6 +959,11 @@ class DataTable:
                    "search":  T("Search"),
                    "zeroRecords":  T("No matching records found"),
                    "selectAll":  T("Select All"),
+                   "selectAction": T("Select Action"),
+                   "selectedRecords": T("Selected Records"),
+                   "executeBulkAction": T("OK"),
+                   "selectColumns": T("Select Columns"),
+                   "savedConfigurations": T("Saved Configurations..."),
                    }
 
         return "\n".join('''i18n.%s="%s"'''% (k, v) for k, v in strings.items())

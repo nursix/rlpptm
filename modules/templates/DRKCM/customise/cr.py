@@ -69,7 +69,6 @@ def cr_shelter_population():
     stable = s3db.dvr_case_status
     join = stable.on(stable.id == ctable.status_id)
     left = dtable.on((dtable.person_id == ctable.person_id) & \
-                     ((dtable.case_id == None) | (dtable.case_id == ctable.id)) & \
                      (dtable.deleted == False))
     today = current.request.utcnow.date()
     query = (ctable.site_id != None) & \
@@ -105,8 +104,8 @@ def cr_shelter_resource(r, tablename):
     s3db = current.s3db
     auth = current.auth
 
-    from core import S3LocationSelector, \
-                     S3SQLCustomForm
+    from core import LocationSelector, \
+                     CustomForm
 
     # Field configurations
     table = s3db.cr_shelter
@@ -121,19 +120,19 @@ def cr_shelter_resource(r, tablename):
 
     # Hide L2 Government District
     field = table.location_id
-    field.widget = S3LocationSelector(levels = GIS_LEVELS,
-                                      show_address = True,
-                                      )
+    field.widget = LocationSelector(levels = GIS_LEVELS,
+                                    show_address = True,
+                                    )
 
     # Custom form
-    crud_form = S3SQLCustomForm("name",
-                                "organisation_id",
-                                "shelter_type_id",
-                                "location_id",
-                                "phone",
-                                "status",
-                                "comments",
-                                )
+    crud_form = CustomForm("name",
+                           "organisation_id",
+                           "shelter_type_id",
+                           "location_id",
+                           "phone",
+                           "status",
+                           "comments",
+                           )
 
 
     # Custom list fields
@@ -170,10 +169,7 @@ def cr_shelter_controller(**attr):
     def custom_prep(r):
 
         # Call standard prep
-        if callable(standard_prep):
-            result = standard_prep(r)
-        else:
-            result = True
+        result = standard_prep(r) if callable(standard_prep) else True
 
         if r.interactive:
 
@@ -189,10 +185,10 @@ def cr_shelter_controller(**attr):
                 for fw in filter_widgets:
                     if fw.field == "capacity":
                         continue
-                    elif fw.field == "location_id":
+                    if fw.field == "location_id":
                         fw.opts["levels"] = GIS_LEVELS
                     if not isinstance(fw, TextFilter) and \
-                        fw.field != "shelter_type_id":
+                       fw.field != "shelter_type_id":
                         fw.opts["hidden"] = True
                     custom_filters.append(fw)
 
@@ -203,8 +199,8 @@ def cr_shelter_controller(**attr):
     s3.prep = custom_prep
 
     # Custom rheader
-    from ..rheaders import drk_cr_rheader
-    attr["rheader"] = drk_cr_rheader
+    from ..rheaders import cr_rheader
+    attr["rheader"] = cr_rheader
 
     return attr
 

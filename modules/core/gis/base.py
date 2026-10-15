@@ -454,7 +454,7 @@ class GIS:
     def geocode(address, postcode=None, Lx_ids=None, geocoder=None):
         """
             Geocode an Address
-            - used by S3LocationSelector
+            - used by LocationSelector
                       settings.get_gis_geocode_imported_addresses
 
             Args:
@@ -683,7 +683,7 @@ class GIS:
     def geocode_r(lat, lon):
         """
             Reverse Geocode a Lat/Lon
-            - used by S3LocationSelector
+            - used by LocationSelector
         """
 
         if lat is None or lon is None:
@@ -1509,10 +1509,12 @@ class GIS:
                     query = (ctable.uuid == "SITE_DEFAULT") | \
                             ((ctable.pe_id == pe_id) & \
                              (ctable.pe_default != False))
+
                     if len(pes) == 1:
                         query |= (ctable.pe_id == pes[0])
                     else:
                         query |= (ctable.pe_id.belongs(pes))
+
                     # Order by pe_type (defined in gis_config)
                     # @ToDo: Sort orgs from the hierarchy?
                     # (Currently we just have branch > non-branch in pe_type)
@@ -4740,7 +4742,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                 centroid = shape.centroid
                 lat = centroid.y
                 lon = centroid.x
-                geom_type = GEOM_TYPES[shape.type.lower()]
+                geom_type = GEOM_TYPES[shape.geom_type.lower()]
                 bbox = shape.bounds
             else:
                 lat = None
@@ -5998,7 +6000,7 @@ page.render('%(filename)s', {format: 'jpeg', quality: '100'});''' % \
                     if warning:
                         current.session.warning = warning
 
-                gis_feature_type = shape.type
+                gis_feature_type = shape.geom_type
                 if gis_feature_type == "Point":
                     form_vars.gis_feature_type = 1
                 elif gis_feature_type == "LineString":

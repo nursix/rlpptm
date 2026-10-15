@@ -119,8 +119,8 @@ class DynamicTableModel:
                 fields.append(field)
 
         # Automatically add standard meta-fields
-        from .fields import s3_meta_fields
-        fields.extend(s3_meta_fields())
+        from .fields import MetaFields
+        fields.extend(MetaFields())
 
         # Define the table
         if fields:
@@ -185,9 +185,9 @@ class DynamicTableModel:
                 # CRUD Form
                 crud_fields = settings.get("form")
                 if crud_fields:
-                    from ..ui import S3SQLCustomForm
+                    from ..ui import CustomForm
                     try:
-                        crud_form = S3SQLCustomForm(**crud_fields)
+                        crud_form = CustomForm(**crud_fields)
                     except:
                         pass
                     else:

@@ -235,7 +235,7 @@ def sites_for_org():
 
 # -----------------------------------------------------------------------------
 def person():
-    """ Person controller for AddPersonWidget """
+    """ Person controller for PersonSelector """
 
     def prep(r):
         if r.representation != "s3json":
@@ -260,7 +260,7 @@ def room():
         if r.representation == "popup":
             site_id = r.get_vars.get("site_id")
             if site_id:
-                # Coming from dynamically filtered AddResourceLink
+                # Coming from dynamically filtered PopupLink
                 field.default = site_id
                 field.writable = False
 

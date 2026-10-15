@@ -6,15 +6,15 @@
 
 from gluon import current, URL
 from core import IS_ISO639_2_LANGUAGE_CODE
-from s3layouts import MM, M, ML, MP, MA
+from core.ui.layouts import MM, M, ML, MP, MA
 try:
     from .layouts import OM
 except ImportError:
     pass
-import s3menus as default
+import core.ui.menus as default
 
 # =============================================================================
-class S3MainMenu(default.S3MainMenu):
+class MainMenu(default.MainMenu):
     """ Custom Application Main Menu """
 
     # -------------------------------------------------------------------------
@@ -99,7 +99,7 @@ class S3MainMenu(default.S3MainMenu):
 
         if not auth.is_logged_in():
             request = current.request
-            login_next = URL(args=request.args, vars=request.vars)
+            login_next = URL(args=request.args, vars=request.get_vars)
             if request.controller == "default" and \
                request.function == "user" and \
                "_next" in request.get_vars:
@@ -158,11 +158,12 @@ class S3MainMenu(default.S3MainMenu):
         return menu_about
 
 # =============================================================================
-class S3OptionsMenu(default.S3OptionsMenu):
+class OptionsMenu(default.OptionsMenu):
     """ Custom Controller Menus """
 
     # -------------------------------------------------------------------------
-    def admin(self):
+    @staticmethod
+    def admin():
         """ ADMIN menu """
 
         if not current.auth.s3_has_role("ADMIN"):
@@ -175,11 +176,9 @@ class S3OptionsMenu(default.S3OptionsMenu):
         # NB: Do not specify a controller for the main menu to allow
         #     re-use of this menu by other controllers
         return M()(
-                    M("User Management", c="admin", f="user")(
-                        M("Create User", m="create"),
-                        M("List All Users"),
-                        M("Import Users", m="import"),
-                        M("List All Roles", f="role"),
+                    M("Users and Roles", c="admin", link=False)(
+                        M("Manage Users", f="user"),
+                        M("Manage Roles", f="role"),
                     ),
                     M("Consent Tracking", c="admin", link=False, check=consent_tracking)(
                         M("Processing Types", f="processing_type"),

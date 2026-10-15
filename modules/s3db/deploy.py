@@ -41,7 +41,6 @@ from gluon.html import *
 from gluon.tools import callback
 
 from ..core import *
-from s3layouts import S3PopupLink
 
 # =============================================================================
 class DeployOrganisationModel(DataModel):
@@ -125,7 +124,7 @@ class DeployModel(DataModel):
                      # @ToDo: Link to location via link table
                      # link table could be event_event_location for IFRC
                      # (would still allow 1 multi-country event to have multiple missions)
-                     self.gis_location_id(widget = S3LocationSelector(),
+                     self.gis_location_id(widget = LocationSelector(),
                                           ),
                      # @ToDo: Link to event_type via event_id link table instead of duplicating
                      self.event_type_id(),
@@ -326,7 +325,7 @@ class DeployModel(DataModel):
             msg_record_deleted = T("Mission deleted"),
             msg_list_empty = T("No Missions currently registered"))
 
-        # Reusable field
+        # Foreign Key Template
         represent = S3Represent(lookup = tablename,
                                 linkto = URL(f="mission",
                                              args=["[id]", "profile"]),
@@ -341,10 +340,10 @@ class DeployModel(DataModel):
                                                         "deploy_mission.id",
                                                         represent,
                                                         ),
-                                   comment = S3PopupLink(c = "deploy",
-                                                         f = "mission",
-                                                         label = label_create,
-                                                         ),
+                                   comment = PopupLink(c = "deploy",
+                                                       f = "mission",
+                                                       label = label_create,
+                                                       ),
                                    )
 
         # ---------------------------------------------------------------------
@@ -875,8 +874,6 @@ class DeployAlertModel(DataModel):
 
         contact_method_opts = {1: T("Email"),
                                2: T("SMS"),
-                               #3: T("Twitter"),
-                               #9: T("All"),
                                9: T("Both"),
                                }
 
@@ -1000,7 +997,7 @@ class DeployAlertModel(DataModel):
                         action = self.deploy_alert_send,
                         )
 
-        # Reusable field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename)
         alert_id = FieldTemplate("alert_id", "reference %s" % tablename,
                                  label = T("Alert"),
@@ -1273,19 +1270,6 @@ class DeployAlertModel(DataModel):
                                   from_address = from_address,
                                   )
 
-        if settings.get_deploy_post_to_twitter():
-            # Post Alert to Twitter
-            try:
-                import tweepy
-            except ImportError:
-                current.log.debug("tweepy module needed for sending tweets")
-            else:
-                # @ToDo: Handle the multi-message nicely?
-                try:
-                    msg.send_tweet(text=message)
-                except tweepy.error.TweepError as e:
-                    current.log.debug("Sending tweets failed: %s" % e)
-
         # Update the Alert to show it's been Sent
         data = {"message_id": message_id}
         if contact_method == 2:
@@ -1502,7 +1486,7 @@ def deploy_rheader(r, tabs=None, profile=False):
                                               "deploy_mission",
                                               record_id = r.id,
                                               ):
-                    crud_button = S3CRUD.crud_button
+                    crud_button = BasicCRUD.crud_button
                     edit_btn = crud_button(T("Edit"),
                                            _href = r.url(method="update"),
                                            )
@@ -1804,15 +1788,15 @@ class deploy_Inbox(CRUDMethod):
                            "url": URL(f="email_inbox", args=["[id]", "select"]),
                            },
                           ]
-            S3CRUD.action_buttons(r,
-                                  editable = False,
-                                  read_url = r.url(method = "read",
-                                                   id = "[id]",
-                                                   ),
-                                  delete_url = r.url(method = "delete",
-                                                     id = "[id]",
-                                                     ),
-                                  )
+            BasicCRUD.action_buttons(r,
+                                     editable = False,
+                                     read_url = r.url(method = "read",
+                                                      id = "[id]",
+                                                      ),
+                                     delete_url = r.url(method = "delete",
+                                                        id = "[id]",
+                                                        ),
+                                     )
 
             # Export not needed
             s3.no_formats = True
@@ -2031,11 +2015,11 @@ def deploy_apply(r, **attr):
             profile_url = URL(f = "human_resource",
                               args = ["[id]", "profile"],
                               )
-            S3CRUD.action_buttons(r,
-                                  deletable = False,
-                                  read_url = profile_url,
-                                  update_url = profile_url,
-                                  )
+            BasicCRUD.action_buttons(r,
+                                     deletable = False,
+                                     read_url = profile_url,
+                                     update_url = profile_url,
+                                     )
             s3.no_formats = True
 
             # Selection of Deploying Organisation

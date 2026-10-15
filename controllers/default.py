@@ -13,7 +13,7 @@ def index():
     auth.settings.register_onvalidation = _register_validation
     auth.configure_user_fields()
 
-    current.menu.oauth = S3MainMenu.menu_oauth()
+    current.menu.oauth = MainMenu.menu_oauth()
 
     page = None
     if len(request.args):
@@ -181,8 +181,8 @@ def about():
                     }
 
         if item:
-            from core import S3XMLContents
-            contents = S3XMLContents(item.body)
+            from core import XMLContentsRepresent
+            contents = XMLContentsRepresent(item.body)
             if ADMIN:
                 item = DIV(contents,
                            BR(),
@@ -338,13 +338,49 @@ def download():
         #session.error = T("Need to specify the file to download!")
         #redirect(URL(f="index"))
 
+    import re
+    from pydal.helpers.regex import REGEX_UPLOAD_PATTERN
+    items = re.match(REGEX_UPLOAD_PATTERN, filename)
+    if not items:
+        raise HTTP(404)
+    tablename = items.group("table")
+    fieldname = items.group("field")
+
     # Check Permissions
-    tablename = filename.split(".", 1)[0]
     if "_" in tablename:
-        # Load the Model
-        table = s3db.table(tablename)
-        if table and not auth.s3_has_permission("read", tablename):
-            auth.permission.fail()
+        # Load the Model, deal with aliased tables
+        otn = request.vars.get("otn")
+        if otn and tablename != otn:
+            alias, tablename = tablename, otn
+            table = s3db.table(tablename)
+            if table:
+                table = table.with_alias(alias)
+        else:
+            alias = tablename
+            table = s3db.table(tablename)
+
+        if table:
+            # Identify the record
+            try:
+                query = (table[fieldname] == filename)
+                row = current.db(query).select(table._id, limitby=(0, 1)).first()
+            except (AttributeError, KeyError) as e:
+                # Field does not exist in table
+                raise HTTP(404)
+            else:
+                record_id = row[table._id] if row else None
+
+            # Check permission
+            # NOTE
+            # If no record ID can be found, then the file does not belong
+            # to this table, and hence cannot be accessed by this link,
+            # which is therefore indicated as failed authorization
+            if not record_id or \
+               not auth.s3_has_permission("read", tablename, record_id=record_id):
+                auth.permission.fail()
+        else:
+            # Table does not exist
+            raise HTTP(404)
 
     return response.download(request, db)
 
@@ -623,7 +659,7 @@ def person():
                            "user_profile",
                            ],
                    )
-        onaccept = lambda form: auth.s3_approve_user(form.vars),
+        onaccept = lambda form: auth.s3_approve_user(form.vars)
         auth.configure_user_fields()
         form = auth.profile(next = next,
                             onaccept = onaccept)
@@ -662,13 +698,6 @@ def person():
                 title_display = T("Personal Profile"),
                 title_update = T("Personal Profile"))
 
-            # Organisation-dependent Fields
-            #set_org_dependent_field = settings.set_org_dependent_field
-            #set_org_dependent_field("pr_person_details", "father_name")
-            #set_org_dependent_field("pr_person_details", "mother_name")
-            #set_org_dependent_field("pr_person_details", "affiliations")
-            #set_org_dependent_field("pr_person_details", "company")
-
             if r.component:
                 if r.component_name == "physical_description":
                     # Hide all but those details that we want
@@ -686,6 +715,11 @@ def person():
                     table.medical_conditions.readable = True
                     table.other_details.writable = True
                     table.other_details.readable = True
+
+                elif r.component_name == "human_resource":
+                    r.component.configure(insertable = False,
+                                          deletable = False,
+                                          )
 
                 elif r.component_name == "config":
                     ctable = s3db.gis_config
@@ -718,7 +752,7 @@ def person():
                         crud_fields += ["user_options.osm_oauth_consumer_key",
                                         "user_options.osm_oauth_consumer_secret",
                                         ]
-                    crud_form = s3base.S3SQLCustomForm(*crud_fields)
+                    crud_form = s3base.CustomForm(*crud_fields)
                     list_fields = ["name",
                                    "pe_default",
                                    ]
@@ -747,16 +781,23 @@ def person():
 
     # CRUD post-process
     def postp(r, output):
-        if r.interactive and r.component:
-            if r.component_name == "config":
-                update_url = URL(c="gis", f="config",
-                                 args="[id]")
+
+        if r.interactive:
+            if not r.component and r.record and isinstance(output, dict):
+                # Remove all CRUD buttons except Edit-button
+                buttons = output.get("buttons")
+                if isinstance(buttons, dict):
+                    output["buttons"] = {"edit_btn": buttons["edit_btn"]} \
+                                        if "edit_btn" in buttons else {}
+
+            elif r.component_name == "config":
+                update_url = URL(c="gis", f="config", args="[id]")
                 s3_action_buttons(r, update_url=update_url)
-                s3.actions.append(dict(url=URL(c="gis", f="index",
-                                               vars={"config":"[id]"}),
-                                       label=str(T("Show")),
-                                       _class="action-btn",
-                                       ))
+                s3.actions.append({"url": URL(c="gis", f="index", vars={"config":"[id]"}),
+                                   "label": str(T("Show")),
+                                   "_class": "action-btn",
+                                   })
+
             elif r.component_name == "asset":
                 # Provide a link to assign a new Asset
                 # @ToDo: Proper Widget to do this inline
@@ -973,15 +1014,6 @@ def user():
     utable = auth_settings.table_user
 
     arg = request.args(0)
-    if arg == "verify_email":
-        # Ensure we use the user's language
-        key = request.args[-1]
-        query = (utable.registration_key == key)
-        user = db(query).select(utable.language,
-                                limitby=(0, 1)).first()
-        if not user:
-            redirect(auth_settings.verify_email_next)
-        session.s3.language = user.language
 
     auth_settings.on_failed_authorization = URL(f="error")
 
@@ -997,7 +1029,7 @@ def user():
     self_registration = settings.get_security_self_registration()
     login_form = register_form = None
 
-    current.menu.oauth = S3MainMenu.menu_oauth()
+    current.menu.oauth = MainMenu.menu_oauth()
 
     if not settings.get_auth_password_changes():
         # Block Password changes as these are managed externally (OpenID / SMTP / LDAP)
@@ -1074,8 +1106,12 @@ def user():
         # Used when adding organisations from registration form
         return crud_controller(prefix="auth", resourcename="user")
 
+    elif arg == "verify_email":
+        title = response.title = T("Confirm Registration")
+        form = auth.verify_email()
+
     else:
-        # logout or verify_email
+        # logout or other function
         title = ""
         form = auth()
 
@@ -1140,21 +1176,6 @@ def view():
 # =============================================================================
 # Login Methods
 # =============================================================================
-def facebook():
-    """ Login using Facebook """
-
-    channel = s3db.msg_facebook_login()
-
-    if not channel:
-        redirect(URL(f="user", args=request.args, vars=get_vars))
-
-    from core.aaa.oauth import FaceBookAccount
-    auth.settings.login_form = FaceBookAccount(channel)
-    form = auth()
-
-    return {"form": form}
-
-# -----------------------------------------------------------------------------
 def google():
     """ Login using Google """
 

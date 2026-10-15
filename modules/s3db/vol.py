@@ -42,7 +42,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..core import *
-from s3layouts import S3PopupLink
+from core.ui.layouts import PopupLink
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -166,11 +166,11 @@ class VolunteerActivityModel(DataModel):
             msg_record_deleted = T("Activity Type deleted"),
             msg_list_empty = T("No Activity Types found"))
 
-        comment = S3PopupLink(c = "vol",
-                              f = "activity_type",
-                              label = crud_strings[tablename].label_create,
-                              title = T("Activity Type"),
-                              )
+        comment = PopupLink(c = "vol",
+                            f = "activity_type",
+                            label = crud_strings[tablename].label_create,
+                            title = T("Activity Type"),
+                            )
 
         represent = S3Represent(lookup=tablename, translate=True)
         activity_type_id = FieldTemplate("activity_type_id", "reference %s" % tablename,
@@ -197,15 +197,15 @@ class VolunteerActivityModel(DataModel):
                                      },
                        )
 
-        crud_form = S3SQLCustomForm("name",
-                                    S3SQLInlineLink("sector",
-                                                    label = T("Sectors"),
-                                                    field = "sector_id",
-                                                    help_field = "comments",
-                                                    cols = 4,
-                                                    ),
-                                    "comments",
-                                    )
+        crud_form = CustomForm("name",
+                               InlineLink("sector",
+                                          label = T("Sectors"),
+                                          field = "sector_id",
+                                          help_field = "comments",
+                                          cols = 4,
+                                          ),
+                               "comments",
+                               )
 
         configure(tablename,
                   crud_form = crud_form,
@@ -283,19 +283,19 @@ class VolunteerActivityModel(DataModel):
                                              },
                        )
 
-        crud_form = S3SQLCustomForm("organisation_id",
-                                    "sector_id",
-                                    S3SQLInlineLink("activity_type",
-                                                    label = T("Activity Types"),
-                                                    field = "activity_type_id",
-                                                    #help_field = s3db.project_theme_help_fields,
-                                                    cols = 4,
-                                                    translate = True,
-                                                    # Filter Activity Type by Sector
-                                                    match = {
-                                                        "activity_type_id:vol_activity_type_sector.sector_id": "sector_id",
-                                                        },
-                                                    script = '''
+        crud_form = CustomForm("organisation_id",
+                               "sector_id",
+                               InlineLink("activity_type",
+                                          label = T("Activity Types"),
+                                          field = "activity_type_id",
+                                          #help_field = s3db.project_theme_help_fields,
+                                          cols = 4,
+                                          translate = True,
+                                          # Filter Activity Type by Sector
+                                          match = {
+                                              "activity_type_id:vol_activity_type_sector.sector_id": "sector_id",
+                                              },
+                                          script = '''
 $.filterOptionsS3({
  'trigger':'sector_id',
  'target':{'alias':'activity_type','name':'activity_type_id','inlineType':'link'},
@@ -305,12 +305,12 @@ $.filterOptionsS3({
  'showEmptyField':false,
  //'tooltip':'project_theme_help_fields(id,name)'
 })'''
-                                                    ),
-                                    (T("Activity Name"), "name"),
-                                    "location_id",
-                                    "date",
-                                    "comments",
-                                    )
+                                          ),
+                               (T("Activity Name"), "name"),
+                               "location_id",
+                               "date",
+                               "comments",
+                               )
 
         configure(tablename,
                   crud_form = crud_form,
@@ -435,21 +435,21 @@ $.filterOptionsS3({
                        )
 
         # CRUD form
-        crud_form = S3SQLCustomForm("activity_id",
-                                    "person_id",
-                                    "date",
-                                    #"end_date",
-                                    "job_title_id",
-                                    "hours",
-                                    S3SQLInlineLink(
-                                        "activity_type",
-                                        field = "activity_type_id",
-                                        label = T("Activity Types"),
-                                        help_field = "comments",
-                                        cols = "4",
-                                        ),
-                                    "comments",
-                                    )
+        crud_form = CustomForm("activity_id",
+                               "person_id",
+                               "date",
+                               #"end_date",
+                               "job_title_id",
+                               "hours",
+                               InlineLink(
+                                    "activity_type",
+                                    field = "activity_type_id",
+                                    label = T("Activity Types"),
+                                    help_field = "comments",
+                                    cols = "4",
+                                    ),
+                               "comments",
+                               )
 
         configure(tablename,
                   context = {"person": "person_id",
@@ -642,11 +642,11 @@ class VolunteerAwardModel(DataModel):
             msg_record_deleted = T("Award deleted"),
             msg_list_empty = T("No Awards found"))
 
-        comment = S3PopupLink(c = "vol",
-                              f = "award",
-                              label = crud_strings[tablename].label_create,
-                              title = T("Award"),
-                              )
+        comment = PopupLink(c = "vol",
+                            f = "award",
+                            label = crud_strings[tablename].label_create,
+                            title = T("Award"),
+                            )
 
         represent = S3Represent(lookup=tablename)
         award_id = FieldTemplate("award_id", "reference %s" % tablename,
@@ -782,14 +782,14 @@ class VolunteerClusterModel(DataModel):
             msg_record_deleted = T("Volunteer Cluster Type deleted"),
             msg_list_empty = T("No Volunteer Cluster Types"))
 
-        comment = S3PopupLink(c = "vol",
-                              f = "cluster_type",
-                              vars = {"child": "vol_cluster_type_id",
-                                      "parent": "volunteer_cluster",
-                                      },
-                              label = crud_strings[tablename].label_create,
-                              title = T("Volunteer Cluster Type"),
-                              )
+        comment = PopupLink(c = "vol",
+                            f = "cluster_type",
+                            vars = {"child": "vol_cluster_type_id",
+                                    "parent": "volunteer_cluster",
+                                    },
+                            label = crud_strings[tablename].label_create,
+                            title = T("Volunteer Cluster Type"),
+                            )
 
         represent = S3Represent(lookup=tablename)
         vol_cluster_type_id = FieldTemplate("vol_cluster_type_id", "reference %s" % tablename,
@@ -829,14 +829,14 @@ class VolunteerClusterModel(DataModel):
             msg_record_deleted = T("Volunteer Cluster deleted"),
             msg_list_empty = T("No Volunteer Clusters"))
 
-        comment = S3PopupLink(c = "vol",
-                              f = "cluster",
-                              vars = {"child": "vol_cluster_id",
-                                      "parent": "volunteer_cluster",
-                                      },
-                              label = crud_strings[tablename].label_create,
-                              title = T("Volunteer Cluster"),
-                              )
+        comment = PopupLink(c = "vol",
+                            f = "cluster",
+                            vars = {"child": "vol_cluster_id",
+                                    "parent": "volunteer_cluster",
+                                    },
+                            label = crud_strings[tablename].label_create,
+                            title = T("Volunteer Cluster"),
+                            )
 
         represent = S3Represent(lookup=tablename)
         vol_cluster_id = FieldTemplate("vol_cluster_id", "reference %s" % tablename,
@@ -876,14 +876,14 @@ class VolunteerClusterModel(DataModel):
             msg_record_deleted = T("Volunteer Cluster Position deleted"),
             msg_list_empty = T("No Volunteer Cluster Positions"))
 
-        comment = S3PopupLink(c = "vol",
-                              f = "cluster_position",
-                              vars = {"child": "vol_cluster_position_id",
-                                      "parent": "volunteer_cluster",
-                                      },
-                              label = crud_strings[tablename].label_create,
-                              title = T("Volunteer Cluster Position"),
-                              )
+        comment = PopupLink(c = "vol",
+                            f = "cluster_position",
+                            vars = {"child": "vol_cluster_position_id",
+                                    "parent": "volunteer_cluster",
+                                    },
+                            label = crud_strings[tablename].label_create,
+                            title = T("Volunteer Cluster Position"),
+                            )
 
         represent = S3Represent(lookup=tablename)
         vol_cluster_position_id = FieldTemplate("vol_cluster_position_id", "reference %s" % tablename,
@@ -924,8 +924,7 @@ $.filterOptionsS3({
                 }
 
     # =====================================================================
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """
             Return safe defaults for model globals, this will be called instead
             of model() in case the model has been deactivated in
@@ -1427,7 +1426,7 @@ def vol_volunteer_controller():
 
                 elif not r.component and r.method != "delete":
                     # Use vol controller for person_id widget
-                    table.person_id.widget = S3AddPersonWidget(controller="vol")
+                    table.person_id.widget = PersonSelector(controller="vol")
                     # Show location ID
                     location_id.writable = location_id.readable = True
                     # Hide unwanted fields
@@ -1441,16 +1440,6 @@ def vol_volunteer_controller():
                     # Hide volunteer ID as per setting
                     if settings.get_hrm_use_code() is not True:
                         table.code.readable = table.code.writable = False
-                    # Organisation Dependent Fields
-                    # - deprecated (IFRC template only)
-                    #set_org_dependent_field = settings.set_org_dependent_field
-                    #set_org_dependent_field("pr_person_details", "father_name")
-                    #set_org_dependent_field("pr_person_details", "mother_name")
-                    #set_org_dependent_field("pr_person_details", "affiliations")
-                    #set_org_dependent_field("pr_person_details", "company")
-                    #set_org_dependent_field("vol_volunteer_cluster", "vol_cluster_type_id")
-                    #set_org_dependent_field("vol_volunteer_cluster", "vol_cluster_id")
-                    #set_org_dependent_field("vol_volunteer_cluster", "vol_cluster_position_id")
                     # Label for "occupation"
                     s3db.pr_person_details.occupation.label = T("Normal Job")
                     # Assume staff only between 12-81
@@ -1464,7 +1453,7 @@ def vol_volunteer_controller():
     def postp(r, output):
         if r.interactive and not r.component:
             # Configure action buttons
-            S3CRUD.action_buttons(r, deletable=settings.get_hrm_deletable())
+            BasicCRUD.action_buttons(r, deletable=settings.get_hrm_deletable())
             if settings.has_module("msg") and \
                settings.get_hrm_compose_button() and \
                current.auth.permission.has_permission("update", c="hrm", f="compose"):
@@ -1540,10 +1529,9 @@ def vol_person_controller():
     table.type.default = 2
     get_vars["xsltmode"] = "volunteer"
     if hr_id:
-        hr = db(table.id == hr_id).select(table.type,
-                                          limitby=(0, 1)).first()
+        hr = db(table.id == hr_id).select(table.type, limitby=(0, 1)).first()
         if hr:
-            group = hr.type == 2 and "volunteer" or "staff"
+            group = "volunteer" if hr.type == 2 else "staff"
             # Also inform the back-end of this finding
             get_vars["group"] = group
 
@@ -1665,18 +1653,6 @@ def vol_person_controller():
                 table.age_group.readable = table.age_group.writable = False
 
                 s3db.pr_person_details.occupation.label = T("Normal Job")
-
-                # Organisation Dependent Fields
-                # - deprecated (IFRC template only)
-                #set_org_dependent_field = settings.set_org_dependent_field
-                #set_org_dependent_field("pr_person", "middle_name")
-                #set_org_dependent_field("pr_person_details", "father_name")
-                #set_org_dependent_field("pr_person_details", "grandfather_name")
-                #set_org_dependent_field("pr_person_details", "mother_name")
-                #set_org_dependent_field("pr_person_details", "year_of_birth")
-                #set_org_dependent_field("pr_person_details", "affiliations")
-                #set_org_dependent_field("pr_person_details", "company")
-
             else:
                 component_name = r.component_name
                 if component_name == "asset":
@@ -1750,13 +1726,6 @@ def vol_person_controller():
                 #else:
                 #    field.default = org
                 #    field.readable = field.writable = False
-
-                # Organisation Dependent Fields
-                # - deprecated (IFRC template only)
-                #set_org_dependent_field = settings.set_org_dependent_field
-                #set_org_dependent_field("vol_volunteer_cluster", "vol_cluster_type_id")
-                #set_org_dependent_field("vol_volunteer_cluster", "vol_cluster_id")
-                #set_org_dependent_field("vol_volunteer_cluster", "vol_cluster_position_id")
 
             elif method == "cv" or r.component_name == "training":
                 list_fields = ["course_id",

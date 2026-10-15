@@ -29,6 +29,11 @@ def config(settings):
     settings.base.theme_layouts = "DRKCM"
     settings.base.theme_config = "DRKCM"
 
+    # Custom models/controllers
+    settings.base.models = "templates.DRKCM.models"
+    settings.base.rest_controllers = {("dvr", "diagnosis"): ("dvr", "diagnosis"),
+                                      }
+
     # Authentication settings
     # Should users be allowed to register themselves?
     settings.security.self_registration = False
@@ -135,7 +140,7 @@ def config(settings):
     #
     settings.ui.calendar_clear_icon = True
 
-    #settings.ui.auto_open_update = True
+    settings.ui.auto_open_update = False
     #settings.ui.inline_cancel_edit = "submit"
 
     #settings.ui.organizer_snap_duration = "00:10:00"
@@ -176,6 +181,12 @@ def config(settings):
     # -------------------------------------------------------------------------
     # Document settings
     #
+    settings.doc.permitted_extensions = ("pdf", "doc", "docx", "odt",
+                                         "csv", "xls", "xlsx", "ods",
+                                         "png", "jpg", "jpeg", "bmp", "tiff",
+                                         "txt", "rtf",
+                                         )
+
     settings.doc.mailmerge_fields = {"ID": "pe_label",
                                      "Vorname": "first_name",
                                      "Name": "last_name",
@@ -204,25 +215,40 @@ def config(settings):
     #
     # Enable features to manage case flags
     settings.dvr.case_flags = True
-
-    # Enable household size in cases, "auto" for automatic counting
-    settings.dvr.household_size = "auto"
-
-    # Group/Case activities per sector
-    settings.dvr.activity_sectors = True
-    # Case activities use status field
-    settings.dvr.case_activity_use_status = True
-    # Case activities cover multiple needs
-    settings.dvr.case_activity_needs_multiple = True
-    # Case activities use follow-up fields
-    settings.dvr.case_activity_follow_up = get_ui_option("activity_follow_up")
     # Beneficiary documents-tab includes case activity attachments
     settings.dvr.case_include_activity_docs = True
     # Beneficiary documents-tab includes case group attachments
     settings.dvr.case_include_group_docs = True
 
+    # Enable household size in cases, "auto" for automatic counting
+    settings.dvr.household_size = "auto"
+
+    # Manage vulnerabilities
+    settings.dvr.vulnerabilities = get_ui_option("case_use_vulnerabilities")
+
+    # Case activity subject type
+    settings.dvr.case_activity_subject_type = get_ui_option("activity_subject_type")
+    # Group/Case activities per sector
+    settings.dvr.case_activity_sectors = True
+    # Do not link case activities to individual vulnerabilities
+    settings.dvr.case_activity_vulnerabilities = False
+    # Case activities use follow-up fields
+    settings.dvr.case_activity_follow_up = get_ui_option("activity_follow_up")
+    # Case activities use status
+    settings.dvr.case_activity_status = get_ui_option("activity_closure")
+    # Do not documents achievement level per case activity
+    settings.dvr.case_activity_achievement = False
+    # Allow upload if documents to case activities
+    settings.dvr.case_activity_documents = True
+    # Use additional comments field in case activities
+    settings.dvr.case_activity_comments = get_ui_option("activity_comments")
+
     # Manage individual response actions in case activities
     settings.dvr.manage_response_actions = True
+    # Use response types
+    settings.dvr.response_types = get_ui_option("response_types")
+    # Response types hierarchical
+    settings.dvr.response_types_hierarchical = True
     # Planning response actions, or just documenting them?
     settings.dvr.response_planning = get_ui_option("response_planning")
     # Responses use date+time
@@ -231,22 +257,20 @@ def config(settings):
     settings.dvr.response_due_date = get_ui_option("response_due_date")
     # Use response themes
     settings.dvr.response_themes = get_ui_option("response_use_theme")
-    # Document response details per theme
-    settings.dvr.response_themes_details = get_ui_option("response_themes_details")
     # Response themes are org-specific
     settings.dvr.response_themes_org_specific = True
-    # Use response types
-    settings.dvr.response_types = get_ui_option("response_types")
-    # Response types hierarchical
-    settings.dvr.response_types_hierarchical = True
     # Response themes organized by sectors
     settings.dvr.response_themes_sectors = get_ui_option("response_themes_sectors")
     # Response themes linked to needs
     settings.dvr.response_themes_needs = get_ui_option("response_themes_needs")
+    # Document response details per theme
+    settings.dvr.response_themes_details = get_ui_option("response_themes_details")
+    # Document response efforts per theme
+    settings.dvr.response_themes_efforts = get_ui_option("response_themes_efforts")
+    # Link response actions to vulnerabilities
+    settings.dvr.response_vulnerabilities = get_ui_option("case_use_vulnerabilities")
     # Auto-link responses to case activities
     settings.dvr.response_activity_autolink = get_ui_option("response_activity_autolink")
-    # Do not use hierarchical vulnerability types (default)
-    #settings.dvr.vulnerability_types_hierarchical = False
 
     # Expose flags to mark appointment types as mandatory
     settings.dvr.mandatory_appointments = False
@@ -269,31 +293,40 @@ def config(settings):
                                dvr_case_resource, \
                                dvr_note_resource, \
                                dvr_case_activity_resource, \
+                               dvr_case_activity_controller, \
+                               dvr_case_appointment_resource, \
                                dvr_case_appointment_controller, \
                                dvr_case_flag_resource, \
                                dvr_need_resource, \
                                dvr_response_action_resource, \
                                dvr_response_action_controller, \
                                dvr_response_theme_resource, \
-                               dvr_vulnerability_type_resource, \
+                               dvr_response_type_resource, \
                                dvr_service_contact_resource, \
-                               dvr_case_appointment_resource, \
-                               dvr_case_activity_controller
+                               dvr_vulnerability_resource
 
     settings.customise_dvr_home = dvr_home
-    settings.customise_dvr_case_resource = dvr_case_resource
-    settings.customise_dvr_note_resource = dvr_note_resource
-    settings.customise_dvr_case_activity_resource = dvr_case_activity_resource
-    settings.customise_dvr_case_appointment_controller = dvr_case_appointment_controller
-    settings.customise_dvr_case_flag_resource = dvr_case_flag_resource
     settings.customise_dvr_need_resource = dvr_need_resource
+
+    settings.customise_dvr_case_resource = dvr_case_resource
+    settings.customise_dvr_case_flag_resource = dvr_case_flag_resource
+
+    settings.customise_dvr_case_activity_resource = dvr_case_activity_resource
+    settings.customise_dvr_case_activity_controller = dvr_case_activity_controller
+
+    settings.customise_dvr_case_appointment_resource = dvr_case_appointment_resource
+    settings.customise_dvr_case_appointment_controller = dvr_case_appointment_controller
+
+    settings.customise_dvr_note_resource = dvr_note_resource
+
     settings.customise_dvr_response_action_resource = dvr_response_action_resource
     settings.customise_dvr_response_action_controller = dvr_response_action_controller
     settings.customise_dvr_response_theme_resource = dvr_response_theme_resource
-    settings.customise_dvr_vulnerability_type_resource = dvr_vulnerability_type_resource
+    settings.customise_dvr_response_type_resource = dvr_response_type_resource
+
     settings.customise_dvr_service_contact_resource = dvr_service_contact_resource
-    settings.customise_dvr_case_appointment_resource = dvr_case_appointment_resource
-    settings.customise_dvr_case_activity_controller = dvr_case_activity_controller
+
+    settings.customise_dvr_vulnerability_resource = dvr_vulnerability_resource
 
     # -------------------------------------------------------------------------
     # Human Resource Module Settings
@@ -327,14 +360,12 @@ def config(settings):
     from .customise.org import org_organisation_controller, \
                                org_site_check, \
                                org_facility_resource, \
-                               org_facility_controller, \
-                               org_sector_resource
+                               org_facility_controller
 
     settings.customise_org_organisation_controller = org_organisation_controller
     settings.org.site_check = org_site_check
     settings.customise_org_facility_resource = org_facility_resource
     settings.customise_org_facility_controller = org_facility_controller
-    settings.customise_org_sector_resource = org_sector_resource
 
     # -------------------------------------------------------------------------
     # Persons Module Settings
@@ -451,12 +482,12 @@ def config(settings):
            restricted = True,
            module_type = 2,
         )),
-        ("vol", Storage(
-           name_nice = T("Volunteers"),
-           #description = "Human Resources Management",
-           restricted = True,
-           module_type = 2,
-        )),
+        #("vol", Storage(
+        #   name_nice = T("Volunteers"),
+        #   #description = "Human Resources Management",
+        #   restricted = True,
+        #   module_type = 2,
+        #)),
         ("cms", Storage(
          name_nice = T("Content Management"),
         #description = "Content Management System",

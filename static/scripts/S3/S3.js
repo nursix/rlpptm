@@ -252,14 +252,81 @@ S3.popup_remove = function() {
     // - called from s3.popup.js but in parent scope
     $('iframe.ui-dialog-content').dialog('close');
 };
+S3.addDownloads = function() {
+    /**
+     * Click-handler for s3-download-buttons:
+     *
+     * - any action item with a class 's3-download-button' and
+     *   a 'url' data property (data-url)
+     *
+     * - for download of server-generated attachments, e.g. XLS or PDF
+     *
+     * - downloads the target document in a hidden iframe, which, if
+     *   the file is sent with content-disposition "attachment", will
+     *   only open the file dialog and nothing else
+     *
+     * - if this fails, the response will be opened in a modal dialog
+     *   (JSON messages will be handled with a simple alert-box, though)
+     */
+    $('.s3-download-button').off('click').on('click', function(e) {
+
+        // Do nothing else
+        e.preventDefault();
+        e.stopPropagation();
+
+        var url = $(this).data('url');
+        if (!url) {
+            return;
+        }
+
+        // Re-use it if it already exists
+        var iframe = document.getElementById("s3-download");
+        if (iframe == null) {
+            iframe = document.createElement('iframe');
+            iframe.id = "s3-download";
+            iframe.style.visibility = 'hidden';
+            document.body.appendChild(iframe);
+        }
+
+        $('#s3-download').off('load').on('load', function() {
+            // This event is only fired when contents was loaded into the
+            // hidden iframe rather than downloaded as attachment, which
+            // should only happen if there was some kind of error
+            var message,
+                self = $(this);
+            try {
+                // Try to parse the JSON message
+                message = JSON.parse(this.contentDocument.body.textContent).message;
+            } catch(e) {
+                // No JSON message => show iframe contents as-is in a modal
+                self.dialog({
+                    title: 'Download failed',
+                    width: 500,
+                    height: 300,
+                    close: function() {
+                        self.attr('src', '').remove();
+                    }
+                }).css({
+                    visibility: 'visible',
+                    width: '100%'
+                });
+                return;
+            }
+            alert(message);
+        });
+
+        iframe.src = url;
+        return false;
+    });
+};
 
 // Functions to re-run after new page elements are brought in via AJAX
 // - an be added-to dynamically
-S3.redraw_fns = [// jQueryUI Dialog Modal Popups
-                 'addModals',
-                 // Help Tooltips
-                 'addTooltips'
-                 ];
+S3.redraw_fns = [
+    'addModals',
+    'addTooltips',
+    'addDownloads'
+];
 S3.redraw = function() {
     var redraw_fns = S3.redraw_fns;
     var len = redraw_fns.length;
@@ -506,6 +573,7 @@ var S3EnableNavigateAwayConfirm = function() {
         // Callbacks
         this.successCallback = ajaxOptions.success;
         this.errorCallback = ajaxOptions.error;
+        this.completeCallback = ajaxOptions.always;
 
         // Prevent callbacks from being executed by $.ajax itself
         options.success = null;
@@ -626,10 +694,14 @@ var S3EnableNavigateAwayConfirm = function() {
             if (self.ignoreStatus.indexOf(httpStatus) != -1) {
                 // Status handled by caller => do not display alert
             } else {
-                var responseJSON = jqXHR.responseJSON;
+                var responseJSON = jqXHR.responseJSON,
+                    responseText = jqXHR.responseText;
                 if (responseJSON && responseJSON.message) {
                     // A json_message with a specific error text
                     S3.showAlert(responseJSON.message, 'error');
+                } else if (responseText) {
+                    // A clear-text error message
+                    S3.showAlert(responseText, 'error');
                 } else {
                     // HTTP status code only
                     S3.showAlert(i18n.ajax_dwn, 'error');
@@ -641,6 +713,27 @@ var S3EnableNavigateAwayConfirm = function() {
         var errorCallback = self.errorCallback;
         if (errorCallback) {
             errorCallback.apply(this, arguments);
+        }
+    };
+
+    /**
+     * Complete-callback
+     *
+     * NB: executed in the context of the options object passed
+     *     to $.ajax (=this), which holds the AjaxS3 instance as
+     *     'AjaxS3' property
+     */
+    AjaxS3.prototype.onComplete = function() {
+
+        // Get the instance form context
+        var self = this.AjaxS3;
+        if (!self) {
+            return;
+        }
+
+        var completeCallback = self.completeCallback;
+        if (completeCallback) {
+            completeCallback.apply(this, arguments);
         }
     };
 
@@ -687,6 +780,8 @@ var S3EnableNavigateAwayConfirm = function() {
             this.AjaxS3.onSuccess.apply(this, arguments);
         }).fail(function() {
             this.AjaxS3.onFailure.apply(this, arguments);
+        }).always(function() {
+            this.AjaxS3.onComplete.apply(this, arguments);
         });
     };
 
@@ -942,7 +1037,7 @@ S3.openPopup = function(url, center) {
  * in another field (=trigger), e.g.:
  *   - Task Form: Activity options filtered by Project selection
  *
- * @todo: fix updateAddResourceLink
+ * @todo: fix updatePopupLink
  * @todo: move into separate file and load only when needed?
  */
 
@@ -958,8 +1053,8 @@ S3.openPopup = function(url, center) {
      * @param {string} setting.prefix - the inline form prefix (default: 'default')
      * @param {string} setting.alias - the component alias for the inline form (e.g. task_project)
      * @param {string} setting.name - the field name
-     * @param {string} setting.inlineType - the inline form type, 'link' (for S3SQLInlineLink),
-     *                                      or 'sub' (for other S3SQLInlineComponent types)
+     * @param {string} setting.inlineType - the inline form type, 'link' (for InlineLink),
+     *                                      or 'sub' (for other InlineComponent types)
      * @param {string} setting.inlineRows - the inline form has multiple rows, default: true
      */
     var getSelector = function(setting) {
@@ -1022,15 +1117,15 @@ S3.openPopup = function(url, center) {
     };
 
     /**
-     * Update the AddResourceLink for the target with lookup key and
+     * Update the PopupLink for the target with lookup key and
      * value, so that the popup can pre-populate them; or hide the
-     * AddResourceLink if no trigger value has been selected
+     * PopupLink if no trigger value has been selected
      *
      * @param {string} resourceName - the target resource name
      * @param {string} key - the lookup key
      * @param {string} value - the selected trigger value
      */
-    var updateAddResourceLink = function(resourceName, key, value) {
+    var updatePopupLink = function(resourceName, key, value) {
 
         $('a#' + resourceName + '_add').each(function() {
             var search = this.search,
@@ -1073,7 +1168,7 @@ S3.openPopup = function(url, center) {
     var renderOptions = function(data, settings) {
 
         var options = [],
-            defaultValue = 0;
+            defaultValue = '';
 
         if (data.length === 0) {
             // No options available
@@ -1104,7 +1199,7 @@ S3.openPopup = function(url, center) {
             for (var i = 0; i < data.length; i++) {
                 record = data[i];
                 value = record[lookupField];
-                if (i === 0) {
+                if (i === 0 && !settings.multiple) {
                     defaultValue = value;
                 }
                 name = fncRepresent ? fncRepresent(record, prepResult) : record.name;
@@ -1162,8 +1257,11 @@ S3.openPopup = function(url, center) {
                     // Options list not populated yet?
                     currentValue = widget.prop('value');
                 }
+                if (!currentValue) {
+                    currentValue = widget.data('selected');
+                }
                 if (!Array.isArray(currentValue)) {
-                    currentValue = [currentValue];
+                    currentValue = currentValue ? [currentValue] : [];
                 }
                 for (var i = 0, len = currentValue.length, val; i < len; i++) {
                     val = currentValue[i];
@@ -1298,6 +1396,15 @@ S3.openPopup = function(url, center) {
             }
         }
 
+        if (!multiple && !userChange) {
+            // Store initial value
+            var selected = target.val(),
+                storedInitialValue = target.data('selected');
+            if (storedInitialValue === undefined) {
+                target.data('selected', selected);
+            }
+        }
+
         if (multiple && settings.getWidgetHTML) {
             s3_debug('filterOptionsS3 warning: getWidgetHTML=true not suitable for multiple target widgets (e.g. inline rows)');
             target = target.first();
@@ -1323,7 +1430,7 @@ S3.openPopup = function(url, center) {
             }
             // Trigger change-event on target for filter cascades
             target.trigger('change');
-            updateAddResourceLink(lookupResource, lookupKey);
+            updatePopupLink(lookupResource, lookupKey);
             return;
         }
 
@@ -1376,7 +1483,9 @@ S3.openPopup = function(url, center) {
                 var widget = $(this),
                     visible = true;
                 if (widget.hasClass('groupedopts-widget')) {
-                    visible = widget.groupedopts('visible');
+                    visible = widget.groupedopts('instance') ? widget.groupedopts('visible') : false;
+                } else if (widget.hasClass('multiselect-widget')) {
+                    visible = widget.multiselect('instance') ? widget.multiselect('visible') : false;
                 } else {
                     visible = widget.data('visible') || widget.is(':visible');
                 }
@@ -1384,6 +1493,8 @@ S3.openPopup = function(url, center) {
                     widget.data('visible', true);
                     if (widget.hasClass('groupedopts-widget')) {
                         widget.groupedopts('hide');
+                    } else if (widget.hasClass('groupedopts-widget')) {
+                        widget.multiselect('hide');
                     } else {
                         widget.hide();
                     }
@@ -1427,7 +1538,7 @@ S3.openPopup = function(url, center) {
                     });
 
                     // Modify URL for Add-link and show the Add-link
-                    updateAddResourceLink(lookupResource, lookupKey, value);
+                    updatePopupLink(lookupResource, lookupKey, value);
 
                     // Clear navigate-away-confirm if not a user change
                     if (!userChange) {
@@ -1483,7 +1594,7 @@ S3.openPopup = function(url, center) {
                     removeThrobber(widget, lookupResource);
 
                     // Modify URL for Add-link and show the Add-link
-                    updateAddResourceLink(lookupResource, lookupKey, value);
+                    updatePopupLink(lookupResource, lookupKey, value);
 
                     // Clear navigate-away-confirm if not a user change
                     if (!userChange) {
@@ -1601,6 +1712,9 @@ S3.openPopup = function(url, center) {
             targetField = $(targetSelector);
             if (!targetField.length) {
                 return;
+            }
+            if (targetField.attr('multiple') !== undefined) {
+                settings.multiple = true;
             }
             targetForm = targetField.closest('form');
         }
@@ -2100,71 +2214,6 @@ S3.reloadWithQueryStringVars = function(queryStringVars) {
             }
         });
 
-        /**
-         * Click-handler for s3-download-buttons:
-         *
-         * - any action item with a class 's3-download-button' and
-         *   a 'url' data property (data-url)
-         *
-         * - for download of server-generated attachments, e.g. XLS or PDF
-         *
-         * - downloads the target document in a hidden iframe, which, if
-         *   the file is sent with content-disposition "attachment", will
-         *   only open the file dialog and nothing else
-         *
-         * - if this fails, the response will be opened in a modal dialog
-         *   (JSON messages will be handled with a simple alert-box, though)
-         */
-        $('.s3-download-button').on('click', function(e) {
-
-            // Do nothing else
-            e.preventDefault();
-            e.stopPropagation();
-
-            var url = $(this).data('url');
-            if (!url) {
-                return;
-            }
-
-            // Re-use it if it already exists
-            var iframe = document.getElementById("s3-download");
-            if (iframe == null) {
-               iframe = document.createElement('iframe');
-               iframe.id = "s3-download";
-               iframe.style.visibility = 'hidden';
-               document.body.appendChild(iframe);
-            }
-
-            $('#s3-download').off('load').on('load', function() {
-                // This event is only fired when contents was loaded into the
-                // hidden iframe rather than downloaded as attachment, which
-                // should only happen if there was some kind of error
-                var message,
-                    self = $(this);
-                try {
-                    // Try to parse the JSON message
-                    message = JSON.parse(this.contentDocument.body.textContent).message;
-                } catch(e) {
-                    // No JSON message => show iframe contents as-is in a modal
-                    self.dialog({
-                        title: 'Download failed',
-                        width: 500,
-                        height: 300,
-                        close: function() {
-                            self.attr('src', '').remove();
-                        }
-                    }).css({
-                        visibility: 'visible',
-                        width: '100%'
-                    });
-                    return;
-                }
-                alert(message);
-            });
-
-            iframe.src = url;
-            return false;
-        });
     });
 
 }());

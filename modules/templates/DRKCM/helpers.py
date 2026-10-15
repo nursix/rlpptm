@@ -6,9 +6,9 @@
 
 import os
 
-from gluon import current, A, DIV, SPAN, URL
+from gluon import current, A, DIV, I, SPAN, TAG, URL
 
-from core import ICON
+from core import ICON, s3_fullname
 
 # =============================================================================
 def case_read_multiple_orgs():
@@ -66,6 +66,44 @@ def case_default_org():
         default_org = orgs[0]
 
     return default_org, multiple_orgs
+
+# =============================================================================
+def response_theme_sectors():
+    """
+        Looks up the sectors of all organisations the user
+        can access response actions for; for sector-filter
+        in response action perspective
+
+        Returns:
+            a dict {sector_id: sector_name}
+    """
+
+    T = current.T
+
+    db = current.db
+    s3db = current.s3db
+    auth = current.auth
+
+    stable = s3db.org_sector
+    ltable = s3db.org_sector_organisation
+    otable = s3db.org_organisation
+
+    realms = auth.permission.permitted_realms("dvr_response_action", "read")
+    if realms:
+        query = (otable.pe_id.belongs(realms)) & \
+                (otable.deleted == False)
+        organisation_ids = db(query)._select(otable.id)
+        join = ltable.on((ltable.sector_id == stable.id) & \
+                         (ltable.organisation_id.belongs(organisation_ids)) & \
+                         (ltable.deleted == False))
+    else:
+        join = None
+
+    sectors = db(stable.deleted == False).select(stable.id,
+                                                 stable.name,
+                                                 join = join,
+                                                 )
+    return {s.id: T(s.name) for s in sectors}
 
 # =============================================================================
 def get_total_consultations(person):
@@ -145,6 +183,113 @@ def get_protection_themes(person):
     # Return presented as list
     represent = rtable.response_theme_ids.represent
     return represent(theme_list)
+
+# =============================================================================
+def get_vulnerabilities(person):
+    """
+        Get current vulnerabilities of a client
+
+        Args:
+            person: the client record (pr_person Row)
+
+        Returns:
+            list-representation of vulnerabilities
+    """
+
+    db = current.db
+    s3db = current.s3db
+
+    vtable = s3db.dvr_vulnerability
+    ttable = s3db.dvr_vulnerability_type
+
+    today = current.request.utcnow.date()
+    join = vtable.on((vtable.person_id == person.id) & \
+                     (vtable.vulnerability_type_id == ttable.id) & \
+                     ((vtable.date == None) | (vtable.date <= today)) & \
+                     ((vtable.end_date == None) | (vtable.end_date >= today)) & \
+                     (vtable.deleted == False))
+    query = (ttable.obsolete == False) & (ttable.deleted == False)
+    rows = db(query).select(ttable.id,
+                            ttable.name,
+                            distinct = True,
+                            join = join,
+                            )
+    from core import s3_truncate
+    names = [SPAN(s3_truncate(row.name), _class="vuln-tag") for row in rows]
+
+    return TAG[""](*names) if len(names) else None
+
+# =============================================================================
+def client_name_age(record):
+    """
+        Represent a client as name, gender and age; for case file rheader
+
+        Args:
+            record: the client record (pr_person)
+
+        Returns:
+            HTML
+    """
+
+    T = current.T
+
+    pr_age = current.s3db.pr_age
+
+    age = pr_age(record)
+    if age is None:
+        age = "?"
+        unit = T("years")
+    elif age == 0:
+        age = pr_age(record, months=True)
+        unit = T("months") if age != 1 else T("month")
+    else:
+        unit = T("years") if age != 1 else T("year")
+
+    icons = {2: "fa fa-venus",
+             3: "fa fa-mars",
+             4: "fa fa-transgender-alt",
+             }
+    icon = icons.get(record.gender)
+    if not icon:
+        icon = "fa fa-question-circle-o incomplete-data"
+        title = T("Gender unknown")
+    else:
+        table = current.s3db.pr_person
+        title = table.gender.represent(record.gender)
+
+    client = TAG[""](s3_fullname(record, truncate=False),
+                     SPAN(I(_class=icon, _title=title),
+                          "%s %s" % (age, unit),
+                          _class = "client-gender-age",
+                          ),
+                     )
+    return client
+
+# =============================================================================
+def warn_if_missing(row, colname):
+    """
+        Returns a rheader field function that renders a warning instead
+        of a null-value if the field value is empty (None or "")
+
+        Args:
+            row: the Resource row, including raw data
+            colname: the column name
+        Returns:
+            function
+    """
+
+    def rheader_field(record):
+        raw = row["_row"]
+        if raw.get(colname) in ("", None):
+            # Indicate missing value
+            return SPAN(current.T("missing##data"),
+                        ICON("fa fa-exclamation-circle"),
+                        _class = "incomplete-data",
+                        )
+        else:
+            return row[colname]
+
+    return rheader_field
 
 # =============================================================================
 def user_mailmerge_fields(resource, record):
@@ -290,8 +435,7 @@ def file_represent(value, row=None):
             unit = u
             if fsize < 1024:
                 break
-            else:
-                fsize /= 1024
+            fsize /= 1024
         fsize = "%s %s" % (round(fsize), unit)
         output.append(SPAN(fsize, _class="file-size"))
 

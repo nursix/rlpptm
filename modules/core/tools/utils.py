@@ -34,13 +34,17 @@ __all__ = ("JSONSEPARATORS",
            "URL2",
            "get_crud_string",
            "get_form_record_id",
+           "get_form_record_data",
            "accessible_pe_query",
            "set_last_record_id",
            "get_last_record_id",
            "remove_last_record_id",
+           "deduplicate_links",
            "s3_addrow",
            "s3_dev_toolbar",
            "s3_flatlist",
+           "datahash",
+           "luminance",
            "s3_get_extension",
            "s3_get_extension_from_url",
            "s3_get_foreign_key",
@@ -59,7 +63,6 @@ __all__ = ("JSONSEPARATORS",
            "version_info",
            )
 
-import collections
 import copy
 import os
 import platform
@@ -108,7 +111,7 @@ def get_crud_string(tablename, key):
 # =============================================================================
 def get_form_record_id(form):
     """
-        Get the record ID from a FORM
+        Returns the record ID from a FORM
 
         Args:
             form: the FORM
@@ -126,6 +129,47 @@ def get_form_record_id(form):
         record_id = None
 
     return record_id
+
+# =============================================================================
+def get_form_record_data(form, table, fields):
+    """
+        Returns prospective record values for validation; looks up existing
+        record values and table defaults if some fields are missing from the
+        form.
+
+        Args:
+            form: the FORM
+            table: the Table
+            fields: list of field names
+
+        Returns:
+            a dict {fieldname: value}
+    """
+
+    form_vars = form.vars
+    form_data = {}
+
+    record_id = get_form_record_id(form)
+
+    lookup = []
+    for fn in fields:
+        if fn in form_vars:
+            form_data[fn] = form_vars[fn]
+        elif record_id:
+            lookup.append(fn)
+        else:
+            form_data[fn] = table[fn].default
+
+    if lookup and record_id:
+        fields = [table[fn] for fn in lookup]
+        row = current.db(table.id == record_id).select(*fields,
+                                                       limitby = (0, 1),
+                                                       ).first()
+        form_data.update({fn: row[fn] for fn in lookup})
+    else:
+        form_data.update({fn: None for fn in lookup})
+
+    return form_data
 
 # =============================================================================
 def accessible_pe_query(table = None,
@@ -231,6 +275,49 @@ def remove_last_record_id(tablename=None):
             last_id.pop(tablename, None)
         else:
             del session_s3[LAST_ID]
+
+# =============================================================================
+def deduplicate_links(table, *fieldnames):
+    """
+        Removes any duplicates (by combination of specified fields) in a
+        link table; useful to clean up after imports or merge
+
+        Args:
+            table: the target Table
+            fieldnames: names of fields to de-duplicate by
+
+        Returns:
+            total number of deleted duplicates
+    """
+
+    db = current.db
+
+    base_query = (table.deleted == False) if "deleted" in table else (table.id>0)
+
+    total = table._id.count()
+    original = table._id.min()
+
+    fields = []
+    query = base_query
+    for fn in fieldnames:
+        field = table[fn]
+        fields.append(field)
+        query = (field != None) & query
+    rows = db(query).select(total,
+                            original,
+                            *fields,
+                            groupby = fields,
+                            having = total > 1,
+                            )
+    result = 0
+    for row in rows:
+        link = row[table]
+        query = base_query & (table._id > row[original])
+        for field in fields:
+            query = (field == link[field]) & query
+        result += db(query).delete()
+
+    return result
 
 # =============================================================================
 def s3_validate(table, field, value, record=None):
@@ -378,7 +465,7 @@ def s3_represent_value(field,
             text = s3_str(text)
     else:
         if val is None:
-            text = NONE
+            text = s3_str(NONE)
         elif fname == "comments" and not extended_comments:
             ur = s3_str(text)
             if len(ur) > 48:
@@ -536,9 +623,7 @@ def s3_mark_required(fields,
                 # if we populate them onvalidation
                 labels[fname] = "%s:" % flabel
                 continue
-            else:
-                required = field.required or field.notnull or \
-                            field.name in mark_required
+            required = field.required or field.notnull or field.name in mark_required
             if not validators and not required:
                 labels[fname] = "%s:" % flabel
                 continue
@@ -553,8 +638,7 @@ def s3_mark_required(fields,
                         if v.mark_required:
                             required = True
                             break
-                        else:
-                            continue
+                        continue
                     try:
                         error = v("")[1]
                     except TypeError:
@@ -601,7 +685,6 @@ def s3_addrow(form, label, widget, comment, formstyle, row_id, position=-1):
     else:
         addrow(form, label, widget, comment, formstyle, row_id,
                position = position)
-    return
 
 # =============================================================================
 def s3_keep_messages():
@@ -720,47 +803,89 @@ def s3_get_foreign_key(field, m2m=True):
 def s3_flatlist(nested):
     """ Iterator to flatten mixed iterables of arbitrary depth """
 
+    import collections.abc
+
     for item in nested:
-        if isinstance(item, collections.Iterable) and \
+        if isinstance(item, collections.abc.Iterable) and \
            not isinstance(item, str):
-            for sub in s3_flatlist(item):
-                yield sub
+            yield from s3_flatlist(item)
         else:
             yield item
 
 # =============================================================================
-def s3_set_match_strings(matchDict, value):
+def datahash(*values):
+    """
+        Produce a data verification hash from the values
+
+        Args:
+            values: an (ordered) iterable of values
+
+        Returns:
+            the verification hash as string
+    """
+
+    import hashlib
+    dstr = "|%s|" % "|".join([str(v) for v in values])
+
+    return hashlib.sha512(dstr.encode("utf-8")).hexdigest().lower()
+
+# =============================================================================
+def luminance(hex_color):
+    """
+        Computes a luminance-index for a hex color; useful to choose
+        suitable contrasting foreground/background colors
+
+        Args:
+            hex_color: hexadecimal color code (RRGGBB), as str
+        Returns:
+            luminance index
+
+        Inspired by
+        https://nemecek.be/blog/172/how-to-calculate-contrast-color-in-python
+    """
+
+    try:
+        r = int(hex_color[0:2], base=16)
+        g = int(hex_color[2:4], base=16)
+        b = int(hex_color[4:6], base=16)
+    except (ValueError, TypeError):
+        return None
+
+    return r * 0.2126 + g * 0.7152 + b * 0.0722
+
+# =============================================================================
+def s3_set_match_strings(match_dict, value):
     """
         Helper method for gis_search_ac and org_search_ac
         Find which field the search term matched & where
 
         Args:
-            matchDict: usually the record
+            match_dict: usually the record
             value: the search term
     """
 
-    for key in matchDict:
-        v = matchDict[key]
+    for key in match_dict:
+        v = match_dict[key]
         if not isinstance(v, str):
             continue
         l = len(value)
         if v[:l].lower() == value:
             # Match needs to start from beginning
-            matchDict["match_type"] = key
-            matchDict["match_string"] = v[:l] # Maintain original case
+            match_dict["match_type"] = key
+            match_dict["match_string"] = v[:l] # Maintain original case
             next_string = v[l:]
             if next_string:
-                matchDict["next_string"] = next_string
+                match_dict["next_string"] = next_string
             break
-        elif key == "addr" and value in v.lower():
+        if key == "addr" and value in v.lower():
             # Match can start after the beginning (to allow for house number)
-            matchDict["match_type"] = key
+            match_dict["match_type"] = key
             pre_string, next_string = v.lower().split(value, 1)
             if pre_string:
-                matchDict["pre_string"] = v[:len(pre_string)] # Maintain original case
+                match_dict["pre_string"] = v[:len(pre_string)] # Maintain original case
             if next_string:
-                matchDict["next_string"] = v[(len(pre_string) + l):] # Maintain original case
-            matchDict["match_string"] = v[len(pre_string):][:l] # Maintain original case
+                match_dict["next_string"] = v[(len(pre_string) + l):] # Maintain original case
+            match_dict["match_string"] = v[len(pre_string):][:l] # Maintain original case
             break
 
 # =============================================================================
@@ -820,9 +945,8 @@ def s3_orderby_fields(table, orderby, expr=False):
             else:
                 if current.response.s3.debug:
                     raise SyntaxError('Tablename prefix required for orderby="%s"' % item)
-                else:
-                    # Ignore
-                    continue
+                # Ignore
+                continue
             if expr and direction[:3] == "des":
                 f = ~f
         else:
@@ -953,25 +1077,25 @@ class Traceback:
     def make_link(self, path):
         """ Create a link from a path """
 
-        tryFile = path.replace("\\", "/")
+        filepath = path.replace("\\", "/")
 
-        if os.path.isabs(tryFile) and os.path.isfile(tryFile):
-            folder, filename = os.path.split(tryFile)
+        if os.path.isabs(filepath) and os.path.isfile(filepath):
+            folder, filename = os.path.split(filepath)
             ext = os.path.splitext(filename)[1]
             app = current.request.args[0]
 
             editable = {"controllers": ".py", "models": ".py", "views": ".html"}
             l_ext = ext.lower()
             f_endswith = folder.endswith
-            for key in editable.keys():
+            for key, e_ext in editable.items():
                 check_extension = f_endswith("%s/%s" % (app, key))
-                if l_ext == editable[key] and check_extension:
+                if l_ext == e_ext and check_extension:
                     edit_url = URL(a = "admin",
                                    c = "default",
                                    f = "edit",
                                    args = [app, key, filename],
                                    )
-                    return A('"' + tryFile + '"',
+                    return A('"' + filepath + '"',
                              _href = edit_url,
                              _target = "_blank",
                              ).xml()
@@ -1113,7 +1237,7 @@ class MarkupStripper(HTMLParser):
     """ Simple markup stripper """
 
     def __init__(self):
-        super(MarkupStripper, self).__init__()
+        super().__init__()
         #self.reset() # Included in super-init
         self.result = []
 
@@ -1215,7 +1339,7 @@ class FormKey:
         keys = current.session.get(keyname, [])
         if not formkey or formkey not in keys:
             return False
-        else:
+        if invalidate:
             keys.remove(formkey)
 
         return True
@@ -1244,7 +1368,7 @@ def system_info():
 
     # Application version
     try:
-        with open(os.path.join(request.folder, "VERSION"), "r") as version_file:
+        with open(os.path.join(request.folder, "VERSION"), "r", encoding="utf-8") as version_file:
             app_version = version_file.read().strip("\n")
     except IOError:
         app_version = UNKNOWN
@@ -1258,15 +1382,13 @@ def system_info():
 
     # Server Components
     base_version = ".".join(map(str, version_info()))
-    try:
-        with open(os.path.join(request.env.web2py_path, "VERSION"), "r") as version_file:
-            web2py_version = version_file.read()[8:].strip("\n")
-    except IOError:
+    web2py_version = request.global_settings.web2py_version
+    if not web2py_version:
         web2py_version = UNKNOWN
     os_version = platform.platform()
 
     trows.extend([subheader("Server"),
-                  item("Eden ASP", base_version),
+                  item("Eden", base_version),
                   item("Web2Py", web2py_version),
                   item("HTTP Server", request.env.server_software),
                   item("Operating System", os_version),

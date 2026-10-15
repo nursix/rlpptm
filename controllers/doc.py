@@ -33,29 +33,7 @@ def document():
         return True
     s3.prep = prep
 
-    return crud_controller(rheader=document_rheader)
-
-# -----------------------------------------------------------------------------
-def document_rheader(r):
-    if r.representation == "html":
-        doc_document = r.record
-        if doc_document:
-            #rheader_tabs = s3_rheader_tabs(r, document_tabs(r))
-            table = db.doc_document
-            rheader = DIV(B("%s: " % T("Name")), doc_document.name,
-                        TABLE(TR(
-                                TH("%s: " % T("File")), table.file.represent(doc_document.file),
-                                TH("%s: " % T("URL")), table.url.represent(doc_document.url),
-                                ),
-                                TR(
-                                TH("%s: " % ORGANISATION), table.organisation_id.represent(doc_document.organisation_id),
-                                TH("%s: " % T("Person")), table.person_id.represent(doc_document.organisation_id),
-                                ),
-                            ),
-                        #rheader_tabs
-                        )
-            return rheader
-    return None
+    return crud_controller(rheader=s3db.doc_rheader)
 
 # -----------------------------------------------------------------------------
 def document_tabs(r):
@@ -81,7 +59,7 @@ def document_tabs(r):
                 },
                 ]
     tabs = [(T("Details"), None)]
-    crud_string = s3base.S3CRUD.crud_string
+    crud_string = s3base.BasicCRUD.crud_string
     for tab_opt in tab_opts:
         tablename = tab_opt["tablename"]
         if tablename in db and document_id in db[tablename]:
@@ -117,7 +95,7 @@ def image():
         return True
     s3.prep = prep
 
-    return crud_controller()
+    return crud_controller(rheader=s3db.doc_rheader)
 
 # =============================================================================
 def ck_upload():

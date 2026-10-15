@@ -228,14 +228,6 @@ button.ui-multiselect {
 }
 
 // ----------------------------------------------------------------------------
-// Tweet Display
-//
-.s3-twitter-container {
-    width: 350px;
-    height: 130px;
-}
-
-// ----------------------------------------------------------------------------
 // Checkboxes Widget
 //
 .controls .checkboxes-widget-s3 {
@@ -292,7 +284,7 @@ button.ui-multiselect {
 }
 
 // ----------------------------------------------------------------------------
-// S3SQLInlineLink read-only list representation
+// InlineLink read-only list representation
 //
 ul.s3-inline-link {
     font-size: inherit;
@@ -501,6 +493,26 @@ div.s3-groupedopts-widget {
     margin-left: 0.2em;
     padding: 0.3em;
 }
+.image-upload {
+    .capture-btn {
+        width: 100%;
+    }
+}
+.capture-form {
+    overflow: hidden;
+    max-width: 100%;
+    .preview-video {
+        display: block;
+        width: 800px;
+        max-width: 100%;
+        margin: 0 auto;
+    }
+    .shutter-btn {
+        display: block;
+        width: 100%;
+        margin: 1px 0;
+    }
+}
 
 // ----------------------------------------------------------------------------
 // Widget Advice
@@ -562,7 +574,7 @@ div.s3-groupedopts-widget {
 }
 
 // ----------------------------------------------------------------------------
-// AddPersonWidget
+// PersonSelector
 //
 .box_top,
 .box_top_inner {
@@ -618,6 +630,36 @@ div.s3-groupedopts-widget {
 }
 
 // ----------------------------------------------------------------------------
+// Presence Registration
+//
+.presence-registration {
+    .controls {
+        width: 100%;
+    }
+    .status-label {
+        font-size: 0.9rem;
+    }
+    .status-message {
+        font-size: 0.9rem;
+        font-weight: bold;
+    }
+    .person-details {
+        font-size: 1rem;
+    }
+    .site-presence-in, .site-presence-out {
+        i.fa {
+            margin-right: 0.2rem;
+        }
+    }
+    .site-presence-in {
+        color: #080;
+    }
+    .site-presence-out {
+        color: #c00;
+    }
+}
+
+// ----------------------------------------------------------------------------
 // QR Input
 //
 .qrinput {
@@ -645,11 +687,14 @@ div.s3-groupedopts-widget {
         max-width: 14rem;
     }
 }
-.qrinput-success {
+.qrinput-success, .qrinput-invalid {
     text-align: center;
     font-size: 4rem;
     padding: 1rem;
     color: darkgreen;
+}
+.qrinput-invalid {
+    color: $alert-color;
 }
 
 // ----------------------------------------------------------------------------
@@ -669,6 +714,9 @@ form.anonymize-form,
 }
 .anonymize-buttons {
     margin-top: 1rem;
+    .button {
+        margin-bottom: 0.3rem;
+    }
 }
 .anonymize-btn {
     background-color: $anonymize_button_bgcolor;

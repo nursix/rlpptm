@@ -32,7 +32,7 @@
             background-color: white;
         }
         &.odd, &.odd .dl-item {
-            background-color: #e2e4ff;
+            background-color: #f2f2f5;
         }
     }
     .dl-item {
@@ -59,8 +59,16 @@
         margin: 0 0.5rem;
         font-weight: bold;
     }
+    .dl-toggle-contents {
+        margin: 0;
+    }
     .edit-bar.fright {
         float: right;
+    }
+    .edit-bar a {
+        font-size: 1rem;
+        padding: 0 0.2rem;
+        color: $black;
     }
     [dir=rtl] & {
         .dl-header {

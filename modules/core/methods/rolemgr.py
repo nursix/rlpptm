@@ -43,7 +43,7 @@ from ..tools import JSONERRORS, JSONSEPARATORS, s3_mark_required, s3_str
 from ..ui import s3_comments_widget
 
 from .base import CRUDMethod
-from .crud import S3CRUD
+from .crud import BasicCRUD
 
 # =============================================================================
 class S3RoleManager(CRUDMethod):
@@ -186,7 +186,6 @@ class S3RoleManager(CRUDMethod):
                                 dt_pagination = dt_pagination,
                                 dt_pageLength = display_length,
                                 dt_base_url = r.url(method="", vars={}),
-                                dt_permalink = r.url(),
                                 dt_formkey = formkey,
                                 )
 
@@ -197,7 +196,7 @@ class S3RoleManager(CRUDMethod):
             response.view = "admin/roles.html"
 
             # Page actions
-            crud_button = S3CRUD.crud_button
+            crud_button = BasicCRUD.crud_button
             page_actions = DIV(crud_button(T("Create Role"),
                                            _href = r.url(method="create"),
                                            ),
@@ -220,7 +219,7 @@ class S3RoleManager(CRUDMethod):
         elif representation == "aadata":
 
             # Page limits
-            start, limit = S3CRUD._limits(get_vars)
+            start, limit = BasicCRUD._limits(get_vars)
 
             # Data Table Filter and Sorting
             searchq, orderby, left = resource.datatable_filter(list_fields,
@@ -283,9 +282,9 @@ class S3RoleManager(CRUDMethod):
         # Standard actions
         s3.actions = None
         s3.crud_labels.UPDATE = T("Edit")
-        S3CRUD.action_buttons(r, editable=True, deletable=False)
+        BasicCRUD.action_buttons(r, editable=True, deletable=False)
 
-        action_button = S3CRUD.action_button
+        action_button = BasicCRUD.action_button
 
         # Users
         label = T("Users")
@@ -884,7 +883,7 @@ class S3RoleManager(CRUDMethod):
 
             # Show a back-button since OrgAdmins have no other obvious
             # way to return to the list (no left menu)
-            crud_button = S3CRUD.crud_button
+            crud_button = BasicCRUD.crud_button
             output["list_btn"] = crud_button(T("Back to User List"),
                                              icon = "return",
                                              _href = r.url(id="", method=""),
@@ -1030,10 +1029,10 @@ class S3RoleManager(CRUDMethod):
 
             # Default RHeader and View
             if "rheader" not in attr:
-                return_btn = S3CRUD.crud_button("Back to Roles List",
-                                                icon = "return",
-                                                _href=r.url(id="", method=""),
-                                                )
+                return_btn = BasicCRUD.crud_button("Back to Roles List",
+                                                   icon = "return",
+                                                   _href=r.url(id="", method=""),
+                                                   )
                 output["rheader"] = DIV(return_btn,
                                         _class="rheader",
                                         )
@@ -1125,7 +1124,7 @@ class S3RoleManager(CRUDMethod):
 
         users = {}
 
-        pe_ids = auth.permitted_realms("auth_user", "update")
+        pe_ids = auth.permission.permitted_realms("auth_user", "update")
         if pe_ids or pe_ids is None:
             utable = auth_settings.table_user
             query = (utable.deleted == False)
@@ -1185,7 +1184,6 @@ class S3RoleManager(CRUDMethod):
         sr = auth.get_system_roles()
 
         AUTO = (sr.AUTHENTICATED, sr.ANONYMOUS)
-        ADMINS = (sr.ADMIN, sr.ORG_ADMIN, sr.ORG_GROUP_ADMIN)
         UNRESTRICTABLE = (sr.ADMIN, sr.AUTHENTICATED, sr.ANONYMOUS)
 
         # Check whether certain roles require another role to be assignable
@@ -1204,6 +1202,7 @@ class S3RoleManager(CRUDMethod):
                                         )
 
         has_role = auth.s3_has_role
+        has_roles = auth.s3_has_roles
 
         roles = {}
         for row in rows:
@@ -1211,27 +1210,33 @@ class S3RoleManager(CRUDMethod):
             role_id = row.id
             role_uuid = row.uuid
 
-            role = {"l": row.role or role_uuid}
-
-            if role_id in ADMINS:
-                assignable = has_role(role_id)
+            if role_id in AUTO:
+                assignable = False
+            elif role_id == sr.ADMIN:
+                assignable = has_role(sr.ADMIN)
+            elif role_id == sr.ORG_GROUP_ADMIN:
+                assignable = has_roles((sr.ADMIN, sr.ORG_GROUP_ADMIN))
+            elif role_id == sr.ORG_ADMIN:
+                assignable = has_roles((sr.ADMIN, sr.ORG_GROUP_ADMIN, sr.ORG_ADMIN))
             elif role_uuid in privileged_roles:
-                assignable = has_role(privileged_roles[role_uuid])
+                required = privileged_roles[role_uuid]
+                if isinstance(required, (tuple, list, set)):
+                    assignable = has_roles(required)
+                else:
+                    assignable = has_role(required)
             else:
-                assignable = role_id not in AUTO
+                assignable = True
 
             if role_id == sr.ADMIN and auth.user.id == user_id:
                 removable = False
             else:
                 removable = assignable
 
-            if not assignable:
-                role["a"] = False
-            if not removable:
-                role["r"] = False
-            if role_id in UNRESTRICTABLE:
-                role["u"] = True
-
+            role = {"l": row.role or role_uuid,
+                    "a": assignable,
+                    "r": removable,
+                    "u": role_id in UNRESTRICTABLE,
+                    }
             roles[role_id] = role
 
         return roles

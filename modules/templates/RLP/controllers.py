@@ -14,9 +14,11 @@ from gluon import Field, SQLFORM, URL, XML, current, redirect, \
 
 from gluon.storage import Storage
 
+from s3dal import filter_fields
+
 from core import ConsentTracking, CustomController, DateField, \
                  IS_ONE_OF, IS_PHONE_NUMBER_MULTI, IS_PHONE_NUMBER_SINGLE, \
-                 S3GroupedOptionsWidget, S3LocationSelector, S3MultiSelectWidget, \
+                 S3GroupedOptionsWidget, LocationSelector, S3MultiSelectWidget, \
                  S3WeeklyHoursWidget, WithAdvice, \
                  JSONERRORS, S3Represent, s3_comments_widget, \
                  s3_mark_required, s3_str
@@ -362,7 +364,7 @@ class register(CustomController):
         response.form_label_separator = ""
         form = SQLFORM.factory(table_name = utable._tablename,
                                record = None,
-                               hidden = {"_next": request.vars._next},
+                               hidden = {"_next": auth.get_vars_next()},
                                labels = labels,
                                separator = "",
                                showid = False,
@@ -408,7 +410,7 @@ class register(CustomController):
                 formvars["link_user_to"] = ["volunteer"]
 
             # Create the user record
-            user_id = utable.insert(**utable._filter_fields(formvars, id=False))
+            user_id = utable.insert(**filter_fields(utable, formvars, allow_id=False))
             formvars.id = user_id
 
             # Save temporary user fields in s3db.auth_user_temp
@@ -463,14 +465,14 @@ class register(CustomController):
                 if "language" not in form.vars:
                     # Was missing from login form
                     form.vars.language = T.accepted_language
-                user = Storage(utable._filter_fields(form.vars, id=True))
+                user = Storage(filter_fields(utable, form.vars, allow_id=True))
                 auth.login_user(user)
 
                 # Send welcome email
                 auth.s3_send_welcome_email(form.vars)
 
                 # Where to go next?
-                register_next = request.vars._next or auth_settings.register_next
+                register_next = auth.get_vars_next() or auth_settings.register_next
 
             else:
                 # Request User Verify their Email
@@ -490,8 +492,8 @@ class register(CustomController):
                 if not auth_settings.mailer or \
                    not auth_settings.mailer.settings.server or \
                    not auth_settings.mailer.send(to = form.vars.email,
-                                                 subject = auth_messages.verify_email_subject % system,
-                                                 message = auth_messages.verify_email % system,
+                                                 subject = str(auth_messages.verify_email_subject % system),
+                                                 message = str(auth_messages.verify_email % system),
                                                  ):
                     response.error = auth_messages.email_verification_failed
 
@@ -605,7 +607,7 @@ class register(CustomController):
                       #      ),
                       # --------------------------------------------
                       s3db.gis_location_id("location_id",
-                                           widget = S3LocationSelector(
+                                           widget = LocationSelector(
                                                        levels = ("L1", "L2", "L3"),
                                                        required_levels = ("L1", "L2", "L3"),
                                                        show_address = False,
@@ -1176,7 +1178,7 @@ class verify_email(CustomController):
         response.form_label_separator = ""
         form = SQLFORM.factory(table_name = "auth_user",
                                record = None,
-                               hidden = {"_next": request.vars._next,
+                               hidden = {"_next": current.auth.get_vars_next(),
                                          "registration_key": key,
                                          },
                                separator = ":",
@@ -1222,7 +1224,7 @@ class verify_email(CustomController):
             self.send_welcome_email(user)
 
             # Log them in
-            user = Storage(utable._filter_fields(user, id=True))
+            user = Storage(filter_fields(utable, user, allow_id=True))
             auth.login_user(user)
 
             auth_messages = auth.messages

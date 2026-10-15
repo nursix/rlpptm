@@ -612,7 +612,7 @@ class S3Organizer(CRUDMethod):
         if not end and introspect:
             for fn in ("end_date", "closed_on"):
                 if fn in table.fields:
-                    start = fn
+                    end = fn
                     break
         if end:
             end_rfield = resource.resolve_selector(prefix(end))
@@ -671,6 +671,7 @@ class S3Organizer(CRUDMethod):
                 "end": end_rfield,
                 "start_editable": config.get("start_editable", True),
                 "duration_editable": config.get("duration_editable", True),
+                "reload_on_update": bool(config.get("reload_on_update")),
                 "use_time": use_time,
                 "title": represent,
                 "description": description,
@@ -946,7 +947,7 @@ class S3OrganizerWidget:
             if script not in scripts:
                 scripts.append(script)
 
-        # Script to attach the timeplot widget
+        # Script to attach the organizer widget
         script = """$("#%(widget_id)s").organizer(%(options)s)""" % \
                     {"widget_id": widget_id,
                      "options": json.dumps(options),

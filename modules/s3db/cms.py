@@ -34,10 +34,11 @@ __all__ = ("CMSContentModel",
            "CMSContentUserModel",
            "CMSContentRoleModel",
            "CMSNewsletterModel",
+           "CustomPage",
            "cms_NewsletterDetails",
            "cms_UpdateNewsletter",
            "cms_newsletter_notify",
-           "cms_accessible_newsletters",
+           "cms_received_newsletters",
            "cms_unread_newsletters",
            "cms_mark_newsletter",
            "cms_index",
@@ -62,7 +63,6 @@ from collections import OrderedDict
 from gluon import *
 from gluon.storage import Storage
 from ..core import *
-from s3layouts import S3PopupLink
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -151,7 +151,7 @@ class CMSContentModel(DataModel):
             msg_record_deleted = T("Series deleted"),
             msg_list_empty = T("No series currently defined"))
 
-        # Reusable field
+        # Foreign Key Template
         translate = settings.get_L10n_translate_cms_series()
         represent = S3Represent(lookup=tablename, translate=translate)
         series_id = FieldTemplate("series_id", "reference %s" % tablename,
@@ -207,7 +207,7 @@ class CMSContentModel(DataModel):
             msg_record_deleted = T("Status deleted"),
             msg_list_empty = T("No Statuses currently registered"))
 
-        # Reusable Field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename, translate=True)
                                 #none = T("Unknown"))
         status_id = FieldTemplate("status_id", "reference %s" % tablename,
@@ -220,10 +220,10 @@ class CMSContentModel(DataModel):
                                                           sort = True,
                                                           )),
                                   sortby = "name",
-                                  comment = S3PopupLink(title = ADD_STATUS,
-                                                        c = "cms",
-                                                        f = "status",
-                                                        ),
+                                  comment = PopupLink(title = ADD_STATUS,
+                                                      c = "cms",
+                                                      f = "status",
+                                                      ),
                                   )
 
         # ---------------------------------------------------------------------
@@ -333,7 +333,7 @@ class CMSContentModel(DataModel):
             msg_record_deleted = T("Post deleted"),
             msg_list_empty = T("No posts currently available"))
 
-        # Reusable field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename)
         post_id = FieldTemplate("post_id", "reference %s" % tablename,
                                 label = T("Post"),
@@ -344,11 +344,11 @@ class CMSContentModel(DataModel):
                                                           represent,
                                                           )),
                                 sortby = "name",
-                                comment = S3PopupLink(c = "cms",
-                                                      f = "post",
-                                                      title = ADD_POST,
-                                                      tooltip = T("A block of rich text which could be embedded into a page, viewed as a complete page or viewed as a list of news items."),
-                                                      ),
+                                comment = PopupLink(c = "cms",
+                                                    f = "post",
+                                                    title = ADD_POST,
+                                                    tooltip = T("A block of rich text which could be embedded into a page, viewed as a complete page or viewed as a list of news items."),
+                                                    ),
                                 )
 
         list_fields = ["post_module.module",
@@ -601,7 +601,7 @@ class CMSContentModel(DataModel):
             msg_record_deleted = T("Tag deleted"),
             msg_list_empty = T("No tags currently defined"))
 
-        # Reusable field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename, translate=True)
         tag_id = FieldTemplate("tag_id", "reference %s" % tablename,
                                label = T("Tag"),
@@ -655,8 +655,7 @@ class CMSContentModel(DataModel):
         tablename = "cms_comment"
         define_table(tablename,
                      Field("parent", "reference cms_comment",
-                           requires = IS_EMPTY_OR(
-                                        IS_ONE_OF(db, "cms_comment.id")),
+                           requires = IS_EMPTY_OR(IS_IN_DB(db, "%s.id" % tablename)),
                            readable = False,
                            ),
                      post_id(empty = False),
@@ -776,6 +775,7 @@ class CMSContentModel(DataModel):
                 record = None
                 query &= ((table.resource == None) | \
                           (table.resource == "index"))
+            query &= (table.deleted == False)
             result = db(query).update(post_id=post_id)
             if not result:
                 table.insert(post_id=post_id,
@@ -1096,7 +1096,7 @@ class CMSContentForumModel(DataModel):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return None
+        #return {}
 
 # =============================================================================
 class CMSContentMapModel(DataModel):
@@ -1120,7 +1120,7 @@ class CMSContentMapModel(DataModel):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return None
+        #return {}
 
 # =============================================================================
 class CMSContentOrgModel(DataModel):
@@ -1148,7 +1148,7 @@ class CMSContentOrgModel(DataModel):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return None
+        #return {}
 
 # =============================================================================
 class CMSContentOrgGroupModel(DataModel):
@@ -1172,7 +1172,7 @@ class CMSContentOrgGroupModel(DataModel):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return None
+        #return {}
 
 # =============================================================================
 class CMSContentTeamModel(DataModel):
@@ -1200,7 +1200,7 @@ class CMSContentTeamModel(DataModel):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return None
+        #return {}
 
 # =============================================================================
 class CMSContentUserModel(DataModel):
@@ -1224,7 +1224,7 @@ class CMSContentUserModel(DataModel):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return None
+        #return {}
 
 # =============================================================================
 class CMSContentRoleModel(DataModel):
@@ -1263,7 +1263,7 @@ class CMSContentRoleModel(DataModel):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return None
+        #return {}
 
 # =============================================================================
 class CMSNewsletterModel(DataModel):
@@ -1354,27 +1354,31 @@ class CMSNewsletterModel(DataModel):
                            readable = False,
                            writable = False,
                            ),
-                     Field.Method("read_status", self.newsletter_read_status),
+                     s3_fieldmethod("read_status",
+                                    self.newsletter_read_status,
+                                    represent = lambda v, row=None: \
+                                                "-" if v is None else v if hasattr(v, "xml") else s3_str(v),
+                                    ),
                      CommentsField(),
                      )
 
         # Components
         self.add_components(tablename,
                             cms_newsletter_recipient = "newsletter_id",
-                            pr_filter = {"name": "distribution",
-                                         "link": "cms_newsletter_distribution",
-                                         "joinby": "newsletter_id",
-                                         "key": "filter_id",
-                                         # TODO filter by resource?
-                                         },
+                            usr_filter = {"name": "distribution",
+                                          "link": "cms_newsletter_distribution",
+                                          "joinby": "newsletter_id",
+                                          "key": "saved_filter_id",
+                                          # TODO filter by resource?
+                                          },
                             )
 
         # CRUD Form
-        crud_form = S3SQLCustomForm(
+        crud_form = CustomForm(
                         "organisation_id",
                         "subject",
                         "message",
-                        S3SQLInlineComponent(
+                        InlineComponent(
                             "document",
                             name = "file",
                             label = T("Attachments"),
@@ -1518,12 +1522,12 @@ class CMSNewsletterModel(DataModel):
 
         # ---------------------------------------------------------------------
         # Saved filters as distribution list
-        # - link table pr_filter <> cms_newsletter
+        # - link table usr_filter <> cms_newsletter
         #
         tablename = "cms_newsletter_distribution"
         define_table(tablename,
                      Field("newsletter_id", "reference cms_newsletter"),
-                     self.pr_filter_id(),
+                     self.usr_filter_id("saved_filter_id"),
                      )
 
         # ---------------------------------------------------------------------
@@ -1540,7 +1544,7 @@ class CMSNewsletterModel(DataModel):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return None
+        # return None
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1658,6 +1662,73 @@ class CMSNewsletterModel(DataModel):
             if record_id in cms_unread_newsletters(count=False):
                 status = SPAN(current.T("new"), _class="prio prio-amber")
         return status
+
+# =============================================================================
+class CustomPage(CustomController):
+    """
+        A custom controller to render a page with user-editable
+        contents from CMS
+    """
+
+    context = ("default", "custom")
+    template = "cmspage.html"
+
+    def __call__(self):
+
+        T = current.T
+        s3db = current.s3db
+
+        output = {}
+
+        # Allow editing of page content from browser using CMS module
+        ADMIN = current.auth.s3_has_role("ADMIN")
+
+        table = s3db.cms_post
+        ltable = s3db.cms_post_module
+
+        module, resource = self.context
+
+        query = (ltable.module == module) & \
+                (ltable.resource == resource) & \
+                (ltable.post_id == table.id) & \
+                (table.deleted != True)
+        item = current.db(query).select(table.body,
+                                        table.id,
+                                        limitby = (0, 1)
+                                        ).first()
+        if item:
+            if ADMIN:
+                content = DIV(XML(item.body),
+                              BR(),
+                              A(T("Edit"),
+                                _href = URL(c="cms", f="post",
+                                            args = [item.id, "update"],
+                                            vars = {"module": module,
+                                                    "resource": resource,
+                                                    },
+                                            ),
+                                _class="action-btn",
+                                ),
+                              )
+            else:
+                content = DIV(XML(item.body))
+        elif ADMIN:
+            content = A(T("Edit"),
+                        _href = URL(c="cms", f="post", args="create",
+                                    vars = {"module": module,
+                                            "resource": resource,
+                                            },
+                                    ),
+                        _class="action-btn cms-edit",
+                        )
+        else:
+            content = ""
+
+        output["item"] = content
+
+        self._view(current.deployment_settings.get_theme_layouts(), self.template)
+
+        return output
 
 # =============================================================================
 class cms_NewsletterDetails:
@@ -1853,9 +1924,9 @@ class cms_UpdateNewsletter(CRUDMethod):
         recipients = set()
 
         ltable = s3db.cms_newsletter_distribution
-        ftable = s3db.pr_filter
+        ftable = s3db.usr_filter
 
-        join = ftable.on(ftable.id == ltable.filter_id)
+        join = ftable.on(ftable.id == ltable.saved_filter_id)
         query = (ltable.newsletter_id == newsletter_id) & \
                 (ltable.deleted == False)
         filters = db(query).select(ftable.controller,
@@ -2230,9 +2301,10 @@ def cms_newsletter_actions(newsletter):
     return actions
 
 # =============================================================================
-def cms_accessible_newsletters():
+def cms_received_newsletters():
     """
-        Constructs a subquery for newsletters accessible by the current user
+        Constructs a subquery for newsletters directed at any recipient
+        accessible by the current user
 
         Returns:
             - a subquery (SQL string) for use with belongs(), or
@@ -2300,13 +2372,18 @@ def cms_unread_newsletters(count=True, cached=True):
         return number if count else record_ids
 
     if auth.user:
+        # Newsletters that can be read by the user:
+        accessible_newsletters = auth.s3_accessible_query("read", ntable,
+                                                          c = "cms",
+                                                          f = "read_newsletter",
+                                                          )
         user_id = auth.user.id
         left = rtable.on((rtable.newsletter_id == ntable.id) & \
                          (rtable.user_id == user_id) & \
                          (rtable.deleted == False))
-        query = (ntable.id.belongs(cms_accessible_newsletters())) & \
+        query = (ntable.id.belongs(cms_received_newsletters())) & \
                 (ntable.status == "SENT") & \
-                auth.s3_accessible_query("read", ntable) & \
+                accessible_newsletters & \
                 (ntable.deleted == False) & \
                 (rtable.id == None)
     else:
@@ -2561,8 +2638,7 @@ def cms_index(module,
                 response.headers.setdefault(key, value)
             raise HTTP(response.status, page, **response.headers)
 
-        else:
-            item = H2(page_name)
+        item = H2(page_name)
 
     if view is not None:
         view = os.path.join(*(view.split("/")))
@@ -2570,8 +2646,8 @@ def cms_index(module,
         try:
             # Pass view as file not str to work in compiled mode
             response.view = open(view, "rb")
-        except IOError:
-            raise HTTP(404, "Unable to open Custom View: %s" % view)
+        except IOError as e:
+            raise HTTP(404, "Unable to open Custom View: %s" % view) from e
     else:
         response.view = "index.html"
 
@@ -2582,7 +2658,8 @@ def cms_index(module,
 # =============================================================================
 def cms_documentation(r, default_page, default_url):
     """
-        Render an online documentation page, to be called from prep
+        Render an online documentation page;
+        to be called from prep of a cms_post CRUD controller
 
         Args:
             r: the CRUDRequest
@@ -2613,10 +2690,10 @@ def cms_documentation(r, default_page, default_url):
             s3_redirect_default(default_url)
 
     # Render the page
-    from core import S3XMLContents
+    from core import XMLContentsRepresent
     return {"bypass": True,
             "output": {"title": row.title,
-                       "contents": S3XMLContents(row.body),
+                       "contents": XMLContentsRepresent(row.body),
                        },
             }
 
@@ -2734,15 +2811,17 @@ class S3CMS(CRUDMethod):
         r.error(405, current.ERROR.BAD_METHOD)
 
     # -------------------------------------------------------------------------
-    def widget(self, r, method="cms", widget_id=None, **attr):
+    def widget(self, r, method="cms", widget_id=None, visible=True, **attr):
         """
             Render a Rich Text widget suitable for use in a page such as
             S3Summary
 
             Args:
-                method: the widget method
                 r: the CRUDRequest
-                attr: controller attributes
+                method: the widget method
+                widget_id: the widget ID
+                visible: whether the widget is initially visible
+                attr: dictionary of parameters for the method handler
 
             TODO Support comments
         """
@@ -2860,7 +2939,7 @@ def cms_configure_newsfeed_post_fields():
         field.readable = True
         field.writable = True
         field.comment = None
-        field.widget = S3AddPersonWidget(controller="pr")
+        field.widget = PersonSelector(controller="pr")
 
     field = table.location_id
     field.label = ""
@@ -3405,6 +3484,8 @@ class cms_Calendar(CRUDMethod):
                 attr: controller arguments
         """
 
+        output = None
+
         if r.name == "post":
             if r.representation == "html":
                 output = self.html(r, **attr)
@@ -3580,6 +3661,8 @@ class cms_TagList(CRUDMethod):
                 r: the CRUDRequest
                 attr: controller arguments
         """
+
+        output = None
 
         if r.representation == "json":
             table = current.s3db.cms_tag

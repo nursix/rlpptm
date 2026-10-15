@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from collections import OrderedDict
 
 from gluon import current, URL
@@ -101,11 +99,6 @@ def config(settings):
             access = "|1|",     # Only Administrators can see this module in the default menu & access the controller
             module_type = None  # This item is handled separately for the menu
         )),
-        #("translate", Storage(
-        #    name_nice = T("Translation Functionality"),
-        #    #description = "Selective translation of strings based on module.",
-        #    module_type = None,
-        #)),
         ("gis", Storage(
             name_nice = "Map",
             #description = "Situation Awareness & Geospatial Analysis",
@@ -508,15 +501,15 @@ def config(settings):
             method = r.method
             if method in (None, "create"):
                 current.s3db.gis_location.addr_street.label = T("Street Address or Location Details")
-                from core import S3SQLCustomForm
-                crud_form = S3SQLCustomForm((T("What is it?"), "name"),
-                                            "incident_type_id",
-                                            (T("Who am I speaking with?"), "reported_by"),
-                                            (T("How can we contact you?"), "contact"),
-                                            (T("Where did this Incident take place?"), "location_id"),
-                                            (T("Explain the Situation?"), "description"),
-                                            (T("What are your immediate needs?"), "needs"),
-                                            )
+                from core import CustomForm
+                crud_form = CustomForm((T("What is it?"), "name"),
+                                       "incident_type_id",
+                                       (T("Who am I speaking with?"), "reported_by"),
+                                       (T("How can we contact you?"), "contact"),
+                                       (T("Where did this Incident take place?"), "location_id"),
+                                       (T("Explain the Situation?"), "description"),
+                                       (T("What are your immediate needs?"), "needs"),
+                                       )
                 r.resource.configure(create_next = URL(args=["[id]", "assign"]),
                                      crud_form = crud_form,
                                      )
@@ -592,7 +585,7 @@ def config(settings):
     # -------------------------------------------------------------------------
     def customise_event_incident_resource(r, tablename):
 
-        from core import S3LocationSelector
+        from core import LocationSelector
 
         s3db = current.s3db
 
@@ -601,9 +594,9 @@ def config(settings):
         f.readable = f.writable = True
         f = table.level
         f.readable = f.writable = True
-        table.location_id.widget = S3LocationSelector(polygons = True,
-                                                      show_address = True,
-                                                      )
+        table.location_id.widget = LocationSelector(polygons = True,
+                                                    show_address = True,
+                                                    )
         f = table.organisation_id
         f.readable = f.writable = True
         f.label = T("Lead Response Organization")
@@ -1015,7 +1008,7 @@ def config(settings):
                                                     ),
                             )
 
-        from core import S3SQLCustomForm, S3SQLInlineComponent, S3SQLInlineLink, \
+        from core import CustomForm, InlineComponent, InlineLink, \
                          IS_EMPTY_OR, IS_PHONE_NUMBER_MULTI, S3PhoneWidget, s3_phone_represent
 
         # Individual settings for specific tag components
@@ -1027,27 +1020,27 @@ def config(settings):
         f.requires = IS_EMPTY_OR(IS_PHONE_NUMBER_MULTI())
         f.widget = S3PhoneWidget()
 
-        crud_form = S3SQLCustomForm("name",
-                                    "acronym",
-                                    S3SQLInlineLink("organisation_type",
-                                                    field = "organisation_type_id",
-                                                    # Default 10 options just triggers which adds unnecessary complexity to a commonly-used form & commonly an early one (create Org when registering)
-                                                    search = False,
-                                                    label = T("Type"),
-                                                    multiple = False,
-                                                    widget = "multiselect",
-                                                    ),
-                                    "country",
-                                    (T("Reception Phone #"), "phone"),
-                                    S3SQLInlineComponent("duty",
-                                                         label = T("On-call Duty Number"),
-                                                         fields = [("", "value")],
-                                                         multiple = False,
-                                                         ),
-                                    "website",
-                                    "logo",
-                                    "comments",
-                                    )
+        crud_form = CustomForm("name",
+                               "acronym",
+                               InlineLink("organisation_type",
+                                          field = "organisation_type_id",
+                                          # Default 10 options just triggers which adds unnecessary complexity to a commonly-used form & commonly an early one (create Org when registering)
+                                          search = False,
+                                          label = T("Type"),
+                                          multiple = False,
+                                          widget = "multiselect",
+                                          ),
+                               "country",
+                               (T("Reception Phone #"), "phone"),
+                               InlineComponent("duty",
+                                               label = T("On-call Duty Number"),
+                                               fields = [("", "value")],
+                                               multiple = False,
+                                               ),
+                               "website",
+                               "logo",
+                               "comments",
+                               )
 
         s3db.configure(tablename,
                        crud_form = crud_form,

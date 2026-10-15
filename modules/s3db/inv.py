@@ -57,7 +57,6 @@ from gluon.sqlhtml import RadioWidget
 from gluon.storage import Storage
 
 from ..core import *
-from s3layouts import S3PopupLink
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -142,32 +141,23 @@ class InvWarehouseModel(DataModel):
 
         organisation_id = self.org_organisation_id
 
-        ADMIN = current.session.s3.system_roles.ADMIN
-        is_admin = auth.s3_has_role(ADMIN)
-
-        root_org = auth.root_org()
-        if is_admin:
-            filter_opts = ()
-        elif root_org:
-            filter_opts = (root_org, None)
-        else:
-            filter_opts = (None,)
 
         # ---------------------------------------------------------------------
         # Warehouse Types
         #
-        org_dependent_wh_types = settings.get_inv_org_dependent_warehouse_types()
+        # org_dependent_wh_types = settings.get_inv_org_dependent_warehouse_types()
 
         tablename = "inv_warehouse_type"
         define_table(tablename,
                      Field("name", length=128, notnull=True,
                            label = T("Name"),
-                           requires = IS_LENGTH(128),
+                           requires = [IS_NOT_EMPTY(),
+                                       IS_LENGTH(128),
+                                       IS_NOT_ONE_OF(db, "%s.name" % tablename,
+                                                     skip_imports = True,
+                                                     ),
+                                       ],
                            ),
-                     organisation_id(default = root_org if org_dependent_wh_types else None,
-                                     readable = is_admin if org_dependent_wh_types else False,
-                                     writable = is_admin if org_dependent_wh_types else False,
-                                     ),
                      CommentsField(),
                      )
 
@@ -194,22 +184,22 @@ class InvWarehouseModel(DataModel):
                                           requires = IS_EMPTY_OR(
                                                         IS_ONE_OF(db, "inv_warehouse_type.id",
                                                                   represent,
-                                                                  filterby="organisation_id",
-                                                                  filter_opts=filter_opts,
+                                                                  #filterby="organisation_id",
+                                                                  #filter_opts=filter_opts if org_dependent_wh_types else None,
                                                                   sort=True
                                                                   )),
                                           sortby = "name",
-                                          comment = S3PopupLink(c = "inv",
-                                                                f = "warehouse_type",
-                                                                label = ADD_WAREHOUSE_TYPE,
-                                                                title = T("Warehouse Type"),
-                                                                tooltip = T("If you don't see the Type in the list, you can add a new one by clicking link 'Create Warehouse Type'."),
-                                                                ),
+                                          comment = PopupLink(c = "inv",
+                                                              f = "warehouse_type",
+                                                              label = ADD_WAREHOUSE_TYPE,
+                                                              title = T("Warehouse Type"),
+                                                              tooltip = T("If you don't see the Type in the list, you can add a new one by clicking link 'Create Warehouse Type'."),
+                                                              ),
                                           )
 
         configure(tablename,
                   deduplicate = S3Duplicate(primary = ("name",),
-                                            secondary = ("organisation_id",),
+                                            # secondary = ("organisation_id",) if org_dependent_wh_types else None,
                                             ),
                   )
 
@@ -223,14 +213,14 @@ class InvWarehouseModel(DataModel):
         # ---------------------------------------------------------------------
         # Warehouses
         #
-        if settings.get_inv_warehouse_code_unique():
-            code_requires = IS_EMPTY_OR([IS_LENGTH(10),
-                                         IS_NOT_IN_DB(db, "inv_warehouse.code"),
-                                         ])
-        else:
-            code_requires = IS_LENGTH(10)
-
         tablename = "inv_warehouse"
+        # if settings.get_inv_warehouse_code_unique():
+        code_requires = IS_EMPTY_OR([IS_LENGTH(10),
+                                     IS_NOT_IN_DB(db, "%s.code" % tablename),
+                                     ])
+        # else:
+        #    code_requires = IS_LENGTH(10)
+
         define_table(tablename,
                      super_link("pe_id", "pr_pentity"),
                      super_link("site_id", "org_site"),
@@ -434,7 +424,7 @@ class InventoryModel(DataModel):
 
         settings = current.deployment_settings
         direct_stock_edits = settings.get_inv_direct_stock_edits()
-        track_pack_values = settings.get_inv_track_pack_values()
+        track_pack_values = settings.get_supply_track_pack_values()
         WAREHOUSE = T(settings.get_inv_facility_label())
 
         inv_source_type = {0: None,
@@ -562,7 +552,7 @@ class InventoryModel(DataModel):
             msg_record_deleted = T("Stock removed from Warehouse"),
             msg_list_empty = T("No Stock currently registered in this Warehouse"))
 
-        # Reusable Field
+        # Foreign Key Template
         inv_item_represent = inv_InvItemRepresent()
         inv_item_id = FieldTemplate("inv_item_id", "reference %s" % tablename,
                                     label = INV_ITEM,
@@ -1230,7 +1220,7 @@ class InventoryTrackingModel(DataModel):
             msg_record_deleted = T("Sent Shipment canceled"),
             msg_list_empty = T("No Sent Shipments"))
 
-        # Reusable Field
+        # Foreign Key Template
         send_id = FieldTemplate("send_id", "reference %s" % tablename,
                                 label = T("Send Shipment"),
                                 ondelete = "RESTRICT",
@@ -1450,7 +1440,7 @@ class InventoryTrackingModel(DataModel):
         else:
             recv_id_label = T("Receive Shipment")
 
-        # Reusable Field
+        # Foreign Key Template
         inv_recv_represent = self.inv_recv_represent
         recv_id = FieldTemplate("recv_id", "reference %s" % tablename,
                                 label = recv_id_label,
@@ -1602,12 +1592,12 @@ class InventoryTrackingModel(DataModel):
                              widget = S3AutocompleteWidget("supply", "item",
                                                            filter = "item.kit=1"),
                              # Needs better workflow as no way to add the Kit Items
-                             #comment = S3PopupLink(c = "supply",
-                             #                      f = "item",
-                             #                      label = T("Create Kit"),
-                             #                      title = T("Kit"),
-                             #                      tooltip = T("Type the name of an existing catalog kit OR Click 'Create Kit' to add a kit which is not in the catalog."),
-                             #                      ),
+                             #comment = PopupLink(c = "supply",
+                             #                    f = "item",
+                             #                    label = T("Create Kit"),
+                             #                    title = T("Kit"),
+                             #                    tooltip = T("Type the name of an existing catalog kit OR Click 'Create Kit' to add a kit which is not in the catalog."),
+                             #                    ),
                              comment = DIV(_class="tooltip",
                                            _title="%s|%s" % (T("Kit"),
                                                              T("Type the name of an existing catalog kit"))),
@@ -1917,8 +1907,8 @@ $.filterOptionsS3({
                   extra_fields = ["quantity",
                                   "recv_quantity",
                                   "pack_value",
-                                  "item_id$volume",
-                                  "item_id$weight",
+                                  "item_pack_id$volume",
+                                  "item_pack_id$weight",
                                   "item_pack_id$quantity",
                                   ],
                   filter_widgets = filter_widgets,
@@ -2005,19 +1995,19 @@ $.filterOptionsS3({
             inv_track_item = row
 
         try:
-            supply_item = getattr(row, "supply_item")
-            volume = supply_item.volume
+            supply_item_pack = getattr(row, "supply_item_pack")
+            volume = supply_item_pack.volume
         except AttributeError:
-            # Need to load the supply item
+            # Need to load the supply item pack
             # Avoid this by adding to extra_fields
             ttable = current.s3db.inv_track_item
-            stable = current.s3db.supply_item
+            ptable = current.s3db.supply_item_pack
             query = (ttable.id == inv_track_item.id) & \
-                    (ttable.item_id == stable.id)
-            supply_item = current.db(query).select(stable.volume,
-                                                   limitby = (0, 1),
-                                                   ).first()
-            volume = supply_item.volume if supply_item else None
+                    (ttable.item_pack_id == ptable.id)
+            supply_item_pack = current.db(query).select(ptable.volume,
+                                                        limitby = (0, 1),
+                                                        ).first()
+            volume = supply_item_pack.volume if supply_item_pack else None
 
         if volume is None:
             return current.messages["NONE"]
@@ -2039,22 +2029,7 @@ $.filterOptionsS3({
                                                       ).first()
             quantity = inv_track_item[qfield]
 
-        try:
-            supply_item_pack = getattr(row, "supply_item_pack")
-            pack_quantity = supply_item_pack.quantity
-        except AttributeError:
-            # Need to load the supply item pack
-            # Avoid this by adding to extra_fields
-            ttable = current.s3db.inv_track_item
-            ptable = current.s3db.supply_item_pack
-            query = (ttable.id == inv_track_item.id) & \
-                    (ttable.item_pack_id == ptable.id)
-            supply_item_pack = current.db(query).select(ptable.quantity,
-                                                        limitby = (0, 1),
-                                                        ).first()
-            pack_quantity = supply_item_pack.quantity
-
-        return round(quantity * pack_quantity * volume, 3)
+        return round(quantity * volume, 3)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2067,19 +2042,19 @@ $.filterOptionsS3({
             inv_track_item = row
 
         try:
-            supply_item = getattr(row, "supply_item")
-            weight = supply_item.weight
+            supply_item_pack = getattr(row, "supply_item_pack")
+            weight = supply_item_pack.weight
         except AttributeError:
-            # Need to load the supply item
+            # Need to load the supply item pack
             # Avoid this by adding to extra_fields
             ttable = current.s3db.inv_track_item
-            stable = current.s3db.supply_item
+            ptable = current.s3db.supply_item_pack
             query = (ttable.id == inv_track_item.id) & \
-                    (ttable.item_id == stable.id)
-            supply_item = current.db(query).select(stable.weight,
-                                                   limitby = (0, 1),
-                                                   ).first()
-            weight = supply_item.weight if supply_item else None
+                    (ttable.item_pack_id == ptable.id)
+            supply_item_pack = current.db(query).select(ptable.weight,
+                                                        limitby = (0, 1),
+                                                        ).first()
+            weight = supply_item_pack.weight if supply_item_pack else None
 
         if weight is None:
             return current.messages["NONE"]
@@ -2101,22 +2076,7 @@ $.filterOptionsS3({
                                                       ).first()
             quantity = inv_track_item[qfield]
 
-        try:
-            supply_item_pack = getattr(row, "supply_item_pack")
-            pack_quantity = supply_item_pack.quantity
-        except AttributeError:
-            # Need to load the supply item pack
-            # Avoid this by adding to extra_fields
-            ttable = current.s3db.inv_track_item
-            ptable = current.s3db.supply_item_pack
-            query = (ttable.id == inv_track_item.id) & \
-                    (ttable.item_pack_id == ptable.id)
-            supply_item_pack = current.db(query).select(ptable.quantity,
-                                                        limitby = (0, 1),
-                                                        ).first()
-            pack_quantity = supply_item_pack.quantity
-
-        return round(quantity * pack_quantity * weight, 2)
+        return round(quantity * weight, 2)
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -2248,8 +2208,8 @@ $.filterOptionsS3({
         T = current.T
         list_fields = [(T("Item Code"), "item_id$code"),
                        "item_id",
-                       (T("Weight (kg)"), "item_id$weight"),
-                       (T("Volume (m3)"), "item_id$volume"),
+                       (T("Weight (kg)"), "item_pack_id$weight"),
+                       (T("Volume (m3)"), "item_pack_id$volume"),
                        "bin",
                        "item_source_no",
                        "item_pack_id",
@@ -2260,7 +2220,7 @@ $.filterOptionsS3({
             # This Shipment relates to a request
             # - show the req_item comments
             list_fields.append("req_item_id$comments")
-        if settings.get_inv_track_pack_values():
+        if settings.get_supply_track_pack_values():
             list_fields.extend(("currency",
                                 "pack_value",
                                 ))
@@ -2410,8 +2370,8 @@ $.filterOptionsS3({
         record = table[r.id]
         recv_ref = record.recv_ref
         list_fields = ["item_id",
-                       (T("Weight (kg)"), "item_id$weight"),
-                       (T("Volume (m3)"), "item_id$volume"),
+                       (T("Weight (kg)"), "item_pack_id$weight"),
+                       (T("Volume (m3)"), "item_pack_id$volume"),
                        "item_source_no",
                        "item_pack_id",
                        "quantity",
@@ -3886,7 +3846,7 @@ class InventoryAdjustModel(DataModel):
         auth = current.auth
 
         settings = current.deployment_settings
-        track_pack_values = settings.get_inv_track_pack_values()
+        track_pack_values = settings.get_supply_track_pack_values()
 
         organisation_id = self.org_organisation_id
         org_site_represent = self.org_site_represent
@@ -3961,7 +3921,7 @@ class InventoryAdjustModel(DataModel):
                             inv_adj_item = "adj_id",
                             )
 
-        # Reusable Field
+        # Foreign Key Template
         adj_id = FieldTemplate("adj_id", "reference %s" % tablename,
                                label = T("Inventory Adjustment"),
                                ondelete = "RESTRICT",
@@ -4099,7 +4059,7 @@ class InventoryAdjustModel(DataModel):
                      CommentsField(),
                      )
 
-        # Reusable Field
+        # Foreign Key Template
         adj_item_id = FieldTemplate("adj_item_id", "reference %s" % tablename,
                                     label = T("Inventory Adjustment Item"),
                                     ondelete = "RESTRICT",
@@ -4273,19 +4233,19 @@ def inv_item_total_weight(row):
         inv_item = row
 
     try:
-        supply_item = getattr(row, "supply_item")
-        weight = supply_item.weight
+        supply_item_pack = getattr(row, "supply_item_pack")
+        weight = supply_item_pack.weight
     except AttributeError:
-        # Need to load the supply item
+        # Need to load the supply item pack
         # Avoid this by adding to extra_fields
         itable = current.s3db.inv_inv_item
-        stable = current.s3db.supply_item
+        ptable = current.s3db.supply_item_pack
         query = (itable.id == inv_item.id) & \
-                (itable.item_id == stable.id)
-        supply_item = current.db(query).select(stable.weight,
-                                               limitby = (0, 1),
-                                               ).first()
-        weight = supply_item.weight if supply_item else None
+                (itable.item_pack_id == ptable.id)
+        supply_item_pack = current.db(query).select(ptable.weight,
+                                                    limitby = (0, 1),
+                                                    ).first()
+        weight = supply_item_pack.weight if supply_item_pack else None
 
     if weight is None:
         return current.messages["NONE"]
@@ -4302,22 +4262,7 @@ def inv_item_total_weight(row):
                                             ).first()
         quantity = inv_item.quantity
 
-    try:
-        supply_item_pack = getattr(row, "supply_item_pack")
-        pack_quantity = supply_item_pack.quantity
-    except AttributeError:
-        # Need to load the supply item pack
-        # Avoid this by adding to extra_fields
-        itable = current.s3db.inv_inv_item
-        ptable = current.s3db.supply_item_pack
-        query = (itable.id == inv_item.id) & \
-                (itable.item_pack_id == ptable.id)
-        supply_item_pack = current.db(query).select(ptable.quantity,
-                                                    limitby = (0, 1),
-                                                    ).first()
-        pack_quantity = supply_item_pack.quantity
-
-    return round(quantity * pack_quantity * weight, 3)
+    return round(quantity * weight, 3)
 
 # -----------------------------------------------------------------------------
 def inv_item_total_volume(row):
@@ -4334,19 +4279,19 @@ def inv_item_total_volume(row):
         inv_item = row
 
     try:
-        supply_item = getattr(row, "supply_item")
-        volume = supply_item.volume
+        supply_item_pack = getattr(row, "supply_item_pack")
+        volume = supply_item_pack.volume
     except AttributeError:
-        # Need to load the supply item
+        # Need to load the supply item pack
         # Avoid this by adding to extra_fields
         itable = current.s3db.inv_inv_item
-        stable = current.s3db.supply_item
+        ptable = current.s3db.supply_item_pack
         query = (itable.id == inv_item.id) & \
-                (itable.item_id == stable.id)
-        supply_item = current.db(query).select(stable.volume,
-                                               limitby = (0, 1),
-                                               ).first()
-        volume = supply_item.volume if supply_item else None
+                (itable.item_pack_id == ptable.id)
+        supply_item_pack = current.db(query).select(ptable.volume,
+                                                    limitby = (0, 1),
+                                                    ).first()
+        volume = supply_item_pack.volume if supply_item_pack else None
 
     if volume is None:
         return current.messages["NONE"]
@@ -4363,22 +4308,7 @@ def inv_item_total_volume(row):
                                             ).first()
         quantity = inv_item.quantity
 
-    try:
-        supply_item_pack = getattr(row, "supply_item_pack")
-        pack_quantity = supply_item_pack.quantity
-    except AttributeError:
-        # Need to load the supply item pack
-        # Avoid this by adding to extra_fields
-        itable = current.s3db.inv_inv_item
-        ptable = current.s3db.supply_item_pack
-        query = (itable.id == inv_item.id) & \
-                (itable.item_pack_id == ptable.id)
-        supply_item_pack = current.db(query).select(ptable.quantity,
-                                                    limitby = (0, 1),
-                                                    ).first()
-        pack_quantity = supply_item_pack.quantity
-
-    return round(quantity * pack_quantity * volume, 2)
+    return round(quantity * volume, 2)
 
 # -----------------------------------------------------------------------------
 def inv_stock_movements(resource, selectors, orderby):
@@ -4481,8 +4411,7 @@ def inv_stock_movements(resource, selectors, orderby):
             if raw["inv_recv.date"] > latest:
                 item_data["quantity_in_after"] += quantity_in
                 continue
-            else:
-                item_data["quantity_in"] += quantity_in
+            item_data["quantity_in"] += quantity_in
         # Origin sites
         sites = item_data["sites"]
         from_site = raw["inv_recv.from_site_id"]
@@ -4524,8 +4453,7 @@ def inv_stock_movements(resource, selectors, orderby):
             if send_date and send_date > latest:
                 item_data["quantity_out_after"] += quantity_in
                 continue
-            else:
-                item_data["quantity_out"] += quantity_in
+            item_data["quantity_out"] += quantity_in
         # Destination sites
         sites = item_data["sites"]
         to_site = raw["inv_send.to_site_id"]
@@ -4745,7 +4673,7 @@ def inv_send_controller():
 
             elif r.component_name == "track_item":
                 record = r.record
-                values = current.deployment_settings.get_inv_track_pack_values()
+                values = current.deployment_settings.get_supply_track_pack_values()
                 if status in (SHIP_STATUS_RECEIVED, SHIP_STATUS_CANCEL):
                     list_fields = ["status",
                                    "item_id",
@@ -5157,7 +5085,7 @@ class inv_InvItemRepresent(S3Represent):
 
     def __init__(self):
 
-        super(inv_InvItemRepresent, self).__init__(lookup = "inv_inv_item")
+        super().__init__(lookup = "inv_inv_item")
 
     # -------------------------------------------------------------------------
     def lookup_rows(self, key, values, fields=None):

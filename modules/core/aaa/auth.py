@@ -1,7 +1,7 @@
 """
     Authentication and Authorization
 
-    Copyright: (c) 2010-2022 Sahana Software Foundation
+    Copyright: (c) 2010 Sahana Software Foundation
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -28,6 +28,7 @@
 __all__ = ("AuthS3",
            )
 
+import binascii
 import json
 import time
 
@@ -42,18 +43,19 @@ from gluon.storage import Storage
 from gluon.tools import Auth, callback, DEFAULT, replace_id
 from gluon.utils import web2py_uuid
 
-from s3dal import Row, Rows, Query, Field, original_tablename
+from s3dal import Row, Rows, Query, Field, original_tablename, filter_fields
 
 from ..controller import CRUDRequest
 from ..model import MetaFields, CommentsField
 from ..tools import IS_ISO639_2_LANGUAGE_CODE, S3Represent, S3Tracker, \
                     s3_addrow, s3_mark_required, s3_str
 
+from .lock import AccountLockingMixin
 from .permissions import S3Permission
 from .consent import ConsentTracking
 
 # =============================================================================
-class AuthS3(Auth):
+class AuthS3(AccountLockingMixin, Auth):
     """
         S3 extensions of the gluon.tools.Auth class
 
@@ -114,9 +116,9 @@ class AuthS3(Auth):
             - s3_has_permission
             - s3_accessible_query
 
-        - S3 variants of web2py authorization methods:
-            - s3_has_membership
-            - s3_requires_membership
+        - S3 overrides of web2py authorization methods:
+            - has_membership (with deleted flag support)
+            - requires_membership
 
         - S3 record ownership methods:
             - s3_make_session_owner
@@ -190,7 +192,7 @@ No action is required."""
         messages.registration_disabled = "Registration Disabled!"
         messages.registration_verifying = "You haven't yet Verified your account - please check your email"
         messages.reset_password = "Click on the link %(url)s to reset your password"
-        messages.verify_email = "Click on the link %(url)s to verify your email"
+        messages.verify_email = "Click on the link %(url)s to verify your email.\n\nYou activation code is: %(code)s"
         messages.verify_email_subject = "%(system_name)s - Verify Email"
         messages.welcome_email_subject = "Welcome to %(system_name)s"
         messages.welcome_email = \
@@ -198,6 +200,23 @@ No action is required."""
  - You can start using %(system_name)s at: %(url)s
  - To edit your profile go to: %(url)s%(profile)s
 Thank you"""
+        messages.locked_email_subject = "%(system_name)s - Account Locked"
+        messages.locked_email = \
+"""Your account on %(system_name)s has been locked due to excessive failed login attempts.
+ - Please change your password at your earliest convenience.
+ Thank you"""
+        messages.unlocked_email_subject = "%(system_name)s - Account Unlocked"
+        messages.unlocked_email = \
+"""Your account on %(system_name)s has been unlocked.
+ - You can now log in again.
+ Thank you"""
+
+        # Log messages
+        messages.user_disabled_log = "User %(user_id)s disabled"
+        messages.user_enabled_log = "User %(user_id)s (re-)enabled"
+        messages.user_approved_log = "User %(user_id)s approved"
+        messages.user_locked_log = "User %%(%s)s locked due to excessive failed login attempts" % settings.login_userfield
+        messages.login_attempts_exceeded = "Login attempts exceeded"
 
         # Optional log messages
         if log_failed_logins:
@@ -293,6 +312,15 @@ Thank you"""
                       readable=False, writable=False),
                 Field("reset_password_key", length=512,
                       default="",
+                      readable=False, writable=False),
+                Field("locked", "boolean",
+                      default=False,
+                      readable=False, writable=False),
+                Field("failed_attempts", "integer",
+                      default=0,
+                      readable=False, writable=False),
+                Field("locked_until", "datetime",
+                      default=None,
                       readable=False, writable=False),
                 Field("deleted", "boolean",
                       default=False,
@@ -488,6 +516,7 @@ Thank you"""
         """
             Logs user in
                 - extended to understand session.s3.roles
+                - extended to handle login failures
         """
 
         self.ignore_min_password_length()
@@ -500,16 +529,22 @@ Thank you"""
 
         query = (utable[userfield] == username)
         user = current.db(query).select(limitby=(0, 1)).first()
-        password = utable[passfield].validate(password)[0]
-        if user:
-            if not user.registration_key and user[passfield] == password:
-                user = Storage(utable._filter_fields(user, id=True))
+
+        if user and not user.registration_key:
+            password = utable[passfield].validate(password)[0]
+            if user[passfield] == password:
+                user = Storage(filter_fields(utable, user, allow_id=True))
                 current.session.auth = Storage(user = user,
                                                last_visit = current.request.now,
-                                               expiration = settings.expiration)
+                                               expiration = settings.expiration,
+                                               )
+                self.unlock_user(user)
                 self.user = user
                 self.s3_set_roles()
                 return user
+            else:
+                self.handle_failed_login(user=user)
+
         return False
 
     # -------------------------------------------------------------------------
@@ -621,7 +656,7 @@ Thank you"""
 
             form = SQLFORM(utable,
                            fields = [userfield, passfield],
-                           hidden = {"_next": request.vars._next},
+                           hidden = {"_next": self.get_vars_next()},
                            showid = settings.showid,
                            submit_button = T("Login"),
                            delete_label = messages.delete_label,
@@ -697,7 +732,6 @@ Thank you"""
 
                 # Check for username in db
                 existing = None
-
                 query = (utable[userfield] == form.vars[userfield])
                 user = db(query).select(limitby=(0, 1)).first()
 
@@ -705,15 +739,28 @@ Thank you"""
                     # User in db
                     existing = temp_user = user
 
-                    # Check if registration pending or account disabled
-                    if temp_user.registration_key == "pending":
+                    # Check if login is permitted
+                    if self.is_user_locked(temp_user):
+                        # Account is locked due to too many failed login attempts
+                        self.handle_failed_login(user=temp_user)
+                        response.error = messages.login_attempts_exceeded
+                        response.error_code = 423
+                        return form
+
+                    from .lock import LOCKED
+                    registration_key = temp_user.registration_key
+                    if registration_key == "pending":
+                        # Account is verified, but pending approval
                         response.warning = deployment_settings.get_auth_registration_pending()
                         return form
-                    elif temp_user.registration_key in ("disabled", "blocked"):
+                    elif registration_key in ("disabled", "blocked"):
+                        # Account has been disabled|blocked by ADMIN
                         response.error = messages.login_disabled
                         return form
-                    elif not temp_user.registration_key is None and \
-                             temp_user.registration_key.strip():
+                    elif registration_key is not None and \
+                         registration_key != LOCKED and \
+                         registration_key.strip():
+                        # Account has not yet been verified
                         response.warning = messages.registration_verifying
                         return form
 
@@ -765,6 +812,11 @@ Thank you"""
                     if existing or settings.log_all_failed_logins:
                         self.log_event(messages.login_failed_log, request.post_vars)
                     session.error = messages.invalid_login
+
+                    # Handle failed login attempts
+                    if existing:
+                        self.handle_failed_login(user=existing)
+
                     if inline:
                         # If inline, stay on the same page
                         next_url = URL(args=request.args,
@@ -789,19 +841,19 @@ Thank you"""
                          ]
                 else:
                     settings.register_onaccept = self.s3_register_onaccept
-                user = self.get_or_create_user(utable._filter_fields(cas_user))
+                user = self.get_or_create_user(filter_fields(utable, cas_user))
             elif hasattr(cas, "login_form"):
                 return cas.login_form()
             else:
                 # We need to pass through login again before going on
                 if next is DEFAULT:
-                    next = request.vars._next or deployment_settings.get_auth_login_next()
+                    next = self.get_vars_next() or deployment_settings.get_auth_login_next()
                 next = "%s?_next=%s" % (URL(r=request), next)
                 redirect(cas.login_url(next))
 
         # Process authenticated users
         if user:
-            user = Storage(utable._filter_fields(user, id=True))
+            user = Storage(filter_fields(utable, user, allow_id=True))
             self.login_user(user)
         if log and self.user:
             self.log_event(log, self.user)
@@ -831,7 +883,7 @@ Thank you"""
                     if callable(next):
                         next = next()
                 else:
-                    next = request.vars.get("_next")
+                    next = self.get_vars_next()
                     if not next:
                         next = deployment_settings.get_auth_login_next()
                         if callable(next):
@@ -1016,7 +1068,7 @@ Thank you"""
                    })
             session.flash = messages.password_changed
             if settings.login_after_password_change:
-                user = Storage(table_user._filter_fields(user, id=True))
+                user = Storage(filter_fields(table_user, user, allow_id=True))
                 self.login_user(user)
             callback(onaccept, form)
             redirect(next, client_side=settings.client_side)
@@ -1132,11 +1184,15 @@ Thank you"""
             remember = "remember" in req_vars,
             hmac_key = web2py_uuid()
             )
+
         self.user = user
         self.s3_set_roles()
 
         # Set a Cookie to present user with login box by default
         self.set_cookie()
+
+        # If the user had been locked, unlock them now
+        self.unlock_user(user)
 
         # Read their language from the Profile
         language = user.language
@@ -1215,18 +1271,17 @@ Thank you"""
 
         T = current.T
 
-        request = current.request
         response = current.response
         session = current.session
         settings = current.deployment_settings
 
-        next_url = request.get_vars.get("_next")
+        next_url = current.auth.get_vars_next()
         if not next_url:
             next_url = settings.get_auth_login_next()
             if callable(next_url):
                 next_url = next_url()
         if not next_url:
-            next_url = URL(c = "default", f = "index")
+            next_url = URL(c="default", f="index")
 
         session.s3.pending_consent = False
 
@@ -1279,7 +1334,7 @@ Thank you"""
         response.form_label_separator = ""
         form = SQLFORM.factory(table_name = "auth_consent",
                                record = None,
-                               hidden = {"_next": request.vars._next},
+                               hidden = {"_next": self.get_vars_next()},
                                labels = labels,
                                separator = "",
                                showid = False,
@@ -1358,7 +1413,7 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
             redirect(settings.logged_url)
 
         if next == DEFAULT:
-            next = request.vars._next or settings.register_next
+            next = self.get_vars_next() or settings.register_next
         if onvalidation == DEFAULT:
             onvalidation = settings.register_onvalidation
         if onaccept == DEFAULT:
@@ -1383,7 +1438,7 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                    ]
         current.response.form_label_separator = ""
         form = SQLFORM(utable,
-                       hidden = {"_next": request.vars._next},
+                       hidden = {"_next": self.get_vars_next()},
                        labels = labels,
                        separator = "",
                        showid = settings.showid,
@@ -1526,7 +1581,11 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
         if settings.captcha != None:
             form[0].insert(-1, DIV("", settings.captcha, ""))
 
-        utable.registration_key.default = key = str(uuid4())
+        # Set default registration key, so new users are prevented
+        # from logging in until approved
+        key = str(uuid4())
+        code = uuid4().hex[-6:].upper()
+        utable.registration_key.default = self.keyhash(key, code)
 
         if form.accepts(request.vars, session, formname="register",
                         onvalidation=onvalidation):
@@ -1549,30 +1608,40 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                 if "language" not in form.vars:
                     # Was missing from login form
                     form.vars.language = T.accepted_language
-                user = Storage(utable._filter_fields(form.vars, id=True))
+                user = Storage(filter_fields(utable, form.vars, allow_id=True))
                 self.login_user(user)
 
                 self.s3_send_welcome_email(form.vars)
 
             elif settings.registration_requires_verification:
-                # Send the Verification email
+                # Request User Verify their Email
+                # System Details for Verification Email
+                verify_url = URL(c = "default",
+                                 f = "user",
+                                 args = ["verify_email", key],
+                                 scheme = "https" if request.is_https else "http",
+                                 )
+                system = {"system_name": deployment_settings.get_system_name(),
+                          "url": verify_url,
+                          "code": code,
+                          }
+
+                # Try to send the Verification Email
                 if not settings.mailer or \
                    not settings.mailer.settings.server or \
                    not settings.mailer.send(to = form.vars.email,
-                                            subject = messages.verify_email_subject % \
-    {"system_name": deployment_settings.get_system_name()},
-                                            message = messages.verify_email % \
-            {"url": "%s/default/user/verify_email/%s" % \
-                (current.response.s3.base_url, key)}):
+                                            subject = str(messages.verify_email_subject % system),
+                                            message = str(messages.verify_email % system),
+                                            ):
                     current.response.error = messages.email_verification_failed
                     return form
+
                 # @ToDo: Deployment Setting?
                 #session.confirmation = messages.email_sent
                 next = URL(c="default", f="message",
                            args = ["verify_email_sent"],
                            vars = {"email": form.vars.email},
                            )
-
             else:
                 # Does the user need to be approved?
                 approved = self.s3_verify_user(form.vars)
@@ -1582,7 +1651,7 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                     if "language" not in form.vars:
                         # Was missing from login form
                         form.vars.language = T.accepted_language
-                    user = Storage(utable._filter_fields(form.vars, id=True))
+                    user = Storage(filter_fields(utable, form.vars, allow_id=True))
                     self.login_user(user)
 
             # Set a Cookie to present user with login box by default
@@ -1623,8 +1692,8 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
 
         message = self.messages.reset_password % {"url": reset_password_url}
         if mailer.send(to = user.email,
-                       subject = self.messages.reset_password_subject,
-                       message = message):
+                       subject = str(self.messages.reset_password_subject),
+                       message = str(message)):
             user.update_record(reset_password_key = reset_password_key)
             return True
 
@@ -1676,40 +1745,114 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
     # -------------------------------------------------------------------------
     def verify_email(self, next=DEFAULT, log=DEFAULT):
         """
-            Action when user clicks the link in the verification email
+            Dialog to verify the email address of a user; presents
+            a form to enter the activation code that has been sent
+            with the verification email
+
+            Args:
+                next: the URL to redirect to after processing
+                log: the log message for the event
+
+            Returns:
+                FORM
         """
 
-        settings = self.settings
+        T = current.T
+
         request = current.request
+        response = current.response
+        session = current.session
+
+        settings = current.deployment_settings
 
         # Customise the resource
-        customise = current.deployment_settings.customise_resource("auth_user")
+        customise = settings.customise_resource("auth_user")
         if customise:
             customise(request, "auth_user")
 
-        key = request.args[-1]
-        utable = settings.table_user
-        query = (utable.registration_key == key)
-        user = current.db(query).select(limitby=(0, 1)).first()
-        if not user:
-            redirect(settings.verify_email_next)
+        # Get the registration key
+        if request.env.request_method == "POST":
+            key = request.post_vars.registration_key
+        elif len(request.args) > 1:
+            key = request.args[-1]
+        else:
+            key = None
+        if not key:
+            session.error = T("Missing registration key")
+            redirect(URL(c="default", f="index"))
 
-        if log == DEFAULT:
-            log = self.messages.verify_email_log
-        if next == DEFAULT:
-            next = settings.verify_email_next
+        formfields = [Field("activation_code",
+                            label = T("Please enter your Activation Code"),
+                            requires = IS_NOT_EMPTY(),
+                            ),
+                      ]
 
-        approved = self.s3_verify_user(user)
+        # Construct the form
+        response.form_label_separator = ""
+        form = SQLFORM.factory(table_name = "auth_user",
+                               record = None,
+                               hidden = {"_next": self.get_vars_next(),
+                                         "registration_key": key,
+                                         },
+                               separator = ":",
+                               showid = False,
+                               submit_button = T("Submit"),
+                               formstyle = settings.get_ui_formstyle(),
+                               #buttons = buttons,
+                               *formfields)
 
-        if approved:
-            # Log them in
-            user = Storage(utable._filter_fields(user, id=True))
-            self.login_user(user)
+        if form.accepts(request.vars,
+                        session,
+                        formname = "register_confirm",
+                        ):
 
-        if log:
-            self.log_event(log, user)
+            auth_settings = self.settings
 
-        redirect(next)
+            # Get registration key from URL
+            code = form.vars.activation_code
+
+            # Find the pending user account
+            utable = auth_settings.table_user
+            query = (utable.registration_key == self.keyhash(key, code))
+            user = current.db(query).select(limitby=(0, 1)).first()
+            if not user:
+                session.error = T("Registration not found")
+                redirect(auth_settings.verify_email_next)
+
+            if log == DEFAULT:
+                log = self.messages.verify_email_log
+            if next == DEFAULT:
+                next = auth_settings.verify_email_next
+
+            approved = self.s3_verify_user(user)
+            if approved:
+                # Log them in
+                user = Storage(filter_fields(utable, user, allow_id=True))
+                self.login_user(user)
+            if log:
+                self.log_event(log, user)
+
+            redirect(next)
+
+        return form
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def keyhash(key, code):
+        """
+            Generate a hash of the activation code using
+            the registration key
+
+            Args:
+                key: the registration key
+                code: the activation code
+
+            Returns:
+                the hash as string
+        """
+
+        crypt = CRYPT(key=key, digest_alg="sha512", salt=None)
+        return str(crypt(code.upper())[0])
 
     # -------------------------------------------------------------------------
     def profile(self,
@@ -1746,11 +1889,8 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
         ## Only allowed to select Orgs that the user has update access to
         #utable.organisation_id.requires = \
         #    current.s3db.org_organisation_requires(updateable = True)
-
         if next == DEFAULT:
-            next = request.get_vars._next \
-                or request.post_vars._next \
-                or settings.profile_next
+            next = self.get_vars_next() or settings.profile_next
         if onvalidation == DEFAULT:
             onvalidation = settings.profile_onvalidation
         if onaccept == DEFAULT:
@@ -1785,7 +1925,7 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                         onvalidation=onvalidation,
                         hideerror=settings.hideerror):
             #self.s3_auth_user_register_onaccept(form.vars.email, self.user.id)
-            self.user.update(utable._filter_fields(form.vars))
+            self.user.update(filter_fields(utable, form.vars))
             session.flash = messages.profile_updated
             if log:
                 self.log_event(log, self.user)
@@ -1838,8 +1978,6 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                         i.e. org_admin coming from admin.py/user()
         """
 
-        from ..tools import IS_ONE_OF
-
         T = current.T
         db = current.db
         s3db = current.s3db
@@ -1849,11 +1987,11 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
         settings = self.settings
         deployment_settings = current.deployment_settings
 
-        if deployment_settings.get_ui_multiselect_widget():
-            from ..ui import S3MultiSelectWidget
-            multiselect_widget = True
-        else:
-            multiselect_widget = False
+        from ..tools import IS_ONE_OF
+        from ..ui import S3MultiSelectWidget
+
+        # Should we use multi-select widgets rather than simple dropdowns?
+        multiselect_widget = bool(deployment_settings.get_ui_multiselect_widget())
 
         utable = self.settings.table_user
 
@@ -1952,13 +2090,13 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                 organisation_id.requires = IS_EMPTY_OR(requires)
 
             if deployment_settings.get_auth_registration_organisation_link_create():
-                from s3layouts import S3PopupLink
+                from core.ui.layouts import PopupLink
                 org_crud_strings = s3db.crud_strings["org_organisation"]
-                organisation_id.comment = S3PopupLink(c = "org",
-                                                      f = "organisation",
-                                                      label = org_crud_strings.label_create,
-                                                      title = org_crud_strings.title_list,
-                                                      )
+                organisation_id.comment = PopupLink(c = "org",
+                                                    f = "organisation",
+                                                    label = org_crud_strings.label_create,
+                                                    title = org_crud_strings.title_list,
+                                                    )
                 #from ..ui import S3OrganisationAutocompleteWidget
                 #organisation_id.widget = S3OrganisationAutocompleteWidget()
                 #organisation_id.comment = DIV(_class="tooltip",
@@ -1986,13 +2124,13 @@ $('form.auth_consent').submit(S3ClearNavigateAwayConfirm);''')
                 org_group_id.requires = requires
             else:
                 org_group_id.requires = IS_EMPTY_OR(requires)
-            #from s3layouts import S3PopupLink
+            #from core.ui.layouts import PopupLink
             #ogroup_crud_strings = s3db.crud_strings["org_group"]
-            #org_group_id.comment = S3PopupLink(c = "org",
-            #                                   f = "group",
-            #                                   label = ogroup_crud_strings.label_create,
-            #                                   title = ogroup_crud_strings.title_list,
-            #                                   )
+            #org_group_id.comment = PopupLink(c = "org",
+            #                                 f = "group",
+            #                                 label = ogroup_crud_strings.label_create,
+            #                                 title = ogroup_crud_strings.title_list,
+            #                                 )
             if multiselect_widget:
                 org_group_id.widget = S3MultiSelectWidget(multiple=False)
 
@@ -2715,7 +2853,7 @@ Please go to %(url)s to approve this user."""
         return approved
 
     # -------------------------------------------------------------------------
-    def s3_approve_user(self, user, password=None):
+    def s3_approve_user(self, user, password=None, defaults=False):
         """
             Adds user to the 'Authenticated' role, and any default roles
 
@@ -2737,21 +2875,29 @@ Please go to %(url)s to approve this user."""
 
         db = current.db
         s3db = current.s3db
+
         deployment_settings = current.deployment_settings
         settings = self.settings
 
-        utable = settings.table_user
+        sr = self.get_system_roles()
 
-        # Add to 'Authenticated' role
-        authenticated = self.id_group("Authenticated")
+        # Add to AUTHENTICATED role
         add_membership = self.add_membership
-        add_membership(authenticated, user_id)
+        add_membership(sr.AUTHENTICATED, user_id)
+
+        # Reload the user record if any details are missing
+        utable = settings.table_user
+        fields = ("id", "email", "organisation_id", "org_group_id", "site_id", "link_user_to")
+        if any(fn not in user for fn in fields):
+            user = db(utable.id == user_id).select(*fields, limitby=(0, 1)).first()
+        if not user:
+            return
 
         organisation_id = user.organisation_id
+        link_user_to = user.link_user_to or utable.link_user_to.default or []
 
         # Add User to required registration roles
         entity_roles = deployment_settings.get_auth_registration_roles()
-        link_user_to = user.link_user_to or utable.link_user_to.default or []
         if entity_roles:
             gtable = settings.table_group
             get_pe_id = s3db.pr_get_pe_id
@@ -2775,41 +2921,40 @@ Please go to %(url)s to approve this user."""
 
         if organisation_id and \
            deployment_settings.get_auth_org_admin_to_first():
-            # If this is the 1st user to register for an Org, give them ORG_ADMIN for that Org
+            # If this is the 1st user to register for an organisation, give
+            # them the OrgAdmin role for that organisation
             entity = s3db.pr_get_pe_id("org_organisation", organisation_id)
-            gtable = settings.table_group
-            ORG_ADMIN = db(gtable.uuid == "ORG_ADMIN").select(gtable.id,
-                                                              limitby=(0, 1)
-                                                              ).first().id
-            mtable = settings.table_membership
-            query = (mtable.group_id == ORG_ADMIN) & \
-                    (mtable.pe_id == entity)
-            exists = db(query).select(mtable.id,
-                                      limitby=(0, 1))
-            if not exists:
-                add_membership(ORG_ADMIN, user_id, entity=entity)
 
+            # We only need to check whether there is an OrgAdmin yet, because
+            # if there were any other user for this organisation, they would
+            # necessarily be OrgAdmin due to this rule
+            mtable = settings.table_membership
+            query = (mtable.group_id == sr.ORG_ADMIN) & \
+                    (mtable.pe_id == entity)
+            if not db(query).select(mtable.id, limitby=(0, 1)).first():
+                # No OrgAdmin yet
+                add_membership(sr.ORG_ADMIN, user_id, entity=entity)
+
+        # Link user to person, staff and other records as required
         self.s3_link_user(user)
 
         # Track consent
         if deployment_settings.get_auth_consent_tracking():
             ConsentTracking.register_consent(user_id)
 
-        user_email = db(utable.id == user_id).select(utable.email,
-                                                     ).first().email
-        self.s3_auth_user_register_onaccept(user_email, user_id)
+        # Run any custom on-approval routines
+        self.s3_auth_user_register_onaccept(user.email, user_id)
 
         if current.response.s3.bulk is True:
             # Non-interactive imports should stop here
             return
 
-        # Allow them to login
-        db(utable.id == user_id).update(registration_key = "")
+        # Allow them to login (enable the account)
+        db(utable.id == user_id).update(registration_key="")
 
-        # Approve User's Organisation
+        # Approve User's Organisation (if they created a new one during registration)
         if organisation_id and \
-           "org_organisation" in \
-           deployment_settings.get_auth_record_approval_required_for():
+           "org_organisation" in deployment_settings.get_auth_record_approval_required_for():
             org_resource = s3db.resource("org_organisation",
                                          organisation_id,
                                          # Do not re-approve (would
@@ -3057,6 +3202,8 @@ Please go to %(url)s to approve this user."""
                     other = db(ltable.pe_id == person.pe_id).select(ltable.id,
                                                                     limitby=(0, 1),
                                                                     ).first()
+                else:
+                    other = None
 
                 if person and not other:
                     # Match found, and it isn't linked to another user account
@@ -3131,6 +3278,7 @@ Please go to %(url)s to approve this user."""
                                               entity=realm_entity,
                                               )
                         owner.realm_entity = realm_entity
+                        s3db.onaccept(ptable, person, method="create")
 
                         # Insert a link
                         ltable.insert(user_id=user.id, pe_id=pe_id)
@@ -3338,20 +3486,9 @@ Please go to %(url)s to approve this user."""
         htablename = "hrm_human_resource"
         htable = s3db.table(htablename)
 
-        if not htable or (not organisation_id and \
-                          settings.get_hrm_org_required()):
+        if not htable or (not organisation_id and settings.get_hrm_org_required()):
             # Module disabled or no user organisation set
             return None
-
-        def customise(hr_id):
-            """ Customise hrm_human_resource """
-            customise = settings.customise_resource(htablename)
-            if customise:
-                request = CRUDRequest("hrm", "human_resource",
-                                      current.request,
-                                      args = [str(hr_id)] if hr_id else [],
-                                      )
-                customise(request, htablename)
 
         # Determine the site ID
         site_id = user.site_id if hr_type == 1 else None
@@ -3375,7 +3512,6 @@ Please go to %(url)s to approve this user."""
             hr_id = record.id
 
             # Update the record
-            customise(hr_id)
             db(htable.id == hr_id).update(organisation_id = organisation_id,
                                           site_id = site_id,
                                           )
@@ -3391,11 +3527,10 @@ Please go to %(url)s to approve this user."""
                                      )
         else:
             # Multiple or no HR records of this type
-
             if rows:
                 # Multiple records
                 # => check if there is one for this organisation and site
-                if type(person_id) is list:
+                if isinstance(person_id, list):
                     person_id = person_id[0]
                 query = (htable.person_id == person_id) & \
                         (htable.organisation_id == organisation_id) & \
@@ -3414,7 +3549,6 @@ Please go to %(url)s to approve this user."""
 
             else:
                 # Create new HR record
-                customise(hr_id = None)
                 record = Storage(person_id = person_id,
                                  organisation_id = organisation_id,
                                  site_id = site_id,
@@ -3435,6 +3569,14 @@ Please go to %(url)s to approve this user."""
             self.s3_set_record_owner(htable, hr_id, force_update=True)
 
             # Run onaccept
+            # - run resource customisation first to configure custom-callbacks
+            customise = settings.customise_resource(htablename)
+            if customise:
+                request = CRUDRequest("hrm", "human_resource",
+                                      current.request,
+                                      args = [str(hr_id)] if accepted=="update" else [],
+                                      )
+                customise(request, htablename)
             s3db.onaccept(htablename, record, method=accepted)
 
         return hr_id
@@ -3582,8 +3724,7 @@ Please go to %(url)s to approve this user."""
     def s3_send_welcome_email(self, user, password=None):
         """
             Send a welcome mail to newly-registered users
-                - suitable e.g. for users from Facebook/Google who don't
-                  verify their emails
+                - suitable e.g. for users from Google who don't verify their emails
 
             Args:
                 user: the user dict, must contain "email", and can
@@ -3598,7 +3739,8 @@ Please go to %(url)s to approve this user."""
 
         messages = self.messages
         if not settings.get_mail_sender():
-            current.response.error = messages.unable_send_email
+            # Email sender not configured, mail system disabled
+            current.response.warning = messages.unable_send_email
             return
 
         # Ensure that we send out the mails in the language that
@@ -3622,19 +3764,21 @@ Please go to %(url)s to approve this user."""
         # Restore language for UI
         T.force(current.session.s3.language)
 
-        recipient = user["email"]
-        if settings.has_module("msg"):
-            results = current.msg.send_email(recipient,
-                                             subject = subject,
-                                             message = message,
-                                             )
+        recipient = user.get("email")
+        if recipient:
+            if settings.has_module("msg"):
+                send_email = current.msg.send_email
+            else:
+                send_email = current.mail.send
+            result = send_email(recipient,
+                                subject = subject,
+                                message = message,
+                                )
         else:
-            results = current.mail.send(recipient,
-                                        subject = subject,
-                                        message = message,
-                                        )
-        if not results:
-            current.response.error = messages.unable_send_email
+            result = False
+
+        if not result:
+            current.response.warning = messages.unable_send_email
 
     # -------------------------------------------------------------------------
     def s3_password(self, length=32):
@@ -3720,7 +3864,7 @@ Please go to %(url)s to approve this user."""
             if not user:
                 # Invalid user ID
                 raise ValueError("User not found")
-            user = Storage(utable._filter_fields(user, id=True))
+            user = Storage(filter_fields(utable, user, allow_id=True))
 
         self.user = user
         session = current.session
@@ -3788,14 +3932,13 @@ Please go to %(url)s to approve this user."""
                     return success
 
             # Basic Auth (default)
-            basic = self.basic()
             try:
-                return basic[2]
-            except TypeError:
-                # old web2py
-                return basic
-            except:
+                basic = self.basic()
+            except binascii.Error:
+                # Credentials present but encoded incorrectly
                 return False
+
+            return basic[2] # accepted True|False
 
         return True
 
@@ -3934,6 +4077,14 @@ Please go to %(url)s to approve this user."""
 
             user_id = self.user.id
 
+            # Logout disabled/blocked users immediately
+            utable = self.settings.table_user
+            query = (utable.id == user_id) & \
+                    (utable.registration_key.belongs(("disabled", "blocked")))
+            if db(query).select(utable.id, limitby=(0, 1)).first():
+                session.renew(clear_session=True)
+                redirect(URL(c="default", f="index"))
+
             # Set pe_id for current user
             ltable = s3db.table("pr_person_user")
             if ltable is not None:
@@ -4015,8 +4166,7 @@ Please go to %(url)s to approve this user."""
                     descendants = s3db.pr_descendants(entities)
 
                     # Add the subsidiaries to the realms
-                    for group_id in realms:
-                        realm = realms[group_id]
+                    for group_id, realm in realms.items():
                         if realm is None:
                             continue
                         append = realm.append
@@ -4254,20 +4404,19 @@ Please go to %(url)s to approve this user."""
         mtable = self.settings.table_membership
 
         # Find the group IDs
-        query = None
+        query = group_ids = None
         if isinstance(group_id, (list, tuple)):
             if isinstance(group_id[0], str):
                 query = (gtable.uuid.belongs(group_id))
             else:
                 group_ids = group_id
-        elif isinstance(group_id, str):
-            query = (gtable.uuid == group_id)
         else:
-            group_ids = [group_id]
+            if isinstance(group_id, str):
+                query = (gtable.uuid == group_id)
+            else:
+                group_ids = {group_id}
         if query is not None:
-            query = (gtable.deleted == False) & query
-            groups = db(query).select(gtable.id)
-            group_ids = [g.id for g in groups]
+            group_ids = db(query & (gtable.deleted == False))._select(gtable.id)
 
         # Get the assigned groups
         query = (mtable.deleted == False) & \
@@ -4281,20 +4430,22 @@ Please go to %(url)s to approve this user."""
         if for_pe is not DEFAULT and for_pe != []:
             query &= ((mtable.pe_id == for_pe) | \
                       (mtable.group_id.belongs(unrestrictable)))
-        memberships = db(query).select()
+        memberships = db(query).select(mtable.id,
+                                       mtable.user_id,
+                                       mtable.group_id,
+                                       mtable.pe_id,
+                                       )
 
         # Archive the memberships
         for m in memberships:
-            deleted_fk = {"user_id": m.user_id,
-                          "group_id": m.group_id,
-                          }
+            deleted_fk = {"user_id": m.user_id, "group_id": m.group_id}
             if m.pe_id:
                 deleted_fk["pe_id"] = m.pe_id
-            deleted_fk = json.dumps(deleted_fk)
             m.update_record(deleted = True,
-                            deleted_fk = deleted_fk,
+                            deleted_fk = json.dumps(deleted_fk),
                             user_id = None,
                             group_id = None,
+                            pe_id = None,
                             )
 
         # Update roles for current user if required
@@ -4618,8 +4769,9 @@ Please go to %(url)s to approve this user."""
                 pass
             else:
                 row = current.db(query).select(htable.id,
-                                               orderby = ~htable.modified_on,
+                                               cache = s3db.cache,
                                                limitby = (0, 1),
+                                               orderby = ~htable.modified_on,
                                                ).first()
 
         return row.id if row else None
@@ -4781,42 +4933,72 @@ Please go to %(url)s to approve this user."""
     # -------------------------------------------------------------------------
     # S3 Variants of web2py Authorization Methods
     # -------------------------------------------------------------------------
-    def s3_has_membership(self, group_id=None, user_id=None, role=None):
+    def has_membership(self, group_id=None, user_id=None, role=None):
         """
             Checks if user is member of group_id or role
 
-            Extends Web2Py's requires_membership() to add new functionality:
+            Extends Web2Py's has_membership() to add:
+                - Respect for the deleted flag in auth_membership
                 - Custom Flash style
-                - Uses s3_has_role()
+
+            Args:
+                group_id: the group ID to check membership for
+                user_id: the user ID to check (defaults to current user)
+                role: the role name (alternative to group_id)
+
+            Returns:
+                True if the user is a member of the group, False otherwise
         """
 
         # Allow override
         if self.override:
             return True
 
+        # Determine user_id
+        if not user_id and self.user:
+            user_id = self.user.id
+        elif user_id:
+            # Validate the user_id: invalid user_id must not pass has_membership test
+            utable = self.table_user()
+            if not self.db(utable.id==user_id).select(utable.id, limitby=(0, 1)).first():
+                return False
+
+        # Resolve group_id from role if needed
+        # TODO support group UIDs (e.g. "ADMIN" instead of 1)
         group_id = group_id or self.id_group(role)
         try:
             group_id = int(group_id)
         except:
-            group_id = self.id_group(group_id) # interpret group_id as a role
+            group_id = self.id_group(group_id)  # interpret group_id as a role
 
-        has_role = self.s3_has_role(group_id)
+        ret = False
 
+        sr = self.get_system_roles()
+        if group_id == sr.ANONYMOUS:
+            # All users are members of the ANONYMOUS group
+            ret = True
+        elif group_id == sr.AUTHENTICATED and user_id:
+            # All registered users are members of the AUTHENTICATED group
+            ret = True
+        elif group_id and user_id:
+            membership = self.table_membership()
+            query = (membership.user_id == user_id) & \
+                    (membership.group_id == group_id) & \
+                    (membership.deleted == False)
+            if self.db(query).select(membership.id, limitby=(0, 1)).first():
+                ret = True
+
+        # Log the check
         log = self.messages.has_membership_log
         if log:
-            if not user_id and self.user:
-                user_id = self.user.id
             self.log_event(log, {"user_id": user_id,
                                  "group_id": group_id,
-                                 "check": has_role,
+                                 "check": ret,
                                  })
-        return has_role
-
-    # Override original method
-    has_membership = s3_has_membership
+        return ret
 
     # -------------------------------------------------------------------------
-    def s3_requires_membership(self, role):
+    def requires_membership(self, role):
         """
             Decorator that prevents access to action if not logged in or
             if user logged in is not a member of group_id. If role is
@@ -4846,9 +5028,6 @@ Please go to %(url)s to approve this user."""
             return f
 
         return decorator
-
-    # Override original method
-    requires_membership = s3_requires_membership
 
     # -------------------------------------------------------------------------
     # Record Ownership
@@ -4968,8 +5147,7 @@ Please go to %(url)s to approve this user."""
         else:
             record_id = record
 
-        data = dict((key, fields[key]) for key in fields
-                                       if key in ownership_fields)
+        data = {k: v for k, v in fields.items() if k in ownership_fields}
         if not data:
             return
 
@@ -5097,8 +5275,7 @@ Please go to %(url)s to approve this user."""
         if fields_missing:
             fields_to_load = [table._id] + [table[f] for f in fields_in_table]
             query = (table._id == record_id)
-            row = current.db(query).select(limitby=(0, 1),
-                                           *fields_to_load).first()
+            row = current.db(query).select(*fields_to_load, limitby=(0, 1)).first()
         else:
             row = record
         if not row:
@@ -5158,12 +5335,8 @@ Please go to %(url)s to approve this user."""
             if REALM in row and row[REALM] and not force_update:
                 pass
             else:
-                if REALM in fields:
-                    entity = fields[REALM]
-                else:
-                    entity = 0
-                realm_entity = self.get_realm_entity(table, row,
-                                                     entity=entity)
+                entity = fields.get(REALM, 0)
+                realm_entity = self.get_realm_entity(table, row, entity=entity)
                 data[REALM] = realm_entity
 
         self.s3_update_record_owner(table, row, update=force_update, **data)
@@ -5360,12 +5533,12 @@ Please go to %(url)s to approve this user."""
         for se in super_entities:
             supertable = load(se)
             if not supertable or \
-               not any([f in supertable.fields for f in data]):
+               not any(f in supertable.fields for f in data):
                 continue
             tables[super_key(supertable)] = supertable
 
         if not isinstance(record, (Row, dict)) or \
-           any([f not in record for f in tables]):
+           any(f not in record for f in tables):
             if isinstance(record, Query):
                 query = record
                 limitby = None
@@ -5383,14 +5556,12 @@ Please go to %(url)s to approve this user."""
             return
 
         for instance_record in instance_records:
-            for skey in tables:
-                supertable = tables[skey]
+            for skey, supertable in tables.items():
                 if skey in instance_record:
                     query = (supertable[skey] == instance_record[skey])
                 else:
                     continue
-                updates = dict((f, data[f])
-                               for f in data if f in supertable.fields)
+                updates = {f: v for f, v in data.items() if f in supertable.fields}
                 if not updates:
                     continue
                 db(query).update(**updates)

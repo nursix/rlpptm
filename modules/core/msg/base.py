@@ -2,7 +2,7 @@
     Messaging Framework
 
     API to send & receive messages:
-    - currently SMS, Email, RSS & Twitter
+    - currently SMS, Email, & RSS
 
     Messages get sent to the Outbox (& Log)
     From there, the Scheduler tasks collect them & send them
@@ -53,17 +53,12 @@ from urllib.parse import urlencode
 from gluon import current, redirect, IS_IN_SET
 from gluon.html import *
 
-from ..methods import S3CRUD
+from ..methods import BasicCRUD
 from ..tools import IS_ONE_OF, get_crud_string, s3_decode_iso_datetime, \
                     s3_str
-from ..ui import S3SQLDefaultForm, S3PentityAutocompleteWidget
+from ..ui import DefaultForm, S3PentityAutocompleteWidget
 
 PHONECHARS = string.digits
-TWITTERCHARS = "%s%s_" % (string.digits, string.ascii_letters)
-TWITTER_MAX_CHARS = 140
-TWITTER_HAS_NEXT_SUFFIX = u' \u2026'
-TWITTER_HAS_PREV_PREFIX = u'\u2026 '
-
 SENDER = re.compile(r"(.*)\s*\<(.+@.+)\>\s*")
 
 # =============================================================================
@@ -102,14 +97,12 @@ class S3Msg:
         MOBILE = current.deployment_settings.get_ui_label_mobile_phone()
         # Full range of contact options
         self.CONTACT_OPTS = {"EMAIL":       T("Email"),
-                             "FACEBOOK":    T("Facebook"),
                              "FAX":         T("Fax"),
                              "HOME_PHONE":  T("Home Phone"),
                              "RADIO":       T("Radio Callsign"),
                              "RSS":         T("RSS Feed"),
                              "SKYPE":       T("Skype"),
                              "SMS":         MOBILE,
-                             "TWITTER":     T("Twitter"),
                              "WHATSAPP":    T("WhatsApp"),
                              #"XMPP":       "XMPP",
                              #"WEB":        T("Website"),
@@ -126,8 +119,6 @@ class S3Msg:
         # NB Coded into hrm_map_popup & s3.msg.js
         self.MSG_CONTACT_OPTS = {"EMAIL":   T("Email"),
                                  "SMS":     MOBILE,
-                                 "TWITTER": T("Twitter"),
-                                 "FACEBOOK": T("Facebook"),
                                  #"XMPP":   "XMPP",
                                  }
 
@@ -250,9 +241,7 @@ class S3Msg:
             # Parse the Message
             reply_id = parser(function_name, message.message_id)
             # Update to show that we've parsed the message & provide a link to the reply
-            message.update_record(is_parsed = True,
-                                  reply_id = reply_id)
-        return
+            message.update_record(is_parsed=True, reply_id=reply_id)
 
     # =========================================================================
     # Outbound Messages
@@ -274,7 +263,7 @@ class S3Msg:
             Form to Compose a Message
 
             Args:
-                type: The default message type: None, EMAIL, SMS or TWITTER
+                type: The default message type: None, EMAIL, or SMS
                 recipient_type: Send to Persons or Groups? (pr_person or pr_group)
                 recipient: The pe_id of the person/group to send the message to
                               - this can also be set by setting one of
@@ -341,10 +330,7 @@ class S3Msg:
         """
 
         # Determine channel to send on based on format of recipient
-        if recipient.startswith("@"):
-            # Twitter
-            tablename = "msg_twitter"
-        elif "@" in recipient:
+        if "@" in recipient:
             # Email
             tablename = "msg_email"
         else:
@@ -403,16 +389,6 @@ class S3Msg:
 
         elif contact_method == "SMS":
             table = s3db.msg_sms
-            _id = table.insert(body = message,
-                               from_address = from_address,
-                               inbound = False,
-                               )
-            record = {"id": _id}
-            s3db.update_super(table, record)
-            message_id = record["message_id"]
-
-        elif contact_method == "TWITTER":
-            table = s3db.msg_twitter
             _id = table.insert(body = message,
                                from_address = from_address,
                                inbound = False,
@@ -495,8 +471,7 @@ class S3Msg:
                     # Raise exception here to make the scheduler
                     # task fail permanently until manually reset
                     raise ValueError("No SMS handler defined!")
-                else:
-                    return False
+                return False
 
             if len(rows) == 1:
                 lookup_org = False
@@ -513,16 +488,6 @@ class S3Msg:
                         {"outgoing_sms_handler": row["msg_channel.instance_type"],
                          "channel_id": row["msg_sms_outbound_gateway.channel_id"],
                          }
-
-        elif contact_method == "TWITTER":
-            twitter_settings = self.get_twitter_api()
-            if not twitter_settings:
-                if current.s3task._is_alive():
-                    # Raise exception here to make the scheduler
-                    # task fail permanently
-                    raise ValueError("No Twitter API available!")
-                else:
-                    return False
 
         def dispatch_to_pe_id(pe_id,
                               subject,
@@ -612,10 +577,6 @@ class S3Msg:
                                                        address,
                                                        message,
                                                        channel_id)
-
-                elif contact_method == "TWITTER":
-                    return self.send_tweet(message, address)
-
             return False
 
         outbox = s3db.msg_outbox
@@ -643,10 +604,6 @@ class S3Msg:
             fields.append(mailbox.body)
             if lookup_org:
                 fields.append(mailbox.organisation_id)
-            left.append(mailbox.on(mailbox.message_id == outbox.message_id))
-        elif contact_method == "TWITTER":
-            mailbox = s3db.msg_twitter
-            fields.append(mailbox.body)
             left.append(mailbox.on(mailbox.message_id == outbox.message_id))
         else:
             # @ToDo
@@ -749,11 +706,6 @@ class S3Msg:
                 from_address = None
                 if lookup_org:
                     organisation_id = row["msg_sms.organisation_id"]
-
-            elif contact_method == "TWITTER":
-                subject = None
-                message = row["msg_twitter.body"] or ""
-                from_address = None
 
             else:
                 # @ToDo
@@ -892,7 +844,7 @@ class S3Msg:
                 channel_id: The specific channel_id to use for GCM push
         """
 
-        if not title or not uri or not message or not len(registration_ids):
+        if not all((title, uri, message, registration_ids)):
             return
 
         from gcm import GCM
@@ -945,7 +897,6 @@ class S3Msg:
                    bcc = None,
                    reply_to = None,
                    sender = None,
-                   encoding = "utf-8",
                    from_address = None,
                    ):
         """
@@ -993,14 +944,13 @@ class S3Msg:
                 attachment.replace_header("Content-Disposition", header)
 
         result = current.mail.send(to,
-                                   subject = subject,
-                                   message = message,
+                                   subject = str(subject),
+                                   message = str(message),
                                    attachments = attachments,
                                    cc = cc,
                                    bcc = bcc,
                                    reply_to = reply_to,
                                    sender = sender,
-                                   encoding = encoding,
                                    # e.g. Return-Receipt-To:<user@domain>
                                    headers = {},
                                    from_address = from_address,
@@ -1212,8 +1162,9 @@ class S3Msg:
         query = urlencode(post_data)
         if sms_api.username and sms_api.password:
             # e.g. Mobile Commons
-            base64string = base64.encodestring("%s:%s" % (sms_api.username, sms_api.password)).replace("\n", "")
-            request.add_header("Authorization", "Basic %s" % base64string)
+            cred = ("%s:%s" % (sms_api.username, sms_api.password)).encode("utf-8")
+            base64string = base64.b64encode(cred).replace(b"\n", b"")
+            request.add_header("Authorization", "Basic %s" % base64string.decode("utf-8"))
         try:
             result = urlopen(request, query)
         except HTTPError as e:
@@ -1376,280 +1327,6 @@ class S3Msg:
                                   from_address = from_address,
                                   system_generated = system_generated,
                                   )
-
-    # -------------------------------------------------------------------------
-    # Twitter
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _sanitise_twitter_account(account):
-        """
-            Only keep characters that are legal for a twitter account:
-            letters, digits, and _
-        """
-
-        return "".join(c for c in account if c in TWITTERCHARS)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _break_to_chunks(text,
-                         chunk_size=TWITTER_MAX_CHARS,
-                         suffix = TWITTER_HAS_NEXT_SUFFIX,
-                         prefix = TWITTER_HAS_PREV_PREFIX):
-        """
-            Breaks text to <=chunk_size long chunks. Tries to do this at a space.
-            All chunks, except for last, end with suffix.
-            All chunks, except for first, start with prefix.
-        """
-
-        res = []
-        current_prefix = "" # first chunk has no prefix
-        while text:
-            if len(current_prefix + text) <= chunk_size:
-                res.append(current_prefix + text)
-                return res
-            else: # break a chunk
-                c = text[:chunk_size - len(current_prefix) - len(suffix)]
-                i = c.rfind(" ")
-                if i > 0: # got a blank
-                    c = c[:i]
-                text = text[len(c):].lstrip()
-                res.append(current_prefix + c.rstrip() + s3_str(suffix))
-                current_prefix = s3_str(prefix) # from now on, we want a prefix
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def get_twitter_api(channel_id=None):
-        """
-            Initialize Twitter API
-        """
-
-        try:
-            import tweepy
-        except ImportError:
-            current.log.error("s3msg", "Tweepy not available, so non-Tropo Twitter support disabled")
-            return None
-
-        table = current.s3db.msg_twitter_channel
-        if not channel_id:
-            # Try the 1st enabled one in the DB
-            query = (table.enabled == True)
-            limitby = None
-        else:
-            query = (table.channel_id == channel_id)
-            limitby = (0, 1)
-
-        rows = current.db(query).select(table.login,
-                                        table.twitter_account,
-                                        table.consumer_key,
-                                        table.consumer_secret,
-                                        table.access_token,
-                                        table.access_token_secret,
-                                        limitby = limitby
-                                        )
-        if len(rows) == 1:
-            c = rows.first()
-        elif not len(rows):
-            current.log.error("s3msg", "No Twitter channels configured")
-            return None
-        else:
-            # Filter to just the login channel
-            rows.exclude(lambda row: row.login != True)
-            if len(rows) == 1:
-                c = rows.first()
-            elif not len(rows):
-                current.log.error("s3msg", "No Twitter channels configured for login")
-                return None
-
-        if not c.consumer_key:
-            current.log.error("s3msg", "Twitter channel has no consumer key")
-            return None
-
-        try:
-            oauth = tweepy.OAuthHandler(c.consumer_key,
-                                        c.consumer_secret)
-            oauth.set_access_token(c.access_token,
-                                   c.access_token_secret)
-            twitter_api = tweepy.API(oauth)
-            return (twitter_api, c.twitter_account)
-        except:
-            return None
-
-    # -------------------------------------------------------------------------
-    def send_tweet(self, text="", recipient=None, **data):
-        """
-            Function to tweet. If a recipient is specified then we send via
-            direct message if the recipient follows us.
-                - falls back to @mention (leaves less characters for the message).
-                - dreaks long text to chunks if needed.
-
-            TODO Option to Send via Tropo
-        """
-
-        # Initialize Twitter API
-        twitter_settings = self.get_twitter_api()
-        if not twitter_settings:
-            # Abort
-            return False
-
-        import tweepy
-
-        twitter_api = twitter_settings[0]
-        twitter_account = twitter_settings[1]
-
-        from_address = twitter_api.me().screen_name
-
-        db = current.db
-        s3db = current.s3db
-        table = s3db.msg_twitter
-        otable = s3db.msg_outbox
-
-        message_id = None
-
-        def log_tweet(tweet, recipient, from_address):
-            # Log in msg_twitter
-            _id = table.insert(body = tweet,
-                               from_address = from_address,
-                               )
-            record = db(table.id == _id).select(table.id,
-                                                limitby = (0, 1)
-                                                ).first()
-            s3db.update_super(table, record)
-            message_id = record.message_id
-
-            # Log in msg_outbox
-            otable.insert(message_id = message_id,
-                          address = recipient,
-                          status = 2,
-                          contact_method = "TWITTER",
-                          )
-            return message_id
-
-        if recipient:
-            recipient = self._sanitise_twitter_account(recipient)
-            try:
-                can_dm = recipient == twitter_account or \
-                         twitter_api.get_user(recipient).id in twitter_api.followers_ids(twitter_account)
-            except tweepy.TweepError:
-                # recipient not found
-                return False
-            if can_dm:
-                chunks = self._break_to_chunks(text)
-                for c in chunks:
-                    try:
-                        # Note: send_direct_message() requires explicit kwargs (at least in tweepy 1.5)
-                        # See http://groups.google.com/group/tweepy/msg/790fcab8bc6affb5
-                        if twitter_api.send_direct_message(screen_name=recipient,
-                                                           text=c):
-                            message_id = log_tweet(c, recipient, from_address)
-
-                    except tweepy.TweepError:
-                        current.log.error("Unable to Tweet DM")
-            else:
-                prefix = "@%s " % recipient
-                chunks = self._break_to_chunks(text,
-                                               TWITTER_MAX_CHARS - len(prefix))
-                for c in chunks:
-                    try:
-                        twitter_api.update_status("%s %s" % prefix, c)
-                    except tweepy.TweepError:
-                        current.log.error("Unable to Tweet @mention")
-                    else:
-                        message_id = log_tweet(c, recipient, from_address)
-        else:
-            chunks = self._break_to_chunks(text)
-            for c in chunks:
-                try:
-                    twitter_api.update_status(c)
-                except tweepy.TweepError:
-                    current.log.error("Unable to Tweet")
-                else:
-                    message_id = log_tweet(c, recipient, from_address)
-
-        # Perform post process after message sending
-        if message_id:
-            postp = current.deployment_settings.get_msg_send_postprocess()
-            if postp:
-                postp(message_id, **data)
-
-        return True
-
-    #------------------------------------------------------------------------------
-    def post_to_facebook(self, text="", channel_id=None, recipient=None, **data):
-        """
-            Posts a message on Facebook
-
-            See Also:
-                https://developers.facebook.com/docs/graph-api
-        """
-
-        db = current.db
-        s3db = current.s3db
-        table = s3db.msg_facebook_channel
-        if not channel_id:
-            # Try the 1st enabled one in the DB
-            query = (table.enabled == True)
-        else:
-            query = (table.channel_id == channel_id)
-
-        c = db(query).select(table.app_id,
-                             table.app_secret,
-                             table.page_id,
-                             table.page_access_token,
-                             limitby = (0, 1)
-                             ).first()
-
-        import facebook
-
-        try:
-            app_access_token = facebook.get_app_access_token(c.app_id,
-                                                             c.app_secret)
-        except:
-            message = sys.exc_info()[1]
-            current.log.error("S3MSG: %s" % message)
-            return
-
-        table = s3db.msg_facebook
-        otable = s3db.msg_outbox
-
-        message_id = None
-
-        def log_facebook(post, recipient, from_address):
-            # Log in msg_facebook
-            _id = table.insert(body = post,
-                               from_address = from_address,
-                               )
-            record = db(table.id == _id).select(table.id,
-                                                limitby = (0, 1)
-                                                ).first()
-            s3db.update_super(table, record)
-            message_id = record.message_id
-
-            # Log in msg_outbox
-            otable.insert(message_id = message_id,
-                          address = recipient,
-                          status = 2,
-                          contact_method = "FACEBOOK",
-                          )
-            return message_id
-
-        graph = facebook.GraphAPI(app_access_token)
-
-        page_id = c.page_id
-        if page_id:
-            graph = facebook.GraphAPI(c.page_access_token)
-            graph.put_object(page_id, "feed", message=text)
-        else:
-            # FIXME user_id does not exist:
-            #graph.put_object(user_id, "feed", message=text)
-            raise NotImplementedError
-
-        message_id = log_facebook(text, recipient, channel_id)
-
-        # Perform post process after message sending
-        if message_id:
-            postp = current.deployment_settings.get_msg_send_postprocess()
-            if postp:
-                postp(message_id, **data)
 
     # -------------------------------------------------------------------------
     def poll(self, tablename, channel_id):
@@ -2099,22 +1776,16 @@ class S3Msg:
         if not channel:
             return "No Such RSS Channel: %s" % channel_id
 
-        # http://pythonhosted.org/feedparser
-        # Python 3.x: Requires pip install sgmllib3k
-        if sys.version_info[1] >= 7:
-            # Use 6.0.0b1 which is required for Python 3.7
-            import feedparser
-        else:
-            # Python 3.6 requires 5.2.1 with 2to3 run on it to prevent SSL: CERTIFICATE_VERIFY_FAILED
-            import feedparser5213 as feedparser
+        import feedparser
 
         # Basic Authentication
         username = channel.username
         password = channel.password
         if username and password:
             # feedparser doesn't do pre-emptive authentication with urllib2.HTTPBasicAuthHandler() and throws errors on the 401
-            base64string = base64.encodestring("%s:%s" % (username, password)).replace("\n", "")
-            request_headers = {"Authorization": "Basic %s" % base64string}
+            cred = ("%s:%s" % (username, password)).encode("utf-8")
+            base64string = base64.b64encode(cred).replace(b"\n", b"")
+            request_headers = {"Authorization": "Basic %s" % base64string.decode("utf-8")}
         else:
             # Doesn't help to encourage servers to set correct content-type
             #request_headers = {"Accept": "application/xml"}
@@ -2342,100 +2013,6 @@ class S3Msg:
 
         return "OK"
 
-    #-------------------------------------------------------------------------
-    @staticmethod
-    def poll_twitter(channel_id):
-        """
-            Function  to call to fetch tweets into msg_twitter table
-                - called via Scheduler or twitter_inbox controller
-
-            See Also:
-                http://tweepy.readthedocs.org/en/v3.3.0/api.html
-        """
-
-        try:
-            import tweepy
-        except ImportError:
-            current.log.error("s3msg", "Tweepy not available, so non-Tropo Twitter support disabled")
-            return False
-
-        db = current.db
-        s3db = current.s3db
-
-        # Initialize Twitter API
-        twitter_settings = S3Msg.get_twitter_api(channel_id)
-        if twitter_settings:
-            # This is an account with login info, so pull DMs
-            dm = True
-        else:
-            # This is can account without login info, so pull public tweets
-            dm = False
-            table = s3db.msg_twitter_channel
-            channel = db(table.channel_id == channel_id).select(table.twitter_account,
-                                                                limitby = (0, 1)
-                                                                ).first()
-            screen_name = channel.twitter_account
-            # Authenticate using login account
-            twitter_settings = S3Msg.get_twitter_api()
-            if twitter_settings is None:
-                # Cannot authenticate
-                return False
-
-        twitter_api = twitter_settings[0]
-
-        table = s3db.msg_twitter
-
-        # Get the latest Twitter message ID to use it as since_id
-        query = (table.channel_id == channel_id) & \
-                (table.inbound == True)
-        latest = db(query).select(table.msg_id,
-                                  orderby = ~table.date,
-                                  limitby = (0, 1)
-                                  ).first()
-
-        try:
-            if dm:
-                if latest:
-                    messages = twitter_api.direct_messages(since_id = latest.msg_id)
-                else:
-                    messages = twitter_api.direct_messages()
-            else:
-                if latest:
-                    messages = twitter_api.user_timeline(screen_name = screen_name,
-                                                         since_id = latest.msg_id)
-                else:
-                    messages = twitter_api.user_timeline(screen_name = screen_name)
-        except tweepy.TweepError as e:
-            error = e.message
-            if isinstance(error, (tuple, list)):
-                # Older Tweepy?
-                error = e.message[0]["message"]
-            current.log.error("Unable to get the Tweets for the user: %s" % error)
-            return False
-
-        messages.reverse()
-
-        tinsert = table.insert
-        update_super = s3db.update_super
-        for message in messages:
-            if dm:
-                from_address = message.sender_screen_name
-                to_address = message.recipient_screen_name
-            else:
-                from_address = message.author.screen_name
-                to_address = message.in_reply_to_screen_name
-            _id = tinsert(channel_id = channel_id,
-                          body = message.text,
-                          from_address = from_address,
-                          to_address = to_address,
-                          date = message.created_at,
-                          inbound = True,
-                          msg_id = message.id,
-                          )
-            update_super(table, {"id": _id})
-
-        return True
-
     # -------------------------------------------------------------------------
     @staticmethod
     def update_channel_status(channel_id, status, period=None):
@@ -2488,179 +2065,8 @@ class S3Msg:
                 new_period = min(new_period, max_period)
                 db(ttable.id == exists.id).update(period = new_period)
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def twitter_search(search_id):
-        """
-            Fetch Results for a Twitter Search Query
-        """
-
-        try:
-            import TwitterSearch
-        except ImportError:
-            error = "Unresolved dependency: TwitterSearch required for fetching results from twitter keyword queries"
-            current.log.error("s3msg", error)
-            current.session.error = error
-            redirect(URL(f="index"))
-
-        db = current.db
-        s3db = current.s3db
-
-        # Read Settings
-        table = s3db.msg_twitter_channel
-        # Doesn't need to be enabled for Polling
-        settings = db(table.id > 0).select(table.consumer_key,
-                                           table.consumer_secret,
-                                           table.access_token,
-                                           table.access_token_secret,
-                                           limitby = (0, 1)
-                                           ).first()
-
-        if not settings:
-            error = "Twitter Search requires an account configuring"
-            current.log.error("s3msg", error)
-            current.session.error = error
-            redirect(URL(f="twitter_channel"))
-
-        qtable = s3db.msg_twitter_search
-        rtable = db.msg_twitter_result
-        search_query = db(qtable.id == search_id).select(qtable.id,
-                                                         qtable.keywords,
-                                                         qtable.lang,
-                                                         qtable.count,
-                                                         qtable.include_entities,
-                                                         limitby = (0, 1)
-                                                         ).first()
-
-        tso = TwitterSearch.TwitterSearchOrder()
-        tso.set_keywords(search_query.keywords.split(" "))
-        tso.set_language(search_query.lang)
-        # @ToDo Handle more than 100 results per page
-        # This may have to be changed upstream
-        tso.set_count(int(search_query.count))
-        tso.set_include_entities(search_query.include_entities)
-
-        try:
-            ts = TwitterSearch.TwitterSearch(
-                consumer_key = settings.consumer_key,
-                consumer_secret = settings.consumer_secret,
-                access_token = settings.access_token,
-                access_token_secret = settings.access_token_secret
-                )
-        except TwitterSearch.TwitterSearchException as e:
-            return(str(e))
-
-        from dateutil import parser
-        date_parse = parser.parse
-
-        gtable = db.gis_location
-        # Disable validation
-        rtable.location_id.requires = None
-        update_super = s3db.update_super
-
-        for tweet in ts.search_tweets_iterable(tso):
-            user = tweet["user"]["screen_name"]
-            body = tweet["text"]
-            tweet_id = tweet["id_str"]
-            lang = tweet["lang"]
-            created_at = date_parse(tweet["created_at"])
-            lat = None
-            lon = None
-            if tweet["coordinates"]:
-                lat = tweet["coordinates"]["coordinates"][1]
-                lon = tweet["coordinates"]["coordinates"][0]
-                location_id = gtable.insert(lat=lat, lon=lon)
-            else:
-                location_id = None
-            _id = rtable.insert(from_address = user,
-                                search_id = search_id,
-                                body = body,
-                                tweet_id = tweet_id,
-                                lang = lang,
-                                date = created_at,
-                                #inbound = True,
-                                location_id = location_id,
-                                )
-            update_super(rtable, {"id": _id})
-
-        # This is simplistic as we may well want to repeat the same search multiple times
-        db(qtable.id == search_id).update(is_searched = True)
-
-        return "OK"
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def process_keygraph(search_id):
-        """ Process results of twitter search with KeyGraph."""
-
-        import subprocess
-        import tempfile
-
-        db = current.db
-        s3db = current.s3db
-        curpath = os.getcwd()
-        preprocess = S3Msg.preprocess_tweet
-
-        def generateFiles():
-
-            dirpath = tempfile.mkdtemp()
-            os.chdir(dirpath)
-
-            rtable = s3db.msg_twitter_search_results
-            tweets = db(rtable.deleted == False).select(rtable.body)
-            tweetno = 1
-            for tweet in tweets:
-                filename = "%s.txt" % tweetno
-                f = open(filename, "w")
-                f.write(preprocess(tweet.body))
-                tweetno += 1
-
-            return dirpath
-
-        tpath = generateFiles()
-        jarpath = os.path.join(curpath, "static", "KeyGraph", "keygraph.jar")
-        resultpath = os.path.join(curpath, "static", "KeyGraph", "results", "%s.txt" % search_id)
-        return subprocess.call(["java", "-jar", jarpath, tpath, resultpath])
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def preprocess_tweet(tweet):
-        """
-            Preprocesses tweets to remove  URLs,
-            RTs, extra whitespaces and replace hashtags
-            with their definitions.
-        """
-
-        tagdef = S3Msg.tagdef
-        tweet = tweet.lower()
-        tweet = re.sub(r"((www\.[\s]+)|(https?://[^\s]+))", "", tweet)
-        tweet = re.sub(r"@[^\s]+", "", tweet)
-        tweet = re.sub(r"[\s]+", " ", tweet)
-        tweet = re.sub(r"#([^\s]+)", lambda m:tagdef(m.group(0)), tweet)
-        tweet = tweet.strip('\'"')
-
-        return tweet
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def tagdef(hashtag):
-        """
-            Returns the definition of a hashtag.
-        """
-
-        hashtag = hashtag.split("#")[1]
-
-        turl = "http://api.tagdef.com/one.%s.json" % hashtag
-        try:
-            hashstr = urlopen(turl).read()
-            hashdef = json.loads(hashstr)
-        except:
-            return hashtag
-        else:
-            return hashdef["defs"]["def"]["text"]
-
 # =============================================================================
-class S3Compose(S3CRUD):
+class S3Compose(BasicCRUD):
     """ RESTful method for messaging """
 
     # -------------------------------------------------------------------------
@@ -2788,16 +2194,8 @@ class S3Compose(S3CRUD):
         recipients = self.recipients
         if not recipients:
             if not post_vars.pe_id:
-                if contact_method != "TWITTER":
-                    current.session.error = current.T("Please enter the recipient(s)")
-                    redirect(self.url)
-                else:
-                    # This must be a Status Update
-                    if current.msg.send_tweet(post_vars.body):
-                        current.session.confirmation = current.T("Check outbox for the message status")
-                    else:
-                        current.session.error = current.T("Error sending message!")
-                    redirect(self.url)
+                current.session.error = current.T("Please enter the recipient(s)")
+                redirect(self.url)
             else:
                 recipients = post_vars.pe_id
 
@@ -2969,24 +2367,27 @@ class S3Compose(S3CRUD):
                 (T("Recipients"),
                  T("Please enter the first few letters of the Person/Group for the autocomplete.")))
 
-        sqlform = S3SQLDefaultForm()
+        crud_form = DefaultForm()
 
         s3resource = s3db.resource
-        logform = sqlform(request = request,
-                          resource = s3resource("msg_message"),
-                          onvalidation = self._compose_onvalidation,
-                          message = "Message Sent",
-                          format = "html")
+        logform = crud_form(request = request,
+                            resource = s3resource("msg_message"),
+                            onvalidation = self._compose_onvalidation,
+                            message = "Message Sent",
+                            format = "html",
+                            )
 
-        outboxform = sqlform(request = request,
-                             resource = s3resource("msg_outbox"),
+        outboxform = crud_form(request = request,
+                               resource = s3resource("msg_outbox"),
+                               message = "Message Sent",
+                               format = "html",
+                               )
+
+        mailform = crud_form(request = request,
+                             resource = s3resource("msg_email"),
                              message = "Message Sent",
-                             format = "html")
-
-        mailform = sqlform(request = request,
-                           resource = s3resource("msg_email"),
-                           message = "Message Sent",
-                           format = "html")
+                             format = "html",
+                             )
 
         # Shortcuts
         lcustom = logform.custom

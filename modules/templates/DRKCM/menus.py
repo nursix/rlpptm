@@ -6,17 +6,17 @@
 
 from gluon import current, URL
 from core import IS_ISO639_2_LANGUAGE_CODE
-from s3layouts import MM, M, ML, MP, MA, SEP
+from core.ui.layouts import MM, M, ML, MP, MA, SEP
 try:
-    from ..DRK.layouts import OM
+    from .layouts import OM
 except ImportError:
     pass
-import s3menus as default
+import core.ui.menus as default
 
 from .uioptions import get_ui_options
 
 # =============================================================================
-class S3MainMenu(default.S3MainMenu):
+class MainMenu(default.MainMenu):
     """ Custom Application Main Menu """
 
     # -------------------------------------------------------------------------
@@ -45,7 +45,7 @@ class S3MainMenu(default.S3MainMenu):
         auth = current.auth
         ui_options = get_ui_options()
 
-        case_vars = {"closed": "0"}
+        case_vars = {}
         if not ui_options.get("case_collaboration") and \
            auth.s3_logged_in_human_resource() and \
            auth.s3_has_role("CASE_MANAGEMENT"):
@@ -65,7 +65,6 @@ class S3MainMenu(default.S3MainMenu):
                     MM("Organizations", c="org", f="organisation"),
                     MM("Facilities", c="org", f="facility"),
                     MM("Staff", c="hrm", f="staff"),
-                    MM("Volunteers", c="vol", f="volunteer"),
                     SEP(link=False),
                     MM("User Statistics", c="default", f="index",
                        args = ["userstats"],
@@ -117,7 +116,7 @@ class S3MainMenu(default.S3MainMenu):
 
         if not auth.is_logged_in():
             request = current.request
-            login_next = URL(args=request.args, vars=request.vars)
+            login_next = URL(args=request.args, vars=request.get_vars)
             if request.controller == "default" and \
                request.function == "user" and \
                "_next" in request.get_vars:
@@ -174,7 +173,7 @@ class S3MainMenu(default.S3MainMenu):
         return menu_about
 
 # =============================================================================
-class S3OptionsMenu(default.S3OptionsMenu):
+class OptionsMenu(default.OptionsMenu):
     """ Custom Controller Menus """
 
     # -------------------------------------------------------------------------
@@ -238,13 +237,11 @@ class S3OptionsMenu(default.S3OptionsMenu):
             case_collaboration = ui_options_get("case_collaboration")
             if case_collaboration:
                 # Current Cases as lead item
-                case_menu = M("Current Cases", c=("dvr", "pr"), f="person", t="dvr_case",
-                              vars = {"closed": "0"},
-                              )
+                case_menu = M("Current Cases", c=("dvr", "pr"), f="person", t="dvr_case")
             else:
                 # My Cases as lead item (Current Cases in Overviews)
                 case_menu = M("My Cases", c=("dvr", "pr"), f="person", t="dvr_case",
-                              vars = {"closed": "0", "mine": "1"},
+                              vars = {"mine": "1"},
                               )
 
             # Actions sub-menu
@@ -268,7 +265,7 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     case_menu(
                         M("Create Case", m="create", t="pr_person", p="create"),
                         M("My Cases", f="person", t="dvr_case",
-                          vars = {"closed": "0", "mine": "1"},
+                          vars = {"mine": "1"},
                           check = case_collaboration,
                           ),
                         M("My Activities", c="dvr", f="case_activity", vars={"mine": "1"}),
@@ -280,10 +277,9 @@ class S3OptionsMenu(default.S3OptionsMenu):
                     my_actions,
                     M("Overviews", c=("dvr", "pr"), link=False)(
                         M("Current Cases", f="person", t="dvr_case",
-                          vars = {"closed": "0"},
                           check = not case_collaboration,
                           ),
-                        M("All Cases", f="person", t="dvr_case"),
+                        M("All Cases", f="person", t="dvr_case", vars={"closed": "1"}),
                         M("All Activities", f="case_activity", t="dvr_case_activity"),
                         M(all_due_followups_label, f="due_followups",
                           check = followups,
@@ -303,10 +299,9 @@ class S3OptionsMenu(default.S3OptionsMenu):
                                                        )
 
             menu = M(c="dvr")(
-                    M("Current Cases", c=("dvr", "pr"), f="person", t="dvr_case",
-                      vars = {"closed": "0"})(
+                    M("Current Cases", c=("dvr", "pr"), f="person", t="dvr_case")(
                         M("Create Case", m="create", t="pr_person", p="create"),
-                        M("All Cases", vars = {}),
+                        M("All Cases", vars = {"closed": "1"}),
                         M("Actions", f="response_action"),
                         ),
                     M("Activities", f="case_activity")(
@@ -340,11 +335,11 @@ class S3OptionsMenu(default.S3OptionsMenu):
         return menu(M("Statistics", c="dvr", link=False)(
                         M("Actions", f="response_action", t="dvr_response_action", m="report"),
                         M("Activities", f="case_activity", t="dvr_case_activity", m="report"),
-                        M("Cases", f="person", m="report", t="dvr_case", vars={"closed": "0"}),
+                        M("Cases", f="person", m="report", t="dvr_case"),
                         ),
                     M("Archive", link=False)(
                         M("Closed Cases", f="person", t="dvr_case",
-                          vars={"closed": "1"},
+                          vars={"closed": "only"},
                           ),
                         M("Invalid Cases", f="person", t="dvr_case",
                           restrict = (ADMIN, ORG_ADMIN),
@@ -359,7 +354,8 @@ class S3OptionsMenu(default.S3OptionsMenu):
                         #M("Residence Status Types", f="residence_status_type"),
                         M("Residence Permit Types", f="residence_permit_type"),
                         #M("Service Contact Types", f="service_contact_type"),
-                        M("Diagnoses", f="vulnerability_type"),
+                        M("Diagnoses", f="diagnosis"),
+                        M("Vulnerability Types", f="vulnerability_type"),
                         ),
                     )
 
@@ -400,28 +396,6 @@ class S3OptionsMenu(default.S3OptionsMenu):
 
         return M(c="hrm")(
                     M(settings.get_hrm_staff_label(), f="staff")(
-                        M("Create", m="create"),
-                        ),
-                    M(teams, f="group", check=use_teams)(
-                        M("Create", m="create"),
-                        ),
-                    M("Job Titles", f="job_title")(
-                        M("Create", m="create"),
-                        ),
-                    )
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def vol():
-        """ VOL / Volunteer Management """
-
-        settings = current.deployment_settings
-
-        teams = settings.get_hrm_teams()
-        use_teams = lambda i: teams
-
-        return M(c="vol")(
-                    M("Volunteers", f="volunteer")(
                         M("Create", m="create"),
                         ),
                     M(teams, f="group", check=use_teams)(

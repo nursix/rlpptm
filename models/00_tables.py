@@ -7,9 +7,9 @@
 #
 if s3.debug:
     # Explicit imports to have models reloaded automatically in debug mode
+    import s3db.act
     import s3db.asset
     import s3db.auth
-    import s3db.br
     import s3db.budget
     import s3db.cap
     import s3db.cms
@@ -27,6 +27,7 @@ if s3.debug:
     import s3db.hrm
     import s3db.inv
     import s3db.irs
+    import s3db.med
     import s3db.member
     import s3db.msg
     import s3db.org
@@ -41,8 +42,8 @@ if s3.debug:
     import s3db.stats
     import s3db.supply
     import s3db.sync
-    import s3db.translate
     import s3db.transport
+    import s3db.usr
     import s3db.vehicle
     import s3db.vol
     import s3db.water
@@ -78,6 +79,6 @@ s3db.configure("auth_membership",
 
 # -----------------------------------------------------------------------------
 # Make available for controllers
-from core import FieldTemplate, CommentsField, s3_meta_fields
+from core import FieldTemplate, CommentsField, MetaFields
 
 # END =========================================================================

@@ -45,8 +45,8 @@ settings.base.template = "default"
 #settings.gis.spatialdb = True
 
 # Base settings
-#settings.base.system_name = T("Eden ASP Humanitarian Management Platform")
-#settings.base.system_name_short = T("Eden ASP")
+#settings.base.system_name = T("Sahana Eden Humanitarian Management Platform")
+#settings.base.system_name_short = T("Sahana Eden")
 # Set this to the Public URL of the instance
 #settings.base.public_url = "http://127.0.0.1:8000"
 
@@ -81,6 +81,12 @@ settings.base.debug = False
 # Allow language files to be updated automatically
 #settings.L10n.languages_readonly = False
 
+# Authentication settings
+# Maxmimum number of failed login attempts before an account is locked
+#settings.auth.max_login_attempts = 3
+# Timeout (seconds) for locking an account after max failed logins
+#settings.auth.failed_login_lock_timeout = 300
+
 # This setting should be changed _before_ registering the 1st user
 # - should happen automatically if installing using supported scripts
 settings.auth.hmac_key = "akeytochange"
@@ -101,7 +107,7 @@ settings.auth.hmac_key = "akeytochange"
 #settings.mail.tls = True
 #settings.mail.login = "username:password"
 # From Address - until this is set, no mails can be sent
-#settings.mail.sender = "'Eden ASP' <eden@example.org>"
+#settings.mail.sender = "'Sahana Eden' <eden@example.org>"
 # Default email address to which requests to approve new user accounts gets sent
 # This can be overridden for specific domains/organisations via the auth_domain table
 #settings.mail.approver = "useradmin@example.org"
@@ -124,8 +130,6 @@ settings.auth.hmac_key = "akeytochange"
 # GeoNames username
 #settings.gis.geonames_username = ""
 
-# Fill this in to get a Facebook Pixel for your site
-#settings.base.facebook_pixel_id = ""
 # Fill this in to get Google Analytics for your site
 #settings.base.google_analytics_tracking_id = ""
 
@@ -234,7 +238,7 @@ settings.import_template()
 #settings.base.prepopulate = 0
 
 # =============================================================================
-# A version number to tell update_check if there is a need to refresh the
+# A version number to tell UpdateCheck if there is a need to refresh the
 # running copy of this file
 VERSION = 1
 

@@ -221,10 +221,12 @@ $.filterOptionsS3({
                     #s3_action_buttons(r, update_url=update_url)
                     s3_action_buttons(r)
                     if "msg" in settings.modules:
-                        s3base.S3CRUD.action_button(url = URL(f="compose",
-                                                              vars = {"hrm_id": "[id]"}),
-                                                    _class = "action-btn send",
-                                                    label = str(T("Send Notification")))
+                        s3base.BasicCRUD.action_button(url = URL(f="compose",
+                                                                 vars = {"hrm_id": "[id]"},
+                                                                 ),
+                                                       _class = "action-btn send",
+                                                       label = str(T("Send Notification")),
+                                                       )
         return output
     s3.postp = postp
 
@@ -297,7 +299,7 @@ def job_title():
 
         if r.representation in ("xlsx", "xls"):
             # Export format should match Import format
-            current.messages["NONE"] = ""
+            messages["NONE"] = ""
             #f.represent = \
             #    s3db.org_OrganisationRepresent(acronym=False,
             #                                   parent=False)
@@ -362,7 +364,7 @@ def resource():
 
 # -----------------------------------------------------------------------------
 def person():
-    """ Person controller for AddPersonWidget """
+    """ Person controller for PersonSelector """
 
     def prep(r):
         if r.representation != "s3json":
@@ -395,17 +397,17 @@ def group():
                            ]
             resource.configure(list_fields = list_fields)
         if r.interactive:
-            from core import S3SQLCustomForm, S3SQLInlineComponent
+            from core import CustomForm, InlineComponent
             crud_fields = ["name",
                            "description",
-                           S3SQLInlineComponent("team_status_team",
-                                                fields = [("", "status_id")],
-                                                label = T("Status"),
-                                                multiple = False,
-                                                ),
+                           InlineComponent("team_status_team",
+                                           fields = [("", "status_id")],
+                                           label = T("Status"),
+                                           multiple = False,
+                                           ),
                            "comments",
                            ]
-            crud_form = S3SQLCustomForm(*crud_fields)
+            crud_form = CustomForm(*crud_fields)
             r.resource.configure(crud_form = crud_form)
         return True
     s3.prep = prep

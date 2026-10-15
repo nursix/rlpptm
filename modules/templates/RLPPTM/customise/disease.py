@@ -14,7 +14,7 @@ from dateutil.relativedelta import relativedelta
 from gluon import current, IS_EMPTY_OR, IS_IN_SET
 from gluon.storage import Storage
 
-from core import CustomController, IS_ONE_OF, IS_UTC_DATE, S3CRUD, S3Represent, \
+from core import CustomController, IS_ONE_OF, IS_UTC_DATE, BasicCRUD, S3Represent, \
                  get_form_record_id
 
 # -------------------------------------------------------------------------
@@ -184,14 +184,14 @@ def disease_case_diagnostics_resource(r, tablename):
                    ]
 
     # Custom form (for read)
-    from core import S3SQLCustomForm
-    crud_form = S3SQLCustomForm(disease_id,
-                                site_id,
-                                "probe_date",
-                                demographic_id,
-                                "result",
-                                "result_date",
-                                )
+    from core import CustomForm
+    crud_form = CustomForm(disease_id,
+                           site_id,
+                           "probe_date",
+                           demographic_id,
+                           "result",
+                           "result_date",
+                           )
 
     # Filters
 
@@ -341,9 +341,9 @@ def disease_case_diagnostics_controller(**attr):
                 elif record and method in (None, "read"):
                     key, label = "list_btn", T("Register another test result")
             if key:
-                regbtn = S3CRUD.crud_button(label = label,
-                                            _href = r.url(id="", method="register"),
-                                            )
+                regbtn = BasicCRUD.crud_button(label = label,
+                                               _href = r.url(id="", method="register"),
+                                               )
                 if record:
                     from gluon import BUTTON, TAG
                     pdfbtn = BUTTON(T("Certificate Form (PDF)"),
@@ -639,18 +639,18 @@ def disease_daycare_testing_controller(**attr):
 
         if (insertable or editable) and not is_admin:
             # Configure custom form
-            from core import S3SQLCustomForm
-            crud_form = S3SQLCustomForm("organisation_id",
-                                        (T("Does your organization conduct tests in daycare centers?"),
-                                         "daycare_testing"),
-                                        (T("Do you test in daycare centers on a regular basis?"),
-                                         "regular_testing"),
-                                        (T("How frequently do you test in daycare centers?"),
-                                         "frequency"),
-                                        (T("How many daycare centers are regularly serviced by your organization?"),
-                                         "number_of_dc"),
-                                        "comments",
-                                        )
+            from core import CustomForm
+            crud_form = CustomForm("organisation_id",
+                                   (T("Does your organization conduct tests in daycare centers?"),
+                                    "daycare_testing"),
+                                   (T("Do you test in daycare centers on a regular basis?"),
+                                    "regular_testing"),
+                                   (T("How frequently do you test in daycare centers?"),
+                                    "frequency"),
+                                   (T("How many daycare centers are regularly serviced by your organization?"),
+                                    "number_of_dc"),
+                                   "comments",
+                                   )
             resource.configure(crud_form = crud_form)
 
         if r.method == "create":

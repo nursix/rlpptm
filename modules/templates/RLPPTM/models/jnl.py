@@ -31,12 +31,10 @@ __all__ = ("ManagementJournalModel",
 from gluon import current, Field, IS_IN_SET, IS_NOT_EMPTY
 from gluon.storage import Storage
 
-from core import DataModel, DateTimeField, \
-                 S3SQLCustomForm, S3SQLInlineComponent, \
+from core import DataModel, DateTimeField, WorkflowOptions, \
+                 CustomForm, InlineComponent, \
                  get_form_record_id, s3_comments_widget, \
                  s3_text_represent
-
-from ..helpers import WorkflowOptions
 
 # =============================================================================
 # Status Options
@@ -104,20 +102,20 @@ class ManagementJournalModel(DataModel):
                             )
 
         # CRUD form
-        crud_form = S3SQLCustomForm(
+        crud_form = CustomForm(
                         "date",
                         "site_id",
                         "name",
                         "description",
                         "status",
-                        S3SQLInlineComponent(
+                        InlineComponent(
                             "jnl_note",
                             name = "note",
                             label = T("Notes"),
                             fields = ["date", "note_text"],
                             explicit_add = T("Add note"),
                             ),
-                        S3SQLInlineComponent(
+                        InlineComponent(
                             "document",
                             name = "file",
                             label = T("Documents"),

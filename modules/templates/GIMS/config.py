@@ -12,7 +12,7 @@ from gluon.storage import Storage
 from templates.RLPPTM.rlpgeonames import rlp_GeoNames
 
 # Default/lead organisation
-MFFKI = "Ministerium für Familie, Frauen, Kultur und Integration"
+MDI = "Ministerium des Innern, für Integration und Verkehr"
 
 # Org Groups
 DISTRICTS = "Kreisverwaltung"
@@ -157,7 +157,6 @@ def config(settings):
 
     settings.ui.calendar_clear_icon = True
 
-    settings.ui.auto_open_update = True
     #settings.ui.inline_cancel_edit = "submit"
 
     # Business hours to indicate in organizer (Mo-Fr 08-18)
@@ -177,6 +176,9 @@ def config(settings):
                                       "SHELTER_MANAGER": "SHELTER_MANAGER",
                                       "SHELTER_READER": "SHELTER_READER",
                                       "NEWSLETTER_AUTHOR": "NEWSLETTER_AUTHOR",
+                                      "AFA_COORDINATOR": "AFA_COORDINATOR",
+                                      "AFA_MANAGER": "AFA_MANAGER",
+                                      "AFA_READER": "AFA_READER",
                                       }
 
     from .customise.auth import realm_entity, \
@@ -218,6 +220,7 @@ def config(settings):
                               cr_shelter_population_resource, \
                               cr_shelter_population_controller, \
                               cr_shelter_status_resource, \
+                              cr_reception_center_resource, \
                               cr_reception_center_controller, \
                               cr_reception_center_type_controller
 
@@ -227,6 +230,7 @@ def config(settings):
     settings.customise_cr_shelter_population_controller = cr_shelter_population_controller
     settings.customise_cr_shelter_status_resource = cr_shelter_status_resource
 
+    settings.customise_cr_reception_center_resource = cr_reception_center_resource
     settings.customise_cr_reception_center_controller = cr_reception_center_controller
     settings.customise_cr_reception_center_type_controller = cr_reception_center_type_controller
 
@@ -272,7 +276,7 @@ def config(settings):
     # -------------------------------------------------------------------------
     # ORG Settings
     #
-    settings.org.default_organisation = MFFKI
+    settings.org.default_organisation = MDI
 
     settings.org.sector = True
     settings.org.sector_rheader = False

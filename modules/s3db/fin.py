@@ -91,18 +91,18 @@ class FinExpensesModel(DataModel):
             msg_list_empty = T("No Expenses currently registered")
             )
 
-        crud_form = S3SQLCustomForm("name",
-                                    "date",
-                                    "value",
-                                    "currency",
-                                    S3SQLInlineComponent(
-                                        "document",
-                                        name = "document",
-                                        label = T("Attachments"),
-                                        fields = [("", "file")],
+        crud_form = CustomForm("name",
+                               "date",
+                               "value",
+                               "currency",
+                               InlineComponent(
+                                    "document",
+                                    name = "document",
+                                    label = T("Attachments"),
+                                    fields = [("", "file")],
                                     ),
-                                    "comments",
-                                    )
+                               "comments",
+                               )
 
         # Resource Configuration
         self.configure(tablename,
@@ -139,8 +139,7 @@ class FinExpensesModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """
             Return safe defaults in case the model has been deactivated.
         """
@@ -330,7 +329,7 @@ class FinVoucherModel(DataModel):
             msg_list_empty = T("No Programs currently registered"),
         )
 
-        # Reusable Field
+        # Foreign Key Template
         represent = S3Represent(lookup = tablename)
         program_id = FieldTemplate("program_id", "reference %s" % tablename,
                                    label = T("Program"),
@@ -429,7 +428,7 @@ class FinVoucherModel(DataModel):
                        onaccept = self.billing_onaccept,
                        )
 
-        # Reusable Field
+        # Foreign Key Template
         represent = S3Represent(lookup = tablename,
                                 fields = ["date"],
                                 labels = lambda row: S3DateTime.date_represent(row.date,
@@ -655,7 +654,7 @@ class FinVoucherModel(DataModel):
             msg_list_empty = T("No Invoices currently registered"),
         )
 
-        # Reusable field
+        # Foreign Key Template
         represent = fin_VoucherInvoiceRepresent()
         invoice_id = FieldTemplate("invoice_id", "reference %s" % tablename,
                                    label = T("Invoice"),
@@ -820,7 +819,7 @@ class FinVoucherModel(DataModel):
             msg_list_empty = T("No Compensation Claims currently registered"),
         )
 
-        # Reusable field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename, fields=["refno", "date"])
         claim_id = FieldTemplate("claim_id", "reference %s" % tablename,
                                  label = T("Compensation Claim"),
@@ -984,7 +983,7 @@ class FinVoucherModel(DataModel):
             msg_list_empty = T("No Vouchers currently registered"),
         )
 
-        # Reusable field
+        # Foreign Key Template
         voucher_id = FieldTemplate("voucher_id", "reference %s" % tablename,
                                    ondelete = "RESTRICT",
                                    requires = IS_ONE_OF(db, "%s.id" % tablename),
@@ -1094,7 +1093,7 @@ class FinVoucherModel(DataModel):
             msg_list_empty = T("No Accepted Vouchers currently registered"),
         )
 
-        # Reusable field
+        # Foreign Key Template
         debit_id = FieldTemplate("debit_id", "reference %s" % tablename,
                                  ondelete = "RESTRICT",
                                  requires = IS_ONE_OF(db, "%s.id" % tablename),
@@ -1192,8 +1191,7 @@ class FinVoucherModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """ Safe defaults for names in case the module is disabled """
 
         return {"fin_voucher_invoice_status": {},
@@ -1349,19 +1347,22 @@ class FinVoucherModel(DataModel):
                                        )
             else:
                 # Schedule task
+                pvars = {"billing_id": billing.id}
+                try:
+                    pvars["user_id"] = current.auth.user.id
+                except AttributeError:
+                    pass
+
                 scheduler = current.s3task.scheduler
-                application = "%s/default" % current.request.application
                 task = scheduler.queue_task("s3db_task",
                                             pargs = ["fin_voucher_start_billing"],
-                                            pvars = {"billing_id": billing.id},
-                                            application_name = application,
+                                            pvars = pvars,
                                             start_time = start,
                                             stop_time = None,
                                             timeout = 1800,
                                             repeats = 1,
                                             )
-                if task:
-                    task_id = task.id
+                task_id = task["id"]
 
         elif task and task.status == "QUEUED":
             # Remove the task
@@ -1999,15 +2000,14 @@ class fin_VoucherInvoiceRepresent(S3Represent):
                              reason for rejection
         """
 
-        super(fin_VoucherInvoiceRepresent, self).__init__(
-                                                lookup = "fin_voucher_invoice",
-                                                fields = ["invoice_no",
-                                                          "date",
-                                                          "status",
-                                                          "reason",
-                                                          ],
-                                                show_link = show_link,
-                                                )
+        super().__init__(lookup = "fin_voucher_invoice",
+                         fields = ["invoice_no",
+                                   "date",
+                                   "status",
+                                   "reason",
+                                   ],
+                         show_link = show_link,
+                         )
 
         self.show_reason = show_reason
 
@@ -3678,7 +3678,7 @@ class fin_VoucherCancelDebit(CRUDMethod):
         response.form_label_separator = ""
         form = SQLFORM.factory(table_name = "fin_voucher_debit",
                                record = None,
-                               hidden = {"_next": r.vars._next},
+                               hidden = {"_next": auth.get_vars_next()},
                                labels = labels,
                                separator = "",
                                showid = False,
@@ -3744,6 +3744,8 @@ def fin_voucher_eligibility_types(program_ids, organisation_ids=None):
                                 groupby = ltable.organisation_type_id,
                                 )
         issuer_types = [row.organisation_type_id for row in rows]
+    else:
+        issuer_types = []
 
     ttable = s3db.fin_voucher_eligibility_type
     query = (ttable.program_id.belongs(program_ids)) & \

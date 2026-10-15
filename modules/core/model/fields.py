@@ -34,10 +34,9 @@ __all__ = ("CommentsField",
            "FieldTemplate",
            "MetaFields",
            "s3_fieldmethod",
-           "s3_meta_fields",
-           "s3_all_meta_field_names",
            "s3_role_required",
            "s3_roles_permitted",
+           "META_FIELD_NAMES",
            )
 
 import datetime
@@ -223,24 +222,48 @@ s3uuid = SQLCustomType(type = "string",
 # Representation of user roles (auth_group)
 auth_group_represent = S3Represent(lookup="auth_group", fields=["role"])
 
-ALL_META_FIELD_NAMES = ("uuid",
-                        "mci",
-                        "deleted",
-                        "deleted_fk",
-                        "deleted_rb",
-                        "created_on",
-                        "created_by",
-                        "modified_on",
-                        "modified_by",
-                        "approved_by",
-                        "owned_by_user",
-                        "owned_by_group",
-                        "realm_entity",
-                        )
+META_FIELD_NAMES = ("uuid",
+                    "mci",
+                    "deleted",
+                    "deleted_fk",
+                    "deleted_rb",
+                    "created_on",
+                    "created_by",
+                    "modified_on",
+                    "modified_by",
+                    "approved_by",
+                    "owned_by_user",
+                    "owned_by_group",
+                    "realm_entity",
+                    )
 
 # -----------------------------------------------------------------------------
 class MetaFields:
-    """ Class to standardize meta-fields """
+    """ Pseudoclass to standardize meta-fields """
+
+    # -------------------------------------------------------------------------
+    def __new__(cls, *args, **kwargs):
+        """
+            Returns a tuple of meta-fields
+
+            For use in table definitions:
+                db.define_table(..., *MetaFields())
+        """
+
+        return (cls.uuid(),
+                cls.mci(),
+                cls.deleted(),
+                cls.deleted_fk(),
+                cls.deleted_rb(),
+                cls.created_on(),
+                cls.created_by(),
+                cls.modified_on(),
+                cls.modified_by(),
+                cls.approved_by(),
+                cls.owned_by_user(),
+                cls.owned_by_group(),
+                cls.realm_entity(),
+                )
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -442,31 +465,6 @@ class MetaFields:
 
     # -------------------------------------------------------------------------
     @classmethod
-    def all_meta_fields(cls):
-        """
-            Standard meta fields for all tables
-
-            Returns:
-                list of Fields
-        """
-
-        return (cls.uuid(),
-                cls.mci(),
-                cls.deleted(),
-                cls.deleted_fk(),
-                cls.deleted_rb(),
-                cls.created_on(),
-                cls.created_by(),
-                cls.modified_on(),
-                cls.modified_by(),
-                cls.approved_by(),
-                cls.owned_by_user(),
-                cls.owned_by_group(),
-                cls.realm_entity(),
-                )
-
-    # -------------------------------------------------------------------------
-    @classmethod
     def sync_meta_fields(cls):
         """
             Meta-fields required for sync
@@ -540,27 +538,6 @@ class MetaFields:
         """
 
         return current.auth.user_represent
-
-# -----------------------------------------------------------------------------
-def s3_meta_fields():
-    """
-        Shortcut commonly used in table definitions: *s3_meta_fields()
-
-        Returns:
-            tuple of Field instances
-    """
-
-    return MetaFields.all_meta_fields()
-
-def s3_all_meta_field_names():
-    """
-        Shortcut commonly used to include/exclude meta fields
-
-        Returns:
-            tuple of field names
-    """
-
-    return ALL_META_FIELD_NAMES
 
 # =============================================================================
 # Reusable roles fields
@@ -965,7 +942,7 @@ class DateTimeField(Field):
         # Default widget
         if widget is None or widget in ("date", "datetime"):
 
-            widget_options = ("set_min", "set_max", "month_selector")
+            widget_options = ("set_min", "set_max", "month_selector", "minute_step")
             widget_args = {}
             for option in widget_options:
                 if option in args:

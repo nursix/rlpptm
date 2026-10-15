@@ -32,7 +32,7 @@ __all__ = ("SecurityZonesModel",
 from gluon import *
 from gluon.storage import Storage
 from ..core import *
-from s3layouts import S3PopupLink
+from core.ui.layouts import PopupLink
 
 # =============================================================================
 class SecurityZonesModel(DataModel):
@@ -73,7 +73,7 @@ class SecurityZonesModel(DataModel):
         define_table(tablename,
                      location_id(
                         #label = T("Security Level Area"),
-                        widget = S3LocationSelector(show_map = False),
+                        widget = LocationSelector(show_map = False),
                         ),
                      # Overall Level
                      Field("level", "integer",
@@ -178,17 +178,17 @@ class SecurityZonesModel(DataModel):
                                         IS_ONE_OF(db, "security_zone_type.id",
                                                   zone_type_represent,
                                                   sort=True)),
-                           comment = S3PopupLink(c = "security",
-                                                 f = "zone_type",
-                                                 label = ADD_ZONE_TYPE,
-                                                 tooltip = T("Select a Zone Type from the list or click 'Add Zone Type'"),
-                                                 ),
+                           comment = PopupLink(c = "security",
+                                               f = "zone_type",
+                                               label = ADD_ZONE_TYPE,
+                                               tooltip = T("Select a Zone Type from the list or click 'Add Zone Type'"),
+                                               ),
                            ),
                      location_id(
-                        widget = S3LocationSelector(catalog_layers = True,
-                                                    points = False,
-                                                    polygons = True,
-                                                    ),
+                        widget = LocationSelector(catalog_layers = True,
+                                                  points = False,
+                                                  polygons = True,
+                                                  ),
                      ),
                      CommentsField(),
                      )
@@ -251,11 +251,11 @@ class SecurityZonesModel(DataModel):
                                                   staff_type_represent,
                                                   sort=True,
                                                   multiple=True)),
-                           comment = S3PopupLink(c = "security",
-                                                 f = "staff_type",
-                                                 label = ADD_STAFF,
-                                                 tooltip = T("Select a Staff Type from the list or click 'Add Staff Type'"),
-                                                 ),
+                           comment = PopupLink(c = "security",
+                                               f = "staff_type",
+                                               label = ADD_STAFF,
+                                               tooltip = T("Select a Staff Type from the list or click 'Add Staff Type'"),
+                                               ),
                            ),
                      Field("zone_id", db.security_zone,
                            label = T("Zone"),
@@ -264,11 +264,11 @@ class SecurityZonesModel(DataModel):
                                         IS_ONE_OF(db, "security_zone.id",
                                                   zone_represent,
                                                   sort=True)),
-                           comment = S3PopupLink(c = "security",
-                                                 f = "zone",
-                                                 label = ADD_ZONE,
-                                                 tooltip = T("For wardens, select a Zone from the list or click 'Add Zone'"),
-                                                 ),
+                           comment = PopupLink(c = "security",
+                                               f = "zone",
+                                               label = ADD_ZONE,
+                                               tooltip = T("For wardens, select a Zone from the list or click 'Add Zone'"),
+                                               ),
                            ),
                      self.super_link("site_id", "org_site",
                                      label = T("Facility"),
@@ -392,7 +392,7 @@ class SecuritySeizedItemsModel(DataModel):
             msg_list_empty = T("No Item Types currently defined"),
         )
 
-        # Reusable field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename, translate=True)
         item_type_id = FieldTemplate("item_type_id", "reference %s" % tablename,
                                      label = T("Type"),
@@ -402,10 +402,10 @@ class SecuritySeizedItemsModel(DataModel):
                                                               represent,
                                                               )),
                                      sortby = "name",
-                                     comment = S3PopupLink(c = "security",
-                                                           f = "seized_item_type",
-                                                           tooltip = T("Create new item type"),
-                                                           ),
+                                     comment = PopupLink(c = "security",
+                                                         f = "seized_item_type",
+                                                         tooltip = T("Create new item type"),
+                                                         ),
                                      )
 
         # ---------------------------------------------------------------------
@@ -413,11 +413,22 @@ class SecuritySeizedItemsModel(DataModel):
         #
         tablename = "security_seized_item_depository"
         define_table(tablename,
+                     self.org_organisation_id(
+                         default = None,
+                         # Enable in template as required
+                         readable = False,
+                         writable = False,
+                         ),
                      Field("name",
                            requires = IS_NOT_EMPTY(),
                            ),
                      CommentsField(),
                      )
+
+        # Components
+        self.add_components(tablename,
+                            security_seized_item = "depository_id",
+                            )
 
         # CRUD Strings
         crud_strings[tablename] = Storage(
@@ -431,9 +442,9 @@ class SecuritySeizedItemsModel(DataModel):
             msg_record_modified = T("Depository updated"),
             msg_record_deleted = T("Depository deleted"),
             msg_list_empty = T("No Depositories currently registered"),
-        )
+            )
 
-        # Reusable field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename)
         depository_id = FieldTemplate("depository_id", "reference %s" % tablename,
                                       label = T("Depository"),
@@ -495,6 +506,7 @@ class SecuritySeizedItemsModel(DataModel):
                                    ),
                      Field("status_comment",
                            label = T("Status Comment"),
+                           represent = lambda v, row=None: v if v else "-",
                            ),
                      # Returned-date and person responsible
                      DateField("returned_on",
@@ -582,8 +594,7 @@ class SecuritySeizedItemsModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """ Safe defaults for names in case the module is disabled """
 
         return {"security_seized_item_status_opts": {},

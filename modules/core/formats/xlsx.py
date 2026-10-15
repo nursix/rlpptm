@@ -37,8 +37,8 @@ from io import BytesIO
 from gluon import HTTP, current
 from gluon.contenttype import contenttype
 
-from ..tools import get_crud_string, s3_get_foreign_key, s3_str, s3_strip_markup, s3_has_foreign_key
-
+from ..tools import S3DateTime, get_crud_string, s3_get_foreign_key, \
+                    s3_has_foreign_key, s3_str, s3_strip_markup
 from .base import FormatWriter
 
 ROWS_PER_SHEET = 1048576
@@ -64,11 +64,19 @@ class XLSXWriter(FormatWriter):
 
             Keyword Args:
                 title: the main title of the report
+                sheet_title: the sheet title
                 list_fields: fields to include in list views
                 use_color: use background colors in cells (boolean, default False)
                 even_odd: when using colors, render different background colors
                           for even/odd rows (boolean, default True)
                 as_stream: return BytesIO rather than bytes
+                append_to: append to this workbook rather than creating a new one,
+                           either a filename, or a byte stream
+
+            Note:
+                Appending to a workbook will re-use named styles already in the
+                workbook, so the workbook should be created with the same encoder
+                to prevent conflicting/incorrect styling
         """
 
         T = current.T
@@ -112,13 +120,27 @@ class XLSXWriter(FormatWriter):
             msg = "XLSXWriter: field(s) missing from data rows (%s)" % ", ".join(missing)
             current.log.error(msg)
 
-        # Create the workbook
-        wb = Workbook(iso_dates=True)
+        append_to = attr_get("append_to")
+        if append_to:
+            # Use existing workbook
+            from openpyxl import load_workbook
+            wb = load_workbook(append_to)
+            sheet_number = len(wb.sheetnames) + 2
+        else:
+            # Create the workbook
+            wb = Workbook(iso_dates=True)
+            if len(wb.sheetnames) > 0:
+                wb.remove(wb[wb.sheetnames[0]]) # Remove default worksheet
+            sheet_number = 0
 
         # Add named styles
         use_color = attr_get("use_color", False)
         even_odd = attr_get("even_odd", True)
         cls.add_styles(wb, use_color=use_color, even_odd=even_odd)
+
+        # Local date/time
+        dt = S3DateTime.to_local(current.request.utcnow)
+        now = current.calendar.format_datetime(dt, local=True)
 
         # Determine title row length and batch size
         title_row = settings.get_xls_title_row()
@@ -139,20 +161,20 @@ class XLSXWriter(FormatWriter):
         # Add the work sheets
 
         # Characters /\?*[] not allowed in sheet names
-        sheet_name = " ".join(re.sub(r"[\\\/\?\*\[\]]", " ", s3_str(title)).split())
+        sheet_name = attr_get("sheet_title")
+        if not sheet_name:
+            sheet_name = " ".join(re.sub(r"[\\\/\?\*\[\]:]", " ", s3_str(title)).split())
 
         batch, remaining = rows[:batch_size], rows[batch_size:]
-        sheet_number = 0
+        if not batch:
+            # Create at least one sheet even if there are no data
+            batch = True
         while batch:
 
             # Create work sheet
             sheet_number += 1
-            ws_title = "%s-%s" % (sheet_name[:28], sheet_number)
-            if sheet_number == 1:
-                ws = wb.active
-                ws.title = sheet_name[:31] if not remaining else ws_title
-            else:
-                ws = wb.create_sheet(title=ws_title)
+            ws_title = "%s-%s" % (sheet_name[:28], sheet_number) if remaining else sheet_name[:31]
+            ws = wb.create_sheet(ws_title)
 
             # Count columns and initialize column width
             num_columns = len(labels)
@@ -167,8 +189,7 @@ class XLSXWriter(FormatWriter):
                 top.style = "large_header"
                 ws.append([top])
 
-                # Second row: export date/time
-                now = current.calendar.format_datetime(current.request.now, local=True)
+                # Second row: date/time of export
                 sub = Cell(ws, value="%s: %s" % (T("Date Exported"), now))
                 sub.style = "header"
                 ws.append([sub])
@@ -191,7 +212,8 @@ class XLSXWriter(FormatWriter):
             ws.append(label_row)
 
             # Add the data
-            cls.write_rows(ws, batch, lfields, types, column_widths)
+            if batch is not True:
+                cls.write_rows(ws, batch, lfields, types, column_widths)
 
             # Adjust column widths
             for i in range(1, num_columns + 1):
@@ -334,7 +356,7 @@ class XLSXWriter(FormatWriter):
                                orderby = orderby,
                                represent = True,
                                show_links = False,
-                               raw_data = True if expand_hierarchy else False,
+                               raw_data = bool(expand_hierarchy),
                                )
 
         rfields = data.rfields
@@ -406,7 +428,7 @@ class XLSXWriter(FormatWriter):
         values = set()
         for row in rows:
             value = row["_row"][colname]
-            if type(value) is list:
+            if isinstance(value, list):
                 value = value[0]
             values.add(value)
 
@@ -420,7 +442,7 @@ class XLSXWriter(FormatWriter):
         colnames = ["%s__%s" % (colname, l) for l in range(num_levels)]
         for row in rows:
             value = row["_row"][colname]
-            if type(value) is list:
+            if isinstance(value, list):
                 value = value[0]
             hcols = expanded.get(value)
             for level in range(num_levels):
@@ -449,65 +471,77 @@ class XLSXWriter(FormatWriter):
         font_bold = Font(name="Arial", size=10, bold=True)
         font_large = Font(name="Arial", size=14, bold=True)
 
-        style = NamedStyle(name="normal")
-        style.font = font_normal
-        wb.add_named_style(style)
+        existing = wb.style_names
+        missing = lambda n: n not in existing
 
-        style = NamedStyle(name="even")
-        style.font = font_normal
-        if use_color and even_odd:
-            style.fill = PatternFill(start_color="FFFFFF", fill_type="solid")
-            style.border = border
-        wb.add_named_style(style)
+        if missing("normal"):
+            style = NamedStyle(name="normal")
+            style.font = font_normal
+            wb.add_named_style(style)
 
-        style = NamedStyle(name="odd")
-        style.font = font_normal
-        if use_color and even_odd:
-            style.fill = PatternFill(start_color="E7E7E7", fill_type="solid")
-            style.border = border
-        wb.add_named_style(style)
+        if missing("even"):
+            style = NamedStyle(name="even")
+            style.font = font_normal
+            if use_color and even_odd:
+                style.fill = PatternFill(start_color="FFFFFF", fill_type="solid")
+                style.border = border
+            wb.add_named_style(style)
 
-        style = NamedStyle(name="label")
-        style.font = font_bold
-        if use_color:
-            style.fill = PatternFill(start_color="BBDCED", fill_type="solid")
-            style.border = border
-        wb.add_named_style(style)
+        if missing("odd"):
+            style = NamedStyle(name="odd")
+            style.font = font_normal
+            if use_color and even_odd:
+                style.fill = PatternFill(start_color="E7E7E7", fill_type="solid")
+                style.border = border
+            wb.add_named_style(style)
 
-        style = NamedStyle(name="large_header")
-        style.font = font_large
-        if use_color:
-            style.fill = PatternFill(start_color="BDBDEC", fill_type="solid")
-            style.border = border
-        wb.add_named_style(style)
+        if missing("label"):
+            style = NamedStyle(name="label")
+            style.font = font_bold
+            if use_color:
+                style.fill = PatternFill(start_color="BBDCED", fill_type="solid")
+                style.border = border
+            wb.add_named_style(style)
 
-        style = NamedStyle(name="header")
-        style.font = font_bold
-        if use_color:
-            style.fill = PatternFill(start_color="BDBDEC", fill_type="solid")
-            style.border = border
-        wb.add_named_style(style)
+        if missing("large_header"):
+            style = NamedStyle(name="large_header")
+            style.font = font_large
+            if use_color:
+                style.fill = PatternFill(start_color="BDBDEC", fill_type="solid")
+                style.border = border
+            wb.add_named_style(style)
 
-        style = NamedStyle(name="subheader")
-        style.font = font_bold
-        if use_color:
-            style.fill = PatternFill(start_color="CCCCFF", fill_type="solid")
-            style.border = border
-        wb.add_named_style(style)
+        if missing("header"):
+            style = NamedStyle(name="header")
+            style.font = font_bold
+            if use_color:
+                style.fill = PatternFill(start_color="BDBDEC", fill_type="solid")
+                style.border = border
+            wb.add_named_style(style)
 
-        style = NamedStyle(name="subtotals")
-        style.font = font_bold
-        if use_color:
-            style.fill = PatternFill(start_color="E6E6E6", fill_type="solid")
-            style.border = border
-        wb.add_named_style(style)
+        if missing("subheader"):
+            style = NamedStyle(name="subheader")
+            style.font = font_bold
+            if use_color:
+                style.fill = PatternFill(start_color="CCCCFF", fill_type="solid")
+                style.border = border
+            wb.add_named_style(style)
 
-        style = NamedStyle(name="totals")
-        style.font = font_bold
-        if use_color:
-            style.fill = PatternFill(start_color="C6C6C6", fill_type="solid")
-            style.border = border
-        wb.add_named_style(style)
+        if missing("subtotals"):
+            style = NamedStyle(name="subtotals")
+            style.font = font_bold
+            if use_color:
+                style.fill = PatternFill(start_color="E6E6E6", fill_type="solid")
+                style.border = border
+            wb.add_named_style(style)
+
+        if missing("totals"):
+            style = NamedStyle(name="totals")
+            style.font = font_bold
+            if use_color:
+                style.fill = PatternFill(start_color="C6C6C6", fill_type="solid")
+                style.border = border
+            wb.add_named_style(style)
 
 # =============================================================================
 class XLSXPivotTableWriter:
@@ -599,6 +633,9 @@ class XLSXPivotTableWriter:
             book.add_named_style(style)
 
         sheet = book.active
+        sheet_title = fact_label or title or s3_str(T("Report"))
+        sheet_title = re.sub(r'[:\\/?*\[\]]', "", sheet_title)
+        sheet.title = sheet_title[:31]
         write = self.write
 
         # Write header
@@ -618,7 +655,6 @@ class XLSXPivotTableWriter:
                   )
 
             # Current date/time (in local timezone)
-            from ..tools import S3DateTime
             dt = S3DateTime.to_local(current.request.utcnow)
             write(sheet, 1, 0, dt, style = "subheader", numfmt = "datetime")
 
@@ -744,7 +780,7 @@ class XLSXPivotTableWriter:
               sheet,
               rowindex,
               colindex,
-              value,
+              value, *,
               style=None,
               numfmt=None,
               rowspan=None,
@@ -770,7 +806,7 @@ class XLSXPivotTableWriter:
         rowindex += 1
         colindex += 1
 
-        if type(value) is list:
+        if isinstance(value, list):
             labels = [s3_str(v) for v in value]
             contents = "\n".join(labels)
         else:
@@ -1078,7 +1114,7 @@ class XLSXPivotTableWriter:
 
             if fvalue is None:
                 continue
-            if type(fvalue) is not list:
+            if not isinstance(fvalue, list):
                 fvalue = [fvalue]
 
             for v in fvalue:
@@ -1172,8 +1208,8 @@ def to_int(string):
 
     try:
         value = int(string.strip().replace(sep, ""))
-    except (ValueError, TypeError, AttributeError):
-        raise ValueError("not an integer number")
+    except (ValueError, TypeError, AttributeError) as e:
+        raise ValueError("not an integer number") from e
     return value
 
 # =============================================================================
@@ -1199,8 +1235,8 @@ def to_float(string):
 
     try:
         value = float(string.strip().replace(tsep, "").replace(dsep, "."))
-    except (ValueError, TypeError, AttributeError):
-        raise ValueError("not a floating point number")
+    except (ValueError, TypeError, AttributeError) as e:
+        raise ValueError("not a floating point number") from e
     return value
 
 # END =========================================================================

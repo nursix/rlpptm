@@ -31,7 +31,6 @@ __all__ = ("MsgChannelModel",
            "MsgMessageContactModel",
            "MsgMessageTagModel",
            "MsgEmailModel",
-           "MsgFacebookModel",
            "MsgMCommonsModel",
            "MsgGCMModel",
            "MsgParsingModel",
@@ -40,8 +39,6 @@ __all__ = ("MsgChannelModel",
            "MsgSMSOutboundModel",
            "MsgTropoModel",
            "MsgTwilioModel",
-           "MsgTwitterModel",
-           "MsgTwitterSearchModel",
            "MsgXFormsModel",
            "MsgBaseStationModel",
            )
@@ -83,7 +80,6 @@ class MsgChannelModel(DataModel):
         # Super entity: msg_channel
         #
         channel_types = Storage(msg_email_channel = T("Email (Inbound)"),
-                                msg_facebook_channel = T("Facebook"),
                                 msg_gcm_channel = T("Google Cloud Messaging"),
                                 msg_mcommons_channel = T("Mobile Commons (Inbound)"),
                                 msg_rss_channel = T("RSS Feed"),
@@ -92,7 +88,6 @@ class MsgChannelModel(DataModel):
                                 msg_sms_smtp_channel = T("SMS via SMTP (Outbound)"),
                                 msg_tropo_channel = T("Tropo"),
                                 msg_twilio_channel = T("Twilio (Inbound)"),
-                                msg_twitter_channel = T("Twitter"),
                                 )
 
         tablename = "msg_channel"
@@ -119,7 +114,7 @@ class MsgChannelModel(DataModel):
                              ],
                           )
 
-        # Reusable Field
+        # Foreign Key Template
         channel_id = FieldTemplate("channel_id", "reference %s" % tablename,
                                    label = T("Channel"),
                                    ondelete = "SET NULL",
@@ -163,6 +158,7 @@ class MsgChannelModel(DataModel):
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
+        #
         return {"msg_channel_id": channel_id,
                 "msg_channel_enable": self.channel_enable,
                 "msg_channel_disable": self.channel_disable,
@@ -348,12 +344,11 @@ class MsgChannelModel(DataModel):
             fn = "rss"
         elif tablename == "msg_twilio_channel":
             fn = "sms_inbox"
-        elif tablename == "msg_twitter_channel":
-            fn = "twitter_inbox"
         else:
             return "Unsupported channel: %s" % tablename
 
         redirect(URL(f=fn))
+        return None
 
 # =============================================================================
 class MsgMessageModel(DataModel):
@@ -376,23 +371,14 @@ class MsgMessageModel(DataModel):
 
         configure = self.configure
 
-        # Message priority
-        msg_priority_opts = {3 : T("High"),
-                             2 : T("Medium"),
-                             1 : T("Low"),
-                             }
-
         # ---------------------------------------------------------------------
         # Message Super Entity - all Inbound & Outbound Messages
         #
 
         message_types = Storage(msg_contact = T("Contact"),
                                 msg_email = T("Email"),
-                                msg_facebook = T("Facebook"),
                                 msg_rss = T("RSS"),
                                 msg_sms = T("SMS"),
-                                msg_twitter = T("Twitter"),
-                                msg_twitter_result = T("Twitter Search Results"),
                                 )
 
         tablename = "msg_message"
@@ -436,7 +422,7 @@ class MsgMessageModel(DataModel):
                                  ],
                   )
 
-        # Reusable Field
+        # Foreign Key Template
         message_represent = S3Represent(lookup = tablename, fields = ["body"])
         message_id = FieldTemplate("message_id", "reference %s" % tablename,
                                    ondelete = "RESTRICT",
@@ -527,8 +513,7 @@ class MsgMessageModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """
             Return safe defaults in case the model has been deactivated.
         """
@@ -559,7 +544,8 @@ class MsgMessageAttachmentModel(DataModel):
 
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
-        return None
+        #
+        #return {}
 
 # =============================================================================
 class MsgMessageContactModel(DataModel):
@@ -655,7 +641,9 @@ class MsgMessageContactModel(DataModel):
             msg_list_empty=T("No Contacts currently registered"))
 
         # ---------------------------------------------------------------------
-        return None
+        # Pass names back to global scope (s3.*)
+        #
+        #return {}
 
 # =============================================================================
 class MsgMessageTagModel(DataModel):
@@ -698,8 +686,10 @@ class MsgMessageTagModel(DataModel):
                                                  ),
                        )
 
+        # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
-        return None
+        #
+        #return {}
 
 # =============================================================================
 class MsgEmailModel(MsgChannelModel):
@@ -752,7 +742,7 @@ class MsgEmailModel(MsgChannelModel):
                            requires = [IS_NOT_EMPTY(),
                                        IS_LENGTH(64),
                                        ],
-                           widget = S3PasswordWidget(),
+                           widget = S3PasswordWidget.widget,
                            ),
                      # Set true to delete messages from the remote
                      # inbox after fetching them.
@@ -833,154 +823,9 @@ class MsgEmailModel(MsgChannelModel):
                             )
 
         # ---------------------------------------------------------------------
-        return None
-
-# =============================================================================
-class MsgFacebookModel(MsgChannelModel):
-    """
-        Facebook
-            Channels
-            InBox/OutBox
-
-        https://developers.facebook.com/docs/graph-api
-    """
-
-    names = ("msg_facebook_channel",
-             "msg_facebook",
-             "msg_facebook_login",
-             )
-
-    def model(self):
-
-        T = current.T
-
-        configure = self.configure
-        define_table = self.define_table
-        set_method = self.set_method
-        super_link = self.super_link
-
-        # ---------------------------------------------------------------------
-        # Facebook Channels
+        # Pass names back to global scope (s3.*)
         #
-        tablename = "msg_facebook_channel"
-        define_table(tablename,
-                     # Instance
-                     super_link("channel_id", "msg_channel"),
-                     Field("name"),
-                     Field("description"),
-                     Field("enabled", "boolean",
-                           default = True,
-                           label = T("Enabled?"),
-                           represent = s3_yes_no_represent,
-                           ),
-                     Field("login", "boolean",
-                           default = False,
-                           label = T("Use for Login?"),
-                           represent = s3_yes_no_represent,
-                           ),
-                     Field("app_id", "bigint",
-                           requires = IS_INT_IN_RANGE(0, +1e16)
-                           ),
-                     Field("app_secret", "password", length=64,
-                           readable = False,
-                           requires = [IS_NOT_EMPTY(),
-                                       IS_LENGTH(64),
-                                       ],
-                           widget = S3PasswordWidget(),
-                           ),
-                     # Optional
-                     Field("page_id", "bigint",
-                           requires = IS_INT_IN_RANGE(0, +1e16)
-                           ),
-                     Field("page_access_token"),
-                     )
-
-        configure(tablename,
-                  onaccept = self.msg_facebook_channel_onaccept,
-                  super_entity = "msg_channel",
-                  )
-
-        set_method("msg_facebook_channel",
-                   method = "enable",
-                   action = self.msg_channel_enable_interactive)
-
-        set_method("msg_facebook_channel",
-                   method = "disable",
-                   action = self.msg_channel_disable_interactive)
-
-        #set_method("msg_facebook_channel",
-        #           method = "poll",
-        #           action = self.msg_channel_poll)
-
-        # ---------------------------------------------------------------------
-        # Facebook Messages: InBox & Outbox
-        #
-
-        tablename = "msg_facebook"
-        define_table(tablename,
-                     # Instance
-                     super_link("message_id", "msg_message"),
-                     self.msg_channel_id(),
-                     DateTimeField(default = "now"),
-                     Field("body", "text",
-                           label = T("Message"),
-                           ),
-                     # @ToDo: Are from_address / to_address relevant in Facebook?
-                     Field("from_address", #notnull=True,
-                           #default = sender,
-                           label = T("Sender"),
-                           ),
-                     Field("to_address",
-                           label = T("To"),
-                           ),
-                     Field("inbound", "boolean",
-                           default = False,
-                           label = T("Direction"),
-                           represent = lambda direction: \
-                                       (direction and [T("In")] or [T("Out")])[0],
-                           ),
-                     )
-
-        configure(tablename,
-                  orderby = "msg_facebook.date desc",
-                  super_entity = "msg_message",
-                  )
-
-        # ---------------------------------------------------------------------
-        return {"msg_facebook_login": self.msg_facebook_login,
-                }
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
-        """ Safe defaults for model-global names if module is disabled """
-
-        return {"msg_facebook_login": lambda: False,
-                }
-
-    # -------------------------------------------------------------------------
-    @classmethod
-    def msg_facebook_channel_onaccept(cls, form):
-
-        if form.vars.login:
-            # Ensure only a single account used for Login
-            current.db(current.s3db.msg_facebook_channel.id != form.vars.id).update(login = False)
-
-        # Normal onaccept processing
-        cls.channel_onaccept(form)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def msg_facebook_login():
-
-        table = current.s3db.msg_facebook_channel
-        query = (table.login == True) & \
-                (table.deleted == False)
-        c = current.db(query).select(table.app_id,
-                                     table.app_secret,
-                                     limitby=(0, 1)
-                                     ).first()
-        return c
+        #return {}
 
 # =============================================================================
 class MsgMCommonsModel(MsgChannelModel):
@@ -1024,7 +869,7 @@ class MsgMCommonsModel(MsgChannelModel):
                           Field("password", "password",
                                 readable = False,
                                 requires = IS_NOT_EMPTY(),
-                                widget = S3PasswordWidget(),
+                                widget = S3PasswordWidget.widget,
                                 ),
                           Field("query"),
                           Field("timestmp", "datetime",
@@ -1050,7 +895,9 @@ class MsgMCommonsModel(MsgChannelModel):
                    action = self.msg_channel_poll)
 
         # ---------------------------------------------------------------------
-        return None
+        # Pass names back to global scope (s3.*)
+        #
+        #return {}
 
 # =============================================================================
 class MsgGCMModel(MsgChannelModel):
@@ -1112,7 +959,9 @@ class MsgGCMModel(MsgChannelModel):
         #           action = self.msg_channel_poll)
 
         # ---------------------------------------------------------------------
-        return None
+        # Pass names back to global scope (s3.*)
+        #
+        #return {}
 
     # -------------------------------------------------------------------------
     @classmethod
@@ -1290,10 +1139,7 @@ class MsgParsingModel(DataModel):
         record = current.db(table.channel_id == channel_id).select(table.enabled,
                                                                    limitby=(0, 1),
                                                                    ).first()
-        if record and record.enabled:
-            return True
-        else:
-            return False
+        return record.enabled if record else False
 
     # -------------------------------------------------------------------------
     @staticmethod
@@ -1499,7 +1345,7 @@ class MsgRSSModel(MsgChannelModel):
                      Field("password", "password",
                            label = T("Password"),
                            readable = False,
-                           widget = S3PasswordWidget(),
+                           widget = S3PasswordWidget.widget,
                            comment = DIV(_class="tooltip",
                                          _title="%s|%s" % (T("Password"),
                                                            T("Optional password for HTTP Basic Authentication."))),
@@ -1617,7 +1463,9 @@ class MsgRSSModel(MsgChannelModel):
                        )
 
         # ---------------------------------------------------------------------
-        return None
+        # Pass names back to global scope (s3.*)
+        #
+        #return {}
 
 # =============================================================================
 class MsgSMSModel(DataModel):
@@ -1682,7 +1530,9 @@ class MsgSMSModel(DataModel):
                        )
 
         # ---------------------------------------------------------------------
-        return None
+        # Pass names back to global scope (s3.*)
+        #
+        #return {}
 
 # =============================================================================
 class MsgSMSOutboundModel(DataModel):
@@ -1845,7 +1695,7 @@ class MsgSMSOutboundModel(DataModel):
                      Field("username"),
                      Field("password", "password",
                            readable = False,
-                           widget = S3PasswordWidget(),
+                           widget = S3PasswordWidget.widget,
                            ),
                      Field("enabled", "boolean",
                            default = True,
@@ -1857,12 +1707,14 @@ class MsgSMSOutboundModel(DataModel):
                   )
 
         # ---------------------------------------------------------------------
-        return None
+        # Pass names back to global scope (s3.*)
+        #
+        #return {}
 
 # =============================================================================
 class MsgTropoModel(DataModel):
     """
-        Tropo can be used to send & receive SMS, Twitter & XMPP
+        Tropo can be used to send & receive SMS & XMPP
 
         https://www.tropo.com
     """
@@ -1925,7 +1777,9 @@ class MsgTropoModel(DataModel):
                      )
 
         # ---------------------------------------------------------------------
-        return None
+        # Pass names back to global scope (s3.*)
+        #
+        #return {}
 
 # =============================================================================
 class MsgTwilioModel(MsgChannelModel):
@@ -1974,7 +1828,7 @@ class MsgTwilioModel(MsgChannelModel):
                            requires = [IS_NOT_EMPTY(),
                                        IS_LENGTH(64),
                                        ],
-                           widget = S3PasswordWidget(),
+                           widget = S3PasswordWidget.widget,
                            ),
                      )
 
@@ -2007,407 +1861,9 @@ class MsgTwilioModel(MsgChannelModel):
                      )
 
         # ---------------------------------------------------------------------
-        return None
-
-# =============================================================================
-class MsgTwitterModel(DataModel):
-
-    names = ("msg_twitter_channel",
-             "msg_twitter",
-             )
-
-    def model(self):
-
-        T = current.T
-        db = current.db
-
-        configure = self.configure
-        define_table = self.define_table
-        set_method = self.set_method
-
-        # ---------------------------------------------------------------------
-        # Twitter Channel
+        # Pass names back to global scope (s3.*)
         #
-        password_widget = S3PasswordWidget()
-        tablename = "msg_twitter_channel"
-        define_table(tablename,
-                     # Instance
-                     self.super_link("channel_id", "msg_channel"),
-                     # @ToDo: Allow different Twitter accounts for different Orgs
-                     #self.org_organisation_id(),
-                     Field("name",
-                           label = T("Name"),
-                           ),
-                     Field("description",
-                           label = T("Description"),
-                           ),
-                     Field("enabled", "boolean",
-                           default = True,
-                           label = T("Enabled?"),
-                           represent = s3_yes_no_represent,
-                           ),
-                     Field("login", "boolean",
-                           default = False,
-                           label = T("Use for Login?"),
-                           represent = s3_yes_no_represent,
-                           ),
-                     Field("twitter_account",
-                           label = T("Twitter Account"),
-                           ),
-                     # Get these from https://apps.twitter.com
-                     Field("consumer_key", "password",
-                           label = T("Consumer Key"),
-                           readable = False,
-                           widget = password_widget,
-                           ),
-                     Field("consumer_secret", "password",
-                           label = T("Consumer Secret"),
-                           readable = False,
-                           widget = password_widget,
-                           ),
-                     Field("access_token", "password",
-                           label = T("Access Token"),
-                           readable = False,
-                           widget = password_widget,
-                           ),
-                     Field("access_token_secret", "password",
-                           label = T("Access Token Secret"),
-                           readable = False,
-                           widget = password_widget,
-                           ),
-                     )
-
-        configure(tablename,
-                  onaccept = self.twitter_channel_onaccept,
-                  #onvalidation = self.twitter_channel_onvalidation
-                  super_entity = "msg_channel",
-                  )
-
-        set_method("msg_twitter_channel",
-                   method = "enable",
-                   action = self.msg_channel_enable_interactive)
-
-        set_method("msg_twitter_channel",
-                   method = "disable",
-                   action = self.msg_channel_disable_interactive)
-
-        set_method("msg_twitter_channel",
-                   method = "poll",
-                   action = self.msg_channel_poll)
-
-        # ---------------------------------------------------------------------
-        # Twitter Messages: InBox & Outbox
-        #
-        tablename = "msg_twitter"
-        define_table(tablename,
-                     # Instance
-                     self.super_link("message_id", "msg_message"),
-                     self.msg_channel_id(),
-                     DateTimeField(default = "now",
-                                   label = T("Posted on"),
-                                   ),
-                     Field("body", length=140,
-                           label = T("Message"),
-                           requires = IS_LENGTH(140),
-                           ),
-                     Field("from_address", #notnull=True,
-                           label = T("From"),
-                           represent = self.twitter_represent,
-                           requires = IS_NOT_EMPTY(),
-                           ),
-                     Field("to_address",
-                           label = T("To"),
-                           represent = self.twitter_represent,
-                           ),
-                     Field("inbound", "boolean",
-                           default = False,
-                           label = T("Direction"),
-                           represent = lambda direction: \
-                                       (direction and [T("In")] or \
-                                                      [T("Out")])[0],
-                           ),
-                     Field("msg_id", # Twitter Message ID
-                           readable = False,
-                           writable = False,
-                           ),
-                     )
-
-        configure(tablename,
-                  list_fields = ["id",
-                                 #"priority",
-                                 #"category",
-                                 "body",
-                                 "from_address",
-                                 "date",
-                                 #"location_id",
-                                 ],
-                  #orderby = ~table.priority,
-                  super_entity = "msg_message",
-                  )
-
-        # ---------------------------------------------------------------------
-        return None
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def twitter_represent(nickname, show_link=True):
-        """
-            Represent a Twitter account
-        """
-
-        if not nickname:
-            return current.messages["NONE"]
-
-        db = current.db
-        s3db = current.s3db
-        table = s3db.pr_contact
-        query = (table.contact_method == "TWITTER") & \
-                (table.value == nickname)
-        row = db(query).select(table.pe_id,
-                               limitby=(0, 1)).first()
-        if row:
-            repr = s3db.pr_pentity_represent(row.pe_id)
-            if show_link:
-                # Assume person
-                ptable = s3db.pr_person
-                row = db(ptable.pe_id == row.pe_id).select(ptable.id,
-                                                           limitby=(0, 1)).first()
-                if row:
-                    link = URL(c="pr", f="person", args=[row.id])
-                    return A(repr, _href=link)
-            return repr
-        else:
-            return nickname
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def twitter_channel_onaccept(form):
-
-        if form.vars.login:
-            # Ensure only a single account used for Login
-            current.db(current.s3db.msg_twitter_channel.id != form.vars.id).update(login = False)
-
-        # Normal onaccept processing
-        MsgChannelModel.channel_onaccept(form)
-
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def twitter_channel_onvalidation(form):
-        """
-            Complete oauth: take tokens from session + pin from form,
-            and do the 2nd API call to Twitter
-        """
-
-        T = current.T
-        session = current.session
-        settings = current.deployment_settings.msg
-        s3 = session.s3
-        form_vars = form.vars
-
-        if form_vars.pin and s3.twitter_request_key and s3.twitter_request_secret:
-            try:
-                import tweepy
-            except:
-                raise HTTP(501, body=T("Can't import tweepy"))
-
-            oauth = tweepy.OAuthHandler(settings.twitter_oauth_consumer_key,
-                                        settings.twitter_oauth_consumer_secret)
-            oauth.set_request_token(s3.twitter_request_key,
-                                    s3.twitter_request_secret)
-            try:
-                oauth.get_access_token(form_vars.pin)
-                form_vars.oauth_key = oauth.access_token.key
-                form_vars.oauth_secret = oauth.access_token.secret
-                twitter = tweepy.API(oauth)
-                form_vars.twitter_account = twitter.me().screen_name
-                form_vars.pin = "" # we won't need it anymore
-                return
-            except tweepy.TweepError:
-                session.error = T("Settings were reset because authenticating with Twitter failed")
-
-        # Either user asked to reset, or error - clear everything
-        for k in ["oauth_key", "oauth_secret", "twitter_account"]:
-            form_vars[k] = None
-        for k in ["twitter_request_key", "twitter_request_secret"]:
-            s3[k] = ""
-
-# =============================================================================
-class MsgTwitterSearchModel(MsgChannelModel):
-    """
-        Twitter Searches
-         - results can be fed to KeyGraph
-
-        https://dev.twitter.com/docs/api/1.1/get/search/tweets
-    """
-
-    names = ("msg_twitter_search",
-             "msg_twitter_result",
-             )
-
-    def model(self):
-
-        T = current.T
-        db = current.db
-
-        configure = self.configure
-        define_table = self.define_table
-        set_method = self.set_method
-
-        # ---------------------------------------------------------------------
-        # Twitter Search Query
-        #
-        tablename = "msg_twitter_search"
-        define_table(tablename,
-                     Field("keywords", "text",
-                           label = T("Keywords"),
-                           ),
-                     # @ToDo: Allow setting a Point & Radius for filtering by geocode
-                     #self.gis_location_id(),
-                     Field("lang",
-                           # Set in controller
-                           #default = current.response.s3.language,
-                           label = T("Language"),
-                           ),
-                     Field("count", "integer",
-                           default = 100,
-                           label = T("# Results per query"),
-                           ),
-                     Field("include_entities", "boolean",
-                           default = False,
-                           label = T("Include Entity Information?"),
-                           represent = s3_yes_no_represent,
-                           comment = DIV(_class="tooltip",
-                                         _title="%s|%s" % (T("Entity Information"),
-                                                           T("This is required if analyzing with KeyGraph."))),
-                           ),
-                     # @ToDo: Rename or even move to Component Table
-                     Field("is_processed", "boolean",
-                           default = False,
-                           label = T("Processed with KeyGraph?"),
-                           represent = s3_yes_no_represent,
-                           ),
-                     Field("is_searched", "boolean",
-                           default = False,
-                           label = T("Searched?"),
-                           represent = s3_yes_no_represent,
-                           ),
-                     )
-
-        configure(tablename,
-                  list_fields = ["keywords",
-                                 "lang",
-                                 "count",
-                                 #"include_entities",
-                                 ],
-                  )
-
-        # Reusable Query ID
-        represent = S3Represent(lookup=tablename, fields=["keywords"])
-        search_id = FieldTemplate("search_id", "reference %s" % tablename,
-                                  label = T("Search Query"),
-                                  ondelete = "CASCADE",
-                                  represent = represent,
-                                  requires = IS_EMPTY_OR(
-                                                IS_ONE_OF_EMPTY(db, "msg_twitter_search.id")),
-                                  )
-
-        set_method("msg_twitter_search",
-                   method = "poll",
-                   action = self.twitter_search_poll)
-
-        set_method("msg_twitter_search",
-                   method = "keygraph",
-                   action = self.twitter_keygraph)
-
-        # ---------------------------------------------------------------------
-        # Twitter Search Results
-        #
-        # @ToDo: Store the places mentioned in the Tweet as linked Locations
-        #
-        tablename = "msg_twitter_result"
-        define_table(tablename,
-                     # Instance
-                     self.super_link("message_id", "msg_message"),
-                     # Just present for Super Entity
-                     #self.msg_channel_id(),
-                     search_id(),
-                     DateTimeField(default="now",
-                                   label = T("Tweeted on"),
-                                   ),
-                     Field("tweet_id",
-                           label = T("Tweet ID")),
-                     Field("lang",
-                           label = T("Language")),
-                     Field("from_address",
-                           label = T("Tweeted by")),
-                     Field("body",
-                           label = T("Tweet")),
-                     # @ToDo: Populate from Parser
-                     #Field("category",
-                     #      writable = False,
-                     #      label = T("Category"),
-                     #      ),
-                     #Field("priority", "integer",
-                     #      writable = False,
-                     #      label = T("Priority"),
-                     #      ),
-                     self.gis_location_id(),
-                     # Just present for Super Entity
-                     #Field("inbound", "boolean",
-                     #      default = True,
-                     #      readable = False,
-                     #      writable = False,
-                     #      ),
-                     )
-
-        configure(tablename,
-                  list_fields = [#"category",
-                                 #"priority",
-                                 "body",
-                                 "from_address",
-                                 "date",
-                                 "location_id",
-                                 ],
-                  #orderby=~table.priority,
-                  super_entity = "msg_message",
-                  )
-
-        # ---------------------------------------------------------------------
-        return None
-
-    # -----------------------------------------------------------------------------
-    @staticmethod
-    def twitter_search_poll(r, **attr):
-        """
-            Perform a Search of Twitter
-
-            CRUD method for interactive requests
-        """
-
-        id = r.id
-        tablename = r.tablename
-        current.s3task.run_async("msg_twitter_search", args=[id])
-        current.session.confirmation = \
-            current.T("The search request has been submitted, so new messages should appear shortly - refresh to see them")
-        # Filter results to this Search
-        redirect(URL(f="twitter_result",
-                     vars={"~.search_id": id}))
-
-    # -----------------------------------------------------------------------------
-    @staticmethod
-    def twitter_keygraph(r, **attr):
-        """
-            Prcoess Search Results with KeyGraph
-
-            CRUD method for interactive requests
-        """
-
-        tablename = r.tablename
-        current.s3task.run_async("msg_process_keygraph", args=[r.id])
-        current.session.confirmation = \
-            current.T("The search results are now being processed with KeyGraph")
-        # @ToDo: Link to KeyGraph results
-        redirect(URL(f="twitter_result"))
+        #return {}
 
 # =============================================================================
 class MsgXFormsModel(DataModel):
@@ -2436,7 +1892,9 @@ class MsgXFormsModel(DataModel):
                           )
 
         # ---------------------------------------------------------------------
-        return None
+        # Pass names back to global scope (s3.*)
+        #
+        #return {}
 
 # =============================================================================
 class MsgBaseStationModel(DataModel):
@@ -2512,6 +1970,6 @@ class MsgBaseStationModel(DataModel):
         # ---------------------------------------------------------------------
         # Pass names back to global scope (s3.*)
         #
-        return None
+        #return {}
 
 # END =========================================================================

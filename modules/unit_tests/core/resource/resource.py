@@ -168,7 +168,7 @@ class ResourceAxisFilterTests(unittest.TestCase):
         db.define_table(tablename,
                         Field("facility_type_id",
                               "list:reference org_facility_type"),
-                        *s3_meta_fields())
+                        *MetaFields())
         table = db[tablename]
 
         try:
@@ -310,7 +310,7 @@ class ResourceExportTests(unittest.TestCase):
         db = current.db
         db.define_table("exporter_test",
                         Field("name"),
-                        *s3_meta_fields())
+                        *MetaFields())
         db.commit()
 
     @classmethod
@@ -633,7 +633,7 @@ class ResourceImportTests(unittest.TestCase):
         # Define test table
         db.define_table("importer_test",
                         Field("name"),
-                        *s3_meta_fields())
+                        *MetaFields())
         db.commit()
 
     @classmethod
@@ -1140,7 +1140,7 @@ class MergeOrganisationsTests(unittest.TestCase):
         link1_id = btable.insert(**link1)
         s3db.pr_update_affiliations(btable, link1_id)
         ancestors = s3db.pr_get_ancestors(branch1_pe_id)
-        assertEqual(ancestors, [str(org1_pe_id)])
+        assertEqual(ancestors, [org1_pe_id])
 
         branch2 = Storage(name="TestBranch2")
         branch2_id = otable.insert(**branch2)
@@ -1155,7 +1155,7 @@ class MergeOrganisationsTests(unittest.TestCase):
         link2_id = btable.insert(**link2)
         s3db.pr_update_affiliations(btable, link2_id)
         ancestors = s3db.pr_get_ancestors(branch2_pe_id)
-        assertEqual(ancestors, [str(org2_pe_id)])
+        assertEqual(ancestors, [org2_pe_id])
 
         success = self.resource.merge(self.id1, self.id2)
         assertTrue(success)
@@ -1167,10 +1167,10 @@ class MergeOrganisationsTests(unittest.TestCase):
         assertEqual(str(link2.organisation_id), str(self.id1))
 
         ancestors = s3db.pr_get_ancestors(branch1_pe_id)
-        assertEqual(ancestors, [str(org1_pe_id)])
+        assertEqual(ancestors, [org1_pe_id])
 
         ancestors = s3db.pr_get_ancestors(branch2_pe_id)
-        assertEqual(ancestors, [str(org1_pe_id)])
+        assertEqual(ancestors, [org1_pe_id])
 
     # -------------------------------------------------------------------------
     def testMergeVirtualReference(self):
@@ -1607,7 +1607,7 @@ class MergeUniqueFieldTest(unittest.TestCase):
 
         current.db.define_table(cls.tablename,
                                 Field("name", length=64, unique=True),
-                                *s3_meta_fields())
+                                *MetaFields())
 
     @classmethod
     def tearDownClass(cls):
@@ -1688,7 +1688,7 @@ class MergeReferenceListsTest(unittest.TestCase):
         db.define_table(tablename,
                         Field("facility_type_id",
                               "list:reference org_facility_type"),
-                        *s3_meta_fields())
+                        *MetaFields())
 
         xmlstr = """
 <s3xml>

@@ -3,12 +3,12 @@
  <div class='large-4 large-offset-1 columns'>
   <div class="row hide-for-small">
    <div id='site-title' class='small-12 columns'>
-     <img src='{{=URL(c="static", f="themes", args=["JUH", "img", "logo_small.svg"])}}' onerror="this.src=this.src.replace('.svg','.png');this.onerror=null;" alt='JOHANNITER-UNFALL-HILFE' width='200px'></img>
+     <img src='{{=logo}}' onerror="this.src=this.src.replace('.svg','.png');this.onerror=null;" alt='{{=logo_alt}}' width='200px'></img>
      <h2>{{=settings.get_system_name()}}</h3>
    </div>
   </div>
  </div>
- <div class='large-5 columns end'>
+ <div class='large-5 large-uncentered medium-8 medium-centered columns end'>
   {{AUTHENTICATED = auth.get_system_roles().AUTHENTICATED}}
   {{if AUTHENTICATED not in session.s3.roles:}}
   <div id='login_box' class='panel'>
@@ -17,6 +17,9 @@
     {{include "auth/_login.html"}}
    </div>
   </div>
+  {{else:}}
+   {{if announcements_title:}}<h4 class='announcements-title'>{{=announcements_title}}</h4>{{pass}}
+   {{if announcements:}}{{=announcements}}{{pass}}
   {{pass}}
  </div>
 </div>

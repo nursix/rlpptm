@@ -19,10 +19,7 @@ def org_organisation_controller(**attr):
     def custom_prep(r):
 
         # Call standard prep
-        if callable(standard_prep):
-            result = standard_prep(r)
-        else:
-            result = True
+        result = standard_prep(r) if callable(standard_prep) else True
 
         # Disable creation of new root orgs unless user is ORG_GROUP_ADMIN
         if r.method != "hierarchy" and \
@@ -47,8 +44,8 @@ def org_organisation_controller(**attr):
     s3.prep = custom_prep
 
     # Customr header
-    from ..rheaders import drk_org_rheader
-    attr["rheader"] = drk_org_rheader
+    from ..rheaders import org_rheader
+    attr["rheader"] = org_rheader
 
     return attr
 
@@ -77,12 +74,12 @@ def org_facility_resource(r, tablename):
     field.readable = field.writable = False
 
     # Location selector just needs country + address
-    from core import S3LocationSelector
+    from core import LocationSelector
     field = table.location_id
-    field.widget = S3LocationSelector(levels = ["L0"],
-                                      show_address=True,
-                                      show_map = False,
-                                      )
+    field.widget = LocationSelector(levels = ["L0"],
+                                    show_address=True,
+                                    show_map = False,
+                                    )
 
     field = table.obsolete
     field.label = T("Inactive")
@@ -141,17 +138,9 @@ def org_facility_controller(**attr):
 
     # Custom rheader+tabs
     if current.request.controller == "org":
-        from ..rheaders import drk_org_rheader
-        attr["rheader"] = drk_org_rheader
+        from ..rheaders import org_rheader
+        attr["rheader"] = org_rheader
 
     return attr
-
-# -------------------------------------------------------------------------
-def org_sector_resource(r, tablename):
-
-    table = current.s3db.org_sector
-
-    field = table.location_id
-    field.readable = field.writable = False
 
 # END =========================================================================

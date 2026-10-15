@@ -70,7 +70,7 @@ def pr_person_controller(**attr):
         # Call standard prep
         result = standard_prep(r) if callable(standard_prep) else True
 
-        from core import S3SQLCustomForm, StringTemplateParser
+        from core import CustomForm, StringTemplateParser
 
         # Determine order of name fields
         NAMES = ("first_name", "middle_name", "last_name")
@@ -98,9 +98,9 @@ def pr_person_controller(**attr):
                                          "gender",
                                          ]
 
-            r.resource.configure(crud_form = S3SQLCustomForm(*crud_fields,
-                                                             postprocess = person_postprocess,
-                                                             ),
+            r.resource.configure(crud_form = CustomForm(*crud_fields,
+                                                        postprocess = person_postprocess,
+                                                        ),
                                  deletable = False,
                                  )
 
@@ -108,14 +108,14 @@ def pr_person_controller(**attr):
             ctable = r.component.table
 
             # Configure location selector and geocoder
-            from core import S3LocationSelector
+            from core import LocationSelector
             field = ctable.location_id
-            field.widget = S3LocationSelector(levels = ("L1", "L2", "L3", "L4"),
-                                              required_levels = ("L1", "L2", "L3"),
-                                              show_address = True,
-                                              show_postcode = True,
-                                              show_map = True,
-                                              )
+            field.widget = LocationSelector(levels = ("L1", "L2", "L3", "L4"),
+                                            required_levels = ("L1", "L2", "L3"),
+                                            show_address = True,
+                                            show_postcode = True,
+                                            show_map = True,
+                                            )
             s3.scripts.append("/%s/static/themes/RLP/js/geocoderAllStates.js" % r.application)
             s3.scripts.append("/%s/static/themes/RLP/js/geocoderPlugin.js" % r.application)
 

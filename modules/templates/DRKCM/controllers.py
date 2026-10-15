@@ -4,9 +4,7 @@
     License: MIT
 """
 
-from gluon import current
-from gluon.html import *
-from gluon.storage import Storage
+from gluon import current, DIV, H3, H4, I, LI, P, TAG, UL, XML
 
 from core import FS, CustomController
 
@@ -163,7 +161,7 @@ class userstats(CustomController):
 
     def __init__(self):
 
-        super(userstats, self).__init__()
+        super().__init__()
 
         self._root_orgs = None
         self._stats = None
@@ -177,7 +175,7 @@ class userstats(CustomController):
         if not auth.s3_has_role("ORG_GROUP_ADMIN"):
             auth.permission.fail()
 
-        from core import S3CRUD, s3_get_extension, crud_request
+        from core import BasicCRUD, s3_get_extension, crud_request
 
         request = current.request
         args = request.args
@@ -219,21 +217,21 @@ class userstats(CustomController):
                        )
 
         # Configure form
-        from core import S3SQLCustomForm, S3SQLVirtualField
-        crud_form = S3SQLCustomForm("name",
-                                    S3SQLVirtualField("total_accounts",
-                                                      label = TOTAL,
-                                                      ),
-                                    S3SQLVirtualField("active_accounts",
-                                                      label = ACTIVE,
-                                                      ),
-                                    S3SQLVirtualField("disabled_accounts",
-                                                      label = DISABLED,
-                                                      ),
-                                    S3SQLVirtualField("active30",
-                                                      label = ACTIVE30,
-                                                      ),
-                                    )
+        from core import CustomForm, VirtualFormField
+        crud_form = CustomForm("name",
+                               VirtualFormField("total_accounts",
+                                                label = TOTAL,
+                                                ),
+                               VirtualFormField("active_accounts",
+                                                label = ACTIVE,
+                                                ),
+                               VirtualFormField("disabled_accounts",
+                                                label = DISABLED,
+                                                ),
+                               VirtualFormField("active30",
+                                                label = ACTIVE30,
+                                                ),
+                               )
 
         # Configure read-only
         resource.configure(insertable = False,
@@ -251,10 +249,10 @@ class userstats(CustomController):
             output["title"] = T("User Statistics")
 
             # URL to open the resource
-            open_url = S3CRUD._linkto(r, update=False)("[id]")
+            open_url = BasicCRUD._linkto(r, update=False)("[id]")
 
             # Add action button for open
-            action_buttons = S3CRUD.action_buttons
+            action_buttons = BasicCRUD.action_buttons
             action_buttons(r,
                            deletable = False,
                            copyable = False,

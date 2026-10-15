@@ -146,7 +146,7 @@ class FilterWidget:
                 variable: the URL query variable
         """
 
-        if type(variable) is list:
+        if isinstance(variable, list):
             variable = "&".join(variable)
 
         return INPUT(_type = "hidden",
@@ -180,7 +180,7 @@ class FilterWidget:
             selector = self._prefix(k)
             defaults[selector] = v
 
-        if type(variable) is list:
+        if isinstance(variable, list):
             values = Storage()
             for k in variable:
                 if k in defaults:
@@ -203,7 +203,7 @@ class FilterWidget:
         # Construct the hidden data element
         data = self.data_element(variable)
 
-        if type(data) is list:
+        if isinstance(data, list):
             data.append(widget)
         else:
             data = [data, widget]
@@ -607,6 +607,8 @@ class FilterForm:
                 fields = TABLE(TBODY(rows))
             else:
                 fields = DIV(rows)
+        else:
+            fields = ""
 
         return fields
 
@@ -761,7 +763,7 @@ class FilterForm:
         if not pe_id:
             return None
 
-        table = current.s3db.pr_filter
+        table = current.s3db.usr_filter
         query = (table.deleted == False) & \
                 (table.pe_id == pe_id)
 
@@ -857,7 +859,7 @@ class FilterForm:
             Add default filters to resource, to be called on a multi-record
             view when a filter form is rendered the first time and before
             the view elements get processed; can be overridden in request
-            URL with ?default_filters=0
+            URL with ?search=xxx (e.g. $search=query)
 
             Args:
                 request: the request
@@ -869,10 +871,11 @@ class FilterForm:
 
         default_filters = {}
 
-        get_vars = request.get_vars
-        if get_vars.get("default_filters") == "0":
-            # Skip default filters (e.g. link in report)
+        if request.suppress_default_filters:
+            # Skip default filters (e.g. session filter, or links in reports)
             return default_filters
+
+        get_vars = request.get_vars
 
         # Do we have filter defaults for this table?
         tablename = resource.tablename
@@ -885,12 +888,14 @@ class FilterForm:
         filter_widgets = resource.get_config("filter_widgets")
         for filter_widget in filter_widgets:
 
-            widget_opts = filter_widget.opts
+            if not filter_widget:
+                continue
 
             # Do not apply defaults of hidden widgets because they are
             # not visible to the user
-            if not filter_widget or widget_opts.get("hidden"):
-                continue
+            widget_opts = filter_widget.opts
+            #if widget_opts.get("hidden"):
+                #continue
 
             # Skip widget if there are no defaults
             if table_defaults is None and "default" not in widget_opts:
@@ -901,7 +906,7 @@ class FilterForm:
 
             # Get all widget variables
             variables = filter_widget.variable(resource, get_vars)
-            if type(variables) is not list:
+            if not isinstance(variables, list):
                 variables = [variables]
 
             for variable in variables:
@@ -989,7 +994,7 @@ def set_default_filter(selector, value, tablename=None):
     table_defaults[selector] = value
 
 # =============================================================================
-def get_filter_options(tablename,
+def get_filter_options(tablename, *,
                        fieldname = "name",
                        location_filter = False,
                        org_filter = False,
@@ -1051,7 +1056,8 @@ def get_filter_options(tablename,
 
         if translate:
             T = current.T
-            opts = odict((row[key], T(row[fieldname])) for row in rows)
+            t_ = lambda v: T(v) if isinstance(v, str) else "-"
+            opts = odict((row[key], t_(row[fieldname])) for row in rows)
         else:
             opts = odict((row[key], row[fieldname]) for row in rows)
         if none:

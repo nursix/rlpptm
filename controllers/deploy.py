@@ -222,7 +222,7 @@ def group():
                 settings.pr.request_gender = False
 
                 field = ctable.person_id
-                field.widget = s3base.S3AddPersonWidget(controller="deploy")
+                field.widget = s3base.PersonSelector(controller="deploy")
 
                 # Configure list_fields for this context
                 list_fields = ["person_id",
@@ -381,10 +381,10 @@ def assignment():
                               vars=get_vars,
                               )
             if url:
-                button = s3base.S3CRUD.crud_button(T("Upload Appraisal"),
-                                                   _href=url,
-                                                   _class="action-btn",
-                                                   )
+                button = s3base.BasicCRUD.crud_button(T("Upload Appraisal"),
+                                                      _href=url,
+                                                      _class="action-btn",
+                                                      )
                 if popup:
                     output["items"] = button
                 else:
@@ -590,7 +590,7 @@ def alert():
     def postp(r, output):
         if r.component:
             if r.component_name == "select":
-                s3.actions = [{"label": str(READ),
+                s3.actions = [{"label": str(messages.READ),
                                "url": URL(f="human_resource",
                                           args = ["[id]", "profile"],
                                           ),
@@ -623,11 +623,11 @@ def alert():
                     (table.message_id == None)
             rows = db(query).select(table.id)
             restrict = [str(row.id) for row in rows]
-            s3.actions = [{"label": str(READ),
+            s3.actions = [{"label": str(messages.READ),
                            "url": URL(f="alert", args="[id]"),
                            "_class": "action-btn read",
                            },
-                          {"label": str(DELETE),
+                          {"label": str(messages.DELETE),
                            "url": URL(f="alert", args=["[id]", "delete"]),
                            "restrict": restrict,
                            "_class": "delete-btn",
@@ -707,18 +707,18 @@ def email_inbox():
     s3.filter = (FS("response.id") == None) & \
                 (FS("inbound") == True)
 
-    from core import S3SQLCustomForm, S3SQLInlineComponent
-    crud_form = S3SQLCustomForm("date",
-                                "subject",
-                                "from_address",
-                                "body",
-                                S3SQLInlineComponent(
-                                    "attachment",
-                                    name = "document_id",
-                                    label = T("Attachments"),
-                                    fields = ["document_id"],
-                                    ),
-                                )
+    from core import CustomForm, InlineComponent
+    crud_form = CustomForm("date",
+                           "subject",
+                           "from_address",
+                           "body",
+                           InlineComponent(
+                                "attachment",
+                                name = "document_id",
+                                label = T("Attachments"),
+                                fields = ["document_id"],
+                                ),
+                           )
 
     s3db.configure(tablename,
                    crud_form = crud_form,
@@ -771,7 +771,7 @@ def email_inbox():
             # Custom CRUD button for linking the message to mission
             authorised = auth.s3_has_permission("create", "deploy_response")
             if authorised:
-                s3.rfooter = s3base.S3CRUD.crud_button(
+                s3.rfooter = s3base.BasicCRUD.crud_button(
                                         T("Link to Mission"),
                                         _href = URL(f="email_inbox",
                                                     args = [r.id, "select"],
@@ -868,113 +868,6 @@ def email_channel():
     s3.postp = postp
 
     return crud_controller("msg")
-
-# -----------------------------------------------------------------------------
-def twitter_channel():
-    """
-        RESTful CRUD controller for Twitter channels
-        - appears in the administration menu
-        Only 1 of these normally in existence
-            @ToDo: Don't enforce
-    """
-
-    def prep(r):
-        table = r.table
-        tablename = "msg_twitter_channel"
-        s3db.configure(tablename,
-                       deletable = False,
-                       )
-
-        if not r.id:
-            # Have we got a channel defined?
-            query = (table.deleted == False) & \
-                    (table.enabled == True)
-            #organisation_id = auth.user.organisation_id
-            #if organisation_id:
-            #    query &= ((table.organisation_id == organisation_id) | \
-            #              (table.organisation_id == None))
-            #channels = db(query).select(table.id,
-            #                            table.organisation_id,
-            #                            )
-            #if organisation_id and len(channels) > 1:
-            #    _channels = channels.find(lambda row: row.organisation_id == organisation_id)
-            #    if not _channels:
-            #        _channels = channels.find(lambda row: row.organisation_id == None)
-            #    record = _channels.first()
-            #else:
-            #    record = channels.first()
-
-            record = db(query).select(table.id,
-                                      limitby = (0, 1)
-                                      )
-
-            if record:
-                record_id = record.id
-                r.id = record_id
-                r.resource.add_filter(table.id == record_id)
-                r.method = "update"
-            else:
-                r.method = "create"
-
-        if r.interactive:
-            table.twitter_account.label = T("Current Twitter account")
-
-            # CRUD Strings
-            s3.crud_strings[tablename] = Storage(
-                title_display = T("Twitter Settings"),
-                title_list = T("Twitter Accounts"),
-                label_create = T("Create Twitter Account"),
-                title_update = T("Edit Twitter account"),
-                label_list_button = T("View Twitter Accounts"),
-                msg_record_created = T("Account added"),
-                msg_record_deleted = T("Twitter Account deleted"),
-                msg_list_empty = T("No Accounts currently defined"),
-                msg_record_modified = T("Twitter Settings updated")
-                )
-
-        return True
-    s3.prep = prep
-
-    # Post-process
-    def postp(r, output):
-        if r.interactive:
-            # Normal Action Buttons
-            s3_action_buttons(r)
-            # Custom Action Buttons for Enable/Disable
-            table = r.table
-            query = (table.deleted == False)
-            rows = db(query).select(table.id,
-                                    table.enabled,
-                                    )
-            restrict_e = [str(row.id) for row in rows if not row.enabled]
-            restrict_d = [str(row.id) for row in rows if row.enabled]
-
-            s3.actions += [{"label": s3_str(T("Enable")),
-                            "_class": "action-btn",
-                            "url": URL(args=["[id]", "enable"]),
-                            "restrict": restrict_e,
-                            },
-                           {"label": s3_str(T("Disable")),
-                            "_class": "action-btn",
-                            "url": URL(args = ["[id]", "disable"]),
-                            "restrict": restrict_d,
-                            },
-                           ]
-            if not s3task._is_alive():
-                # No Scheduler Running
-                s3.actions += [{"label": s3_str(T("Poll")),
-                                "_class": "action-btn",
-                                "url": URL(args = ["[id]", "poll"]),
-                                "restrict": restrict_d,
-                                },
-                               ]
-        return output
-    s3.postp = postp
-
-    return crud_controller("msg",
-                           deduplicate = "",
-                           list_btn = "",
-                           )
 
 # -----------------------------------------------------------------------------
 def alert_recipient():

@@ -79,7 +79,6 @@ from gluon import *
 from gluon.storage import Storage
 
 from ..core import *
-from s3layouts import S3PopupLink
 
 # =============================================================================
 class EventModel(DataModel):
@@ -134,6 +133,7 @@ class EventModel(DataModel):
                      Field("parent", "reference event_event_type", # This form of hierarchy may not work on all Databases
                            label = T("SubType of"),
                            ondelete = "RESTRICT",
+                           requires = IS_EMPTY_OR(IS_IN_DB(db, "%s.id" % tablename)),
                            readable = hierarchical_event_types,
                            writable = hierarchical_event_types,
                            ),
@@ -405,11 +405,11 @@ class EventModel(DataModel):
                        "start_date",
                        "closed",
                        "end_date",
-                       S3SQLInlineComponent("event_location",
-                                            label = T("Locations"),
-                                            #multiple = False,
-                                            fields = [("", "location_id")],
-                                            ),
+                       InlineComponent("event_location",
+                                       label = T("Locations"),
+                                       #multiple = False,
+                                       fields = [("", "location_id")],
+                                       ),
                        "comments",
                        ]
 
@@ -434,7 +434,7 @@ class EventModel(DataModel):
                                                    sort = False,
                                                    ))
 
-        crud_form = S3SQLCustomForm(*crud_fields)
+        crud_form = CustomForm(*crud_fields)
 
         configure(tablename,
                   context = {"location": "event_location.location_id",
@@ -948,16 +948,16 @@ class EventLocationModel(DataModel):
                                               ondelete = "CASCADE",
                                               ),
                           self.gis_location_id(
-                            widget = S3LocationSelector(show_map=False),
+                            widget = LocationSelector(show_map=False),
                             #widget = S3LocationAutocompleteWidget(),
                             requires = IS_LOCATION(),
                             represent = self.gis_LocationRepresent(sep=", "),
-                            #comment = S3PopupLink(c = "gis",
-                            #                      f = "location",
-                            #                      label = T("Create Location"),
-                            #                      title = T("Location"),
-                            #                      tooltip = AUTOCOMPLETE_HELP,
-                            #                      ),
+                            #comment = PopupLink(c = "gis",
+                            #                    f = "location",
+                            #                    label = T("Create Location"),
+                            #                    title = T("Location"),
+                            #                    tooltip = AUTOCOMPLETE_HELP,
+                            #                    ),
                             ),
                           )
 
@@ -1483,8 +1483,7 @@ class EventIncidentModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """
             Return safe defaults in case the model has been deactivated.
         """
@@ -2392,11 +2391,11 @@ class EventResourceModel(DataModel):
                                                              translate=True),
                                      readable = True,
                                      writable = True,
-                                     comment = S3PopupLink(c = "org",
-                                                           f = "resource_type",
-                                                           vars = {"child": "parameter_id"},
-                                                           title = T("Create Resource Type"),
-                                                           ),
+                                     comment = PopupLink(c = "org",
+                                                         f = "resource_type",
+                                                         vars = {"child": "parameter_id"},
+                                                         title = T("Create Resource Type"),
+                                                         ),
                                      ),
                           Field("status", "integer",
                                 label = T("Status"),
@@ -2683,6 +2682,7 @@ class EventIncidentTypeModel(DataModel):
                           Field("parent", "reference event_incident_type", # This form of hierarchy may not work on all Databases
                                 label = T("SubType of"),
                                 ondelete = "RESTRICT",
+                                requires = IS_EMPTY_OR(IS_IN_DB(db, "%s.id" % tablename)),
                                 readable = hierarchical_incident_types,
                                 writable = hierarchical_incident_types,
                                 ),
@@ -2768,8 +2768,7 @@ class EventIncidentTypeModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """
             Return safe defaults in case the model has been deactivated.
         """
@@ -2883,7 +2882,7 @@ class EventAlertModel(DataModel):
         #                method = "send",
         #                action = self.event_alert_send)
 
-        # Reusable field
+        # Foreign Key Template
         represent = S3Represent(lookup=tablename)
         alert_id = FieldTemplate("alert_id", "reference %s" % tablename,
                                  label = T("Alert"),
@@ -2978,16 +2977,16 @@ class EventAssetModel(DataModel):
                                                                    ),
                                               script = None, # No Item Pack Filter
                                               widget = None,
-                                              comment = S3PopupLink(c = "supply",
-                                                                    f = "item",
-                                                                    # No special controller so need this for an options lookup
-                                                                    vars = {"prefix": "asset",
-                                                                            "parent": "asset",
-                                                                            },
-                                                                    label = T("Create Item Type"),
-                                                                    title = T("Item"),
-                                                                    #tooltip = supply_item_tooltip,
-                                                                    ),
+                                              comment = PopupLink(c = "supply",
+                                                                  f = "item",
+                                                                  # No special controller so need this for an options lookup
+                                                                  vars = {"prefix": "asset",
+                                                                          "parent": "asset",
+                                                                          },
+                                                                  label = T("Create Item Type"),
+                                                                  title = T("Item"),
+                                                                  #tooltip = supply_item_tooltip,
+                                                                  ),
                                               ),
                           # Optional: Assign specific Asset
                           # @ToDo: Filter widget based on Type
@@ -3027,18 +3026,18 @@ class EventAssetModel(DataModel):
             msg_list_empty = T("No Assets currently registered for this incident"))
 
         if current.deployment_settings.has_module("budget"):
-            crud_form = S3SQLCustomForm("incident_id",
-                                        "item_id",
-                                        "asset_id",
-                                        S3SQLInlineComponent("allocation",
-                                                             label = T("Budget"),
-                                                             fields = ["budget_entity_id",
-                                                                       "start_date",
-                                                                       "end_date",
-                                                                       "daily_cost",
-                                                                       ],
-                                                             ),
-                                        )
+            crud_form = CustomForm("incident_id",
+                                   "item_id",
+                                   "asset_id",
+                                   InlineComponent("allocation",
+                                                   label = T("Budget"),
+                                                   fields = ["budget_entity_id",
+                                                             "start_date",
+                                                             "end_date",
+                                                             "daily_cost",
+                                                             ],
+                                                   ),
+                                   )
         else:
             crud_form = None
 
@@ -3480,24 +3479,24 @@ class EventHRModel(DataModel):
                                                                       filterby="type",
                                                                       filter_opts=(4,), # Type: Deploy
                                                                       )),
-                                                comment = S3PopupLink(c = "event",
-                                                                      f = "job_title",
-                                                                      label = T("Create Position"),
-                                                                      title = T("Position"),
-                                                                      tooltip = T("The person's position in this incident"),
-                                                                      ),
+                                                comment = PopupLink(c = "event",
+                                                                    f = "job_title",
+                                                                    label = T("Create Position"),
+                                                                    title = T("Position"),
+                                                                    tooltip = T("The person's position in this incident"),
+                                                                    ),
                                                 ),
                           self.pr_person_id(ondelete = "RESTRICT",
-                                            comment = S3PopupLink(c = "pr",
-                                                                  f = "person",
-                                                                  # No special controller so need this for an options lookup
-                                                                  vars = {"prefix": "hrm",
-                                                                          "parent": "human_resource",
-                                                                          },
-                                                                  label = T("Create Person"),
-                                                                  title = T("Person"),
-                                                                  tooltip = T("The specific individual assigned to this position for this incident. Type the first few characters of one of the Person's names."),
-                                                                  ),
+                                            comment = PopupLink(c = "pr",
+                                                                f = "person",
+                                                                # No special controller so need this for an options lookup
+                                                                vars = {"prefix": "hrm",
+                                                                        "parent": "human_resource",
+                                                                        },
+                                                                label = T("Create Person"),
+                                                                title = T("Person"),
+                                                                tooltip = T("The specific individual assigned to this position for this incident. Type the first few characters of one of the Person's names."),
+                                                                ),
                                             ),
                           # reportsToAgency in EDXL-SitRep: person_id$human_resource.organisation_id
                           Field("status", "integer",
@@ -3542,21 +3541,21 @@ class EventHRModel(DataModel):
                        ]
 
         if current.deployment_settings.has_module("budget"):
-            crud_form = S3SQLCustomForm("incident_id",
-                                        "job_title_id",
-                                        "person_id",
-                                        "start_date",
-                                        "end_date",
-                                        S3SQLInlineComponent("allocation",
-                                                             label = T("Budget"),
-                                                             fields = ["budget_id",
-                                                                       # @ToDo: Populate these automatically from the master record
-                                                                       #"start_date",
-                                                                       #"end_date",
-                                                                       "daily_cost",
-                                                                       ],
-                                                             ),
-                                        )
+            crud_form = CustomForm("incident_id",
+                                   "job_title_id",
+                                   "person_id",
+                                   "start_date",
+                                   "end_date",
+                                   InlineComponent("allocation",
+                                                   label = T("Budget"),
+                                                   fields = ["budget_id",
+                                                             # @ToDo: Populate these automatically from the master record
+                                                             #"start_date",
+                                                             #"end_date",
+                                                             "daily_cost",
+                                                             ],
+                                                   ),
+                                   )
             list_fields.extend(("allocation.budget_id",
                                 #"allocation.start_date",
                                 #"allocation.end_date",
@@ -4228,16 +4227,16 @@ class EventScenarioAssetModel(DataModel):
                                                                    ),
                                               script = None, # No Item Pack Filter
                                               widget = None,
-                                              comment = S3PopupLink(c = "supply",
-                                                                    f = "item",
-                                                                    # No special controller so need this for an options lookup
-                                                                    vars = {"prefix": "asset",
-                                                                            "parent": "asset",
-                                                                            },
-                                                                    label = T("Create Item Type"),
-                                                                    title = T("Item"),
-                                                                    #tooltip = supply_item_tooltip,
-                                                                    ),
+                                              comment = PopupLink(c = "supply",
+                                                                  f = "item",
+                                                                  # No special controller so need this for an options lookup
+                                                                  vars = {"prefix": "asset",
+                                                                          "parent": "asset",
+                                                                          },
+                                                                  label = T("Create Item Type"),
+                                                                  title = T("Item"),
+                                                                  #tooltip = supply_item_tooltip,
+                                                                  ),
                                               ),
                           # Optional: Assign specific Asset
                           # @ToDo: Filter widget based on Type
@@ -4319,28 +4318,28 @@ class EventScenarioHRModel(DataModel):
                                                                       filterby="type",
                                                                       filter_opts=(4,), # Type: Deploy
                                                                       )),
-                                                comment = S3PopupLink(c = "event",
-                                                                      f = "job_title",
-                                                                      # No special controller so need this for an options lookup
-                                                                      vars = {"prefix": "hrm",
-                                                                              "parent": "human_resource",
-                                                                              },
-                                                                      label = T("Create Position"),
-                                                                      title = T("Position"),
-                                                                      tooltip = T("The person's position in this incident"),
-                                                                      ),
+                                                comment = PopupLink(c = "event",
+                                                                    f = "job_title",
+                                                                    # No special controller so need this for an options lookup
+                                                                    vars = {"prefix": "hrm",
+                                                                            "parent": "human_resource",
+                                                                            },
+                                                                    label = T("Create Position"),
+                                                                    title = T("Position"),
+                                                                    tooltip = T("The person's position in this incident"),
+                                                                    ),
                                                 ),
                           self.pr_person_id(ondelete = "RESTRICT",
-                                            comment = S3PopupLink(c = "pr",
-                                                                  f = "person",
-                                                                  # No special controller so need this for an options lookup
-                                                                  vars = {"prefix": "hrm",
-                                                                          "parent": "human_resource",
-                                                                          },
-                                                                  label = T("Create Person"),
-                                                                  title = T("Person"),
-                                                                  tooltip = T("The specific individual assigned to this position for this scenario. Not generally used, only use if there are no alternatives. Type the first few characters of one of the Person's names."),
-                                                                  ),
+                                            comment = PopupLink(c = "pr",
+                                                                f = "person",
+                                                                # No special controller so need this for an options lookup
+                                                                vars = {"prefix": "hrm",
+                                                                        "parent": "human_resource",
+                                                                        },
+                                                                label = T("Create Person"),
+                                                                title = T("Person"),
+                                                                tooltip = T("The specific individual assigned to this position for this scenario. Not generally used, only use if there are no alternatives. Type the first few characters of one of the Person's names."),
+                                                                ),
                                             ),
                           # @ToDo: Have a T+x time into Response for Start/End
                           #DateTimeField("start_date",
@@ -4564,18 +4563,18 @@ class EventSiteModel(DataModel):
             msg_list_empty = T("No Facilities currently registered in this incident"))
 
         if current.deployment_settings.has_module("budget"):
-            crud_form = S3SQLCustomForm("incident_id",
-                                        "site_id",
-                                        "status",
-                                        S3SQLInlineComponent("allocation",
-                                                             label = T("Budget"),
-                                                             fields = ["budget_entity_id",
-                                                                       "start_date",
-                                                                       "end_date",
-                                                                       "daily_cost",
-                                                                       ],
-                                                             ),
-                                        )
+            crud_form = CustomForm("incident_id",
+                                   "site_id",
+                                   "status",
+                                   InlineComponent("allocation",
+                                                   label = T("Budget"),
+                                                   fields = ["budget_entity_id",
+                                                             "start_date",
+                                                             "end_date",
+                                                             "daily_cost",
+                                                             ],
+                                                   ),
+                                   )
         else:
             crud_form = None
 
@@ -4801,9 +4800,9 @@ class EventSitRepModel(DataModel):
                                 #writable = not sitrep_edxl,
                                 ),
                           self.gis_location_id(
-                            widget = S3LocationSelector(show_map = False,
-                                                        show_postcode = False,
-                                                        ),
+                            widget = LocationSelector(show_map = False,
+                                                      show_postcode = False,
+                                                      ),
                             ),
                           #Field("action_plan", "text",
                           #      label = T("Action Plan"),
@@ -4887,22 +4886,22 @@ class EventSitRepModel(DataModel):
             # All writable fields
             crud_form = None
         else:
-            crud_form = S3SQLCustomForm("event_id",
-                                        "incident_id",
-                                        "number",
-                                        "name",
-                                        "organisation_id",
-                                        "location_id",
-                                        "date",
-                                        "summary",
-                                        S3SQLInlineComponent(
-                                            "document",
-                                            name = "document",
-                                            label = T("Attachments"),
-                                            fields = [("", "file")],
+            crud_form = CustomForm("event_id",
+                                   "incident_id",
+                                   "number",
+                                   "name",
+                                   "organisation_id",
+                                   "location_id",
+                                   "date",
+                                   "summary",
+                                   InlineComponent(
+                                        "document",
+                                        name = "document",
+                                        label = T("Attachments"),
+                                        fields = [("", "file")],
                                         ),
-                                        "comments",
-                                        )
+                                   "comments",
+                                   )
 
         list_fields = ["date",
                        "event_id",
@@ -4972,8 +4971,7 @@ class EventSitRepModel(DataModel):
                 }
 
     # -------------------------------------------------------------------------
-    @staticmethod
-    def defaults():
+    def defaults(self):
         """
             Return safe defaults in case the model has been deactivated.
         """
@@ -5107,19 +5105,19 @@ class event_ActionPlan(CRUDMethod):
                       or a callable to produce such a widget config
         """
 
-        super(event_ActionPlan, self).__init__()
+        super().__init__()
 
         if not form:
             form = {"type": "form",
                     "tablename": "event_incident",
-                    "sqlform": S3SQLCustomForm("action_plan",
-                                               S3SQLInlineComponent(
+                    "crud_form": CustomForm("action_plan",
+                                            InlineComponent(
                                                 "document",
                                                 name = "document",
                                                 label = current.T("Attachments"),
                                                 fields = [("", "file")],
                                                 ),
-                                               ),
+                                            ),
                     }
 
         self.form = form
@@ -5364,19 +5362,19 @@ class event_ScenarioActionPlan(CRUDMethod):
                       or a callable to produce such a widget config
         """
 
-        super(event_ScenarioActionPlan, self).__init__()
+        super().__init__()
 
         if not form:
             form = {"type": "form",
                     "tablename": "event_scenario",
-                    "sqlform": S3SQLCustomForm("action_plan",
-                                               S3SQLInlineComponent(
+                    "crud_form": CustomForm("action_plan",
+                                            InlineComponent(
                                                 "document",
                                                 name = "document",
                                                 label = current.T("Attachments"),
                                                 fields = [("", "file")],
                                                 ),
-                                               ),
+                                            ),
                     }
 
         self.form = form
@@ -5524,46 +5522,46 @@ class event_ScenarioActionPlan(CRUDMethod):
             pwappend(widget)
 
             tablename = "event_scenario_human_resource"
-            widget = dict(# Use CRUD Strings (easier to customise)
-                          #label = "Human Resources",
-                          #label_create = "Add Human Resource",
-                          type = "datatable",
-                          actions = dt_row_actions("human_resource", tablename),
-                          tablename = tablename,
-                          context = "scenario",
-                          create_controller = "event",
-                          create_function = "scenario",
-                          create_component = "human_resource",
-                          #pagesize = None, # all records
-                          list_fields = ["job_title_id",
-                                         "person_id",
-                                         #"start_date",
-                                         #"end_date",
-                                         "comments",
-                                         ],
-                          )
+            widget = {# Use CRUD Strings (easier to customise)
+                      #"label": "Human Resources",
+                      #"label_create": "Add Human Resource",
+                      "type": "datatable",
+                      "actions": dt_row_actions("human_resource", tablename),
+                      "tablename": tablename,
+                      "context": "scenario",
+                      "create_controller": "event",
+                      "create_function": "scenario",
+                      "create_component": "human_resource",
+                      #"pagesize": None, # all records
+                      "list_fields": ["job_title_id",
+                                      "person_id",
+                                      #"start_date",
+                                      #"end_date",
+                                      "comments",
+                                      ],
+                      }
             pwappend(widget)
 
             tablename = "event_scenario_asset"
             r.customise_resource(tablename)
-            widget = dict(# Use CRUD Strings (easier to customise)
-                          #label = "Equipment",
-                          #label_create = "Add Equipment",
-                          type = "datatable",
-                          actions = dt_row_actions("scenario_asset", tablename),
-                          tablename = tablename,
-                          context = "scenario",
-                          create_controller = "event",
-                          create_function = "scenario",
-                          create_component = "asset",
-                          #pagesize = None, # all records
-                          list_fields = ["item_id",
-                                         "asset_id",
-                                         #"start_date",
-                                         #"end_date",
-                                         "comments",
-                                         ],
-                          )
+            widget = {# Use CRUD Strings (easier to customise)
+                      #"label": "Equipment",
+                      #"label_create": "Add Equipment",
+                      "type": "datatable",
+                      "actions": dt_row_actions("scenario_asset", tablename),
+                      "tablename": tablename,
+                      "context": "scenario",
+                      "create_controller": "event",
+                      "create_function": "scenario",
+                      "create_component": "asset",
+                      #"pagesize": None, # all records
+                      "list_fields": ["item_id",
+                                      "asset_id",
+                                      #"start_date",
+                                      #"end_date",
+                                      "comments",
+                                      ],
+                      }
             pwappend(widget)
 
             form = self.form
@@ -5737,7 +5735,7 @@ class event_EventAssignMethod(CRUDMethod):
                 next_tab: the component/method to redirect to after assigning
         """
 
-        super(event_EventAssignMethod, self).__init__()
+        super().__init__()
 
         self.component = component
         if next_tab:
@@ -5804,7 +5802,7 @@ class event_EventAssignMethod(CRUDMethod):
         if r.http == "POST":
             added = 0
             post_vars = r.post_vars
-            if all([n in post_vars for n in ("assign", "selected", "mode")]):
+            if all(n in post_vars for n in ("assign", "selected", "mode")):
 
                 selected = post_vars.selected
                 if selected:
@@ -6013,10 +6011,10 @@ class event_EventAssignMethod(CRUDMethod):
                                   # @ToDo: Popup (add class="s3_modal"
                                   #args = ["[id]", "profile.popup"])
                                   args = ["[id]", "profile"])
-                S3CRUD.action_buttons(r,
-                                      deletable = False,
-                                      read_url = profile_url,
-                                      update_url = profile_url)
+                BasicCRUD.action_buttons(r,
+                                         deletable = False,
+                                         read_url = profile_url,
+                                         update_url = profile_url)
                 response.s3.no_formats = True
 
                 # Filter form
@@ -6131,7 +6129,7 @@ class event_IncidentAssignMethod(CRUDMethod):
                 next_tab: the component/method to redirect to after assigning
         """
 
-        super(event_IncidentAssignMethod, self).__init__()
+        super().__init__()
 
         self.component = component
         if next_tab:
@@ -6191,7 +6189,7 @@ class event_IncidentAssignMethod(CRUDMethod):
             added = assigned.append
 
             post_vars = r.post_vars
-            if all([n in post_vars for n in ("assign", "selected", "mode")]):
+            if all(n in post_vars for n in ("assign", "selected", "mode")):
 
                 selected = post_vars.selected
                 if selected:
@@ -6398,10 +6396,10 @@ class event_IncidentAssignMethod(CRUDMethod):
                                   # @ToDo: Popup (add class="s3_modal"
                                   #args = ["[id]", "profile.popup"])
                                   args = ["[id]", "profile"])
-                S3CRUD.action_buttons(r,
-                                      deletable = False,
-                                      read_url = profile_url,
-                                      update_url = profile_url)
+                BasicCRUD.action_buttons(r,
+                                         deletable = False,
+                                         read_url = profile_url,
+                                         update_url = profile_url)
                 response.s3.no_formats = True
 
                 # Filter form

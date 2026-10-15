@@ -51,6 +51,7 @@ __all__ = ("IS_DYNAMIC_FIELDNAME",
            "IS_UTC_DATE",
            "IS_UTC_OFFSET",
            "IS_AVAILABLE_QUANTITY",
+           "SKIP_VALIDATION",
            "SINGLE_PHONE_NUMBER_PATTERN",
            "MULTI_PHONE_NUMBER_PATTERN",
            "JSONERRORS",
@@ -64,7 +65,7 @@ from functools import reduce
 from io import BytesIO
 from uuid import uuid4
 
-from gluon import current, IS_FLOAT_IN_RANGE, IS_INT_IN_RANGE, IS_IN_SET, \
+from gluon import current, DIV, IS_FLOAT_IN_RANGE, IS_INT_IN_RANGE, IS_IN_SET, \
                   IS_MATCH, IS_NOT_IN_DB
 from gluon.storage import Storage
 from gluon.validators import Validator, ValidationError
@@ -169,8 +170,7 @@ class IS_JSONS3(Validator):
                 parsed = json.loads(value)
             except JSONERRORS as e:
                 raise ValidationError(error(e)) from e
-            else:
-                ret = value if self.native_json else parsed
+            ret = value if self.native_json else parsed
 
         return ret
 
@@ -560,7 +560,7 @@ class IS_FLOAT_AMOUNT(IS_FLOAT_IN_RANGE):
             Args:
                 number: the number
                 precision: the number of decimal places to show
-                fixed: show decimal places even if the decimal part is 0
+                fixed: show (trailing) decimal places even if they are 0
 
             Returns:
                 string representation of the number
@@ -583,9 +583,12 @@ class IS_FLOAT_AMOUNT(IS_FLOAT_IN_RANGE):
         else:
             int_part, dec_part = str_number, ""
 
-        if dec_part and int(dec_part) == 0 and not fixed:
+        if dec_part and not fixed:
             # Omit decimal part if zero
-            dec_part = ""
+            if int(dec_part) == 0:
+                dec_part = ""
+            # Remove trailing zeros
+            dec_part = dec_part.rstrip("0")
 
         if dec_part:
             dec_part = DECIMAL_SEPARATOR + dec_part
@@ -644,6 +647,27 @@ class IS_HTML_COLOUR(IS_MATCH):
                           error_message = error_message,
                           )
 
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def represent(value, row=None):
+        """
+            Represent a HTML color
+
+            Args:
+                value: the color value as 6-digit hex code, or None
+                row: unused, for compatibility
+            Returns:
+                DIV
+        """
+
+        if value:
+            value = DIV(str(value),
+                        _class = "color-represent",
+                        # TODO move padding into theme
+                        _style = "background-color:#%s;padding:0 5px;" % value,
+                        )
+        return value
+
 # =============================================================================
 REGEX1 = re.compile(r"[\w_]+\.[\w_]+")
 REGEX2 = re.compile(r"%\((?P<name>[^\)]+)\)s")
@@ -674,7 +698,7 @@ class IS_ONE_OF_EMPTY(Validator):
     def __init__(self,
                  dbset,
                  field,
-                 label = None,
+                 label = None, *,
                  filterby = None,
                  filter_opts = None,
                  not_filterby = None,
@@ -1004,7 +1028,7 @@ class IS_ONE_OF_EMPTY(Validator):
 
         # Available-query
         if "deleted" in table:
-            query &= (table["deleted"] != True)
+            query &= (table["deleted"] == False)
 
         # Realms filter?
         if self.realms:
@@ -1231,7 +1255,13 @@ class IS_ONE_OF_EMPTY(Validator):
 # =============================================================================
 class IS_ONE_OF_EMPTY_SELECT(IS_ONE_OF_EMPTY):
     """
-        Extends IS_ONE_OF_EMPTY by displaying an empty SELECT (instead of INPUT)
+        Extends IS_ONE_OF_EMPTY by displaying an empty SELECT
+        (instead of INPUT).
+
+        Note:
+            Fields with this validator should also use the EmptyOptionsWidget
+            to ensure the previously selected option is passed to filterOptionsS3
+            in order to be re-selected after the initial options lookup
     """
 
     @staticmethod
@@ -1275,7 +1305,7 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
 
     def __init__(self,
                  dbset,
-                 field,
+                 field, *,
                  error_message = "Value already in database or empty",
                  allowed_override = None,
                  ignore_common_filters = False,
@@ -1299,6 +1329,7 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
                          allowed_override = allowed_override,
                          ignore_common_filters = ignore_common_filters,
                          )
+
         self.skip_imports = skip_imports
 
     # -------------------------------------------------------------------------
@@ -1327,7 +1358,8 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
         # Establish table and field
         tablename, fieldname = str(self.field).split(".")
         dbset = self.dbset
-        table = dbset.db[tablename]
+        db = dbset if hasattr(dbset, "define_table") else dbset.db
+        table = db[tablename]
         field = table[fieldname]
 
         if self.skip_imports and current.response.s3.bulk and not field.unique:
@@ -1367,7 +1399,7 @@ class IS_NOT_ONE_OF(IS_NOT_IN_DB):
                 # Keyed table
                 for f in keys:
                     if str(getattr(row, f)) != str(record_id[f]):
-                        ValidationError(translate(self.error_message))
+                        raise ValidationError(translate(self.error_message))
 
             elif str(row[table._id.name]) != str(record_id):
 
@@ -1413,7 +1445,7 @@ class IS_LOCATION(Validator):
         else:
             self.error_message = current.T("Invalid Location!")
 
-        # Make it like IS_ONE_OF to support AddResourceLink
+        # Make it like IS_ONE_OF to support PopupLink
         self.ktable = "gis_location"
         self.kfield = "id"
 
@@ -1474,6 +1506,7 @@ class IS_PROCESSED_IMAGE(Validator):
     def __init__(self,
                  field_name,
                  file_cb,
+                 *,
                  error_message = "No image was specified!",
                  image_bounds = (300, 300),
                  upload_path = None,
@@ -1623,7 +1656,7 @@ class IS_UTC_DATETIME(Validator):
               day.
     """
 
-    def __init__(self,
+    def __init__(self, *,
                  format = None,
                  error_message = None,
                  offset_error = None,
@@ -1779,7 +1812,7 @@ class IS_UTC_DATE(IS_UTC_DATETIME):
             time zone, i.e. the most Eastern timezones are on the next day.
     """
 
-    def __init__(self,
+    def __init__(self, *,
                  format = None,
                  error_message = None,
                  offset_error = None,
@@ -1996,7 +2029,7 @@ class IS_IN_SET_LAZY(Validator):
 
     def __init__(self,
                  theset_fn,
-                 represent = None,
+                 represent = None, *,
                  error_message = "value not allowed",
                  multiple = False,
                  zero = "",
@@ -2321,10 +2354,10 @@ class IS_DYNAMIC_FIELDNAME(Validator):
 
             name = str(value).lower().strip()
 
-            from ..model import s3_all_meta_field_names
+            from ..model import META_FIELD_NAMES
 
             if name != "id" and \
-               name not in s3_all_meta_field_names() and \
+               name not in META_FIELD_NAMES and \
                self.PATTERN.match(name):
                 return name
 
@@ -2398,7 +2431,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
         Validate ISO639-2 Alpha-2/Alpha-3 language codes
     """
 
-    def __init__(self,
+    def __init__(self, *,
                  error_message = "Invalid language code",
                  multiple = False,
                  select = DEFAULT,
@@ -2410,8 +2443,8 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
             Args:
                 error_message: alternative error message
                 multiple: allow selection of multiple options
-                select: dict of options for the selector,
-                        defaults to settings.L10n.languages,
+                select: dict or code/tuple-list of options for the
+                        selector, defaults to settings.L10n.languages,
                         set explicitly to None to allow all languages
                 sort: sort options in selector
                 translate: translate the language options into
@@ -2430,6 +2463,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
             self._select = current.deployment_settings.get_L10n_languages()
         else:
             self._select = select
+
         self.translate = translate
 
     # -------------------------------------------------------------------------
@@ -2440,26 +2474,28 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
             superclass function here.
 
             Args:
-                zero: include an empty-option (overrides self.zero)
+                zero: include an empty-option (with self.zero as label)
 
             Returns:
                 list of tuples (code, representation)
         """
 
-        language_codes = self.language_codes()
+        language_codes = self.language_codes(mis=False)
 
-        if self._select:
+        translate = self.translate
+        T = current.T
+
+        selection = self._select
+        if selection:
             language_codes_dict = dict(language_codes)
-            if self.translate:
-                T = current.T
-                items = ((k, T(v)) for k, v in self._select.items()
-                                   if k in language_codes_dict)
-            else:
-                items = ((k, v) for k, v in self._select.items()
-                                if k in language_codes_dict)
+            if isinstance(selection, (list, tuple)):
+                selection = self.subset(language_codes_dict, selection)
+            items = ((k, (T(v) if translate else v))
+                     for k, v in selection.items()
+                     if k != "mis" and k in language_codes_dict
+                     )
         else:
-            if self.translate:
-                T = current.T
+            if translate:
                 items = ((k, T(v)) for k, v in language_codes)
             else:
                 items = language_codes
@@ -2469,10 +2505,42 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
         else:
             items = list(items)
 
-        if zero and not self.zero is None and not self.multiple:
+        if zero and self.zero is not None and not self.multiple:
             items.insert(0, ("", self.zero))
 
+        # Miscellaneous always as last option
+        items.append(("mis", (T("Miscellaneous") if translate else "Miscellaneous")))
+
         return items
+
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def subset(languages, selection):
+        """
+            Converts a list|tuple of languages into a dict {code: name},
+            permitting both languages codes or tuples (code, name) as
+            list elements
+
+            Args:
+                languages: the complete language dict (from .language_codes)
+                selection: the selection to determine the subset
+
+            Returns:
+                a dict {code: language}
+        """
+
+        subset = []
+        append = subset.append
+
+        for l in selection:
+            if isinstance(l, str):
+                name = languages.get(l)
+                if name:
+                    append((l, name))
+            else:
+                append(l)
+
+        return dict(subset)
 
     # -------------------------------------------------------------------------
     def represent(self, code):
@@ -2534,10 +2602,13 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
 
     # -------------------------------------------------------------------------
     @staticmethod
-    def language_codes():
+    def language_codes(mis=True):
         """
             Returns a list of tuples of ISO639-1 alpha-2 language
             codes, can also be used to look up the language name
+
+            Args:
+                mis: include the "Miscellaneous" option
 
             Just the subset which are useful for Translations
             - 2 letter code preferred, 3-letter code where none exists,
@@ -2553,13 +2624,13 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("ada", "Adangme"),
                 ("ady", "Adyghe; Adygei"),
                 #("afa", "Afro-Asiatic languages"),
-                ("afh", "Afrihili"),
+                #("afh", "Afrihili"),
                 #("afr", "Afrikaans"),
                 ("af", "Afrikaans"),
                 ("ain", "Ainu"),
                 #("aka", "Akan"),
                 ("ak", "Akan"),
-                ("akk", "Akkadian"),
+                #("akk", "Akkadian"),
                 #("alb", "Albanian"),
                 ("sq", "Albanian"),
                 ("ale", "Aleut"),
@@ -2589,7 +2660,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("ava", "Avaric"),
                 ("av", "Avaric"),
                 #("ave", "Avestan"),
-                ("ae", "Avestan"),
+                #("ae", "Avestan"),
                 ("awa", "Awadhi"),
                 #("aym", "Aymara"),
                 ("ay", "Aymara"),
@@ -2646,10 +2717,10 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("cel", "Celtic languages"),
                 #("cha", "Chamorro"),
                 ("ch", "Chamorro"),
-                ("chb", "Chibcha"),
+                #("chb", "Chibcha"),
                 #("che", "Chechen"),
                 ("ce", "Chechen"),
-                ("chg", "Chagatai"),
+                #("chg", "Chagatai"),
                 #("chi", "Chinese"),
                 ("zh", "Chinese"),
                 ("chk", "Chuukese"),
@@ -2659,12 +2730,12 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("chp", "Chipewyan; Dene Suline"),
                 ("chr", "Cherokee"),
                 #("chu", "Church Slavic; Old Slavonic; Church Slavonic; Old Bulgarian; Old Church Slavonic"),
-                ("cu", "Church Slavic; Old Slavonic; Church Slavonic; Old Bulgarian; Old Church Slavonic"),
+                #("cu", "Church Slavic; Old Slavonic; Church Slavonic; Old Bulgarian; Old Church Slavonic"),
                 #("chv", "Chuvash"),
                 ("cv", "Chuvash"),
                 ("chy", "Cheyenne"),
                 #("cmc", "Chamic languages"),
-                ("cop", "Coptic"),
+                #("cop", "Coptic"),
                 #("cor", "Cornish"),
                 ("kw", "Cornish"),
                 #("cos", "Corsican"),
@@ -2704,12 +2775,12 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("efi", "Efik"),
                 #("egy", "Egyptian (Ancient)"),
                 ("eka", "Ekajuk"),
-                ("elx", "Elamite"),
+                #("elx", "Elamite"),
                 #("eng", "English"),
                 ("en", "English"),
                 #("enm", "English, Middle (1100-1500)"),
                 #("epo", "Esperanto"),
-                ("eo", "Esperanto"),
+                #("eo", "Esperanto"),
                 #("est", "Estonian"),
                 ("et", "Estonian"),
                 #("ewe", "Ewe"),
@@ -2745,7 +2816,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("ka", "Georgian"),
                 #("ger", "German"),
                 ("de", "German"),
-                ("gez", "Geez"),
+                #("gez", "Geez"),
                 ("gil", "Gilbertese"),
                 #("gla", "Gaelic; Scottish Gaelic"),
                 ("gd", "Gaelic; Scottish Gaelic"),
@@ -2759,7 +2830,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("goh", "German, Old High (ca.750-1050)"),
                 ("gon", "Gondi"),
                 ("gor", "Gorontalo"),
-                ("got", "Gothic"),
+                #("got", "Gothic"),
                 ("grb", "Grebo"),
                 #("grc", "Greek, Ancient (to 1453)"),
                 #("gre", "Greek, Modern (1453-)"),
@@ -2784,7 +2855,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("him", "Himachali languages; Western Pahari languages"),
                 #("hin", "Hindi"),
                 ("hi", "Hindi"),
-                ("hit", "Hittite"),
+                #("hit", "Hittite"),
                 ("hmn", "Hmong; Mong"),
                 #("hmo", "Hiri Motu"),
                 ("ho", "Hiri Motu"),
@@ -2800,17 +2871,17 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("ice", "Icelandic"),
                 ("is", "Icelandic"),
                 #("ido", "Ido"),
-                ("io", "Ido"),
+                #("io", "Ido"),
                 #("iii", "Sichuan Yi; Nuosu"),
                 ("ii", "Sichuan Yi; Nuosu"),
                 #("ijo", "Ijo languages"),
                 #("iku", "Inuktitut"),
                 ("iu", "Inuktitut"),
                 #("ile", "Interlingue; Occidental"),
-                ("ie", "Interlingue; Occidental"),
+                #("ie", "Interlingue; Occidental"),
                 ("ilo", "Iloko"),
                 #("ina", "Interlingua (International Auxiliary Language Association)"),
-                ("ia", "Interlingua (International Auxiliary Language Association)"),
+                #("ia", "Interlingua (International Auxiliary Language Association)"),
                 #("inc", "Indic languages"),
                 #("ind", "Indonesian"),
                 ("id", "Indonesian"),
@@ -2824,7 +2895,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("it", "Italian"),
                 #("jav", "Javanese"),
                 ("jv", "Javanese"),
-                ("jbo", "Lojban"),
+                #("jbo", "Lojban"),
                 #("jpn", "Japanese"),
                 ("ja", "Japanese"),
                 #("jpr", "Judeo-Persian"),
@@ -2842,7 +2913,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("ks", "Kashmiri"),
                 #("kau", "Kanuri"),
                 ("kr", "Kanuri"),
-                ("kaw", "Kawi"),
+                #("kaw", "Kawi"),
                 #("kaz", "Kazakh"),
                 ("kk", "Kazakh"),
                 ("kbd", "Kabardian"),
@@ -2850,7 +2921,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("khi", "Khoisan languages"),
                 #("khm", "Central Khmer"),
                 ("km", "Central Khmer"),
-                ("kho", "Khotanese; Sakan"),
+                #("kho", "Khotanese; Sakan"),
                 #("kik", "Kikuyu; Gikuyu"),
                 ("ki", "Kikuyu; Gikuyu"),
                 #("kin", "Kinyarwanda"),
@@ -2883,7 +2954,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("lao", "Lao"),
                 ("lo", "Lao"),
                 #("lat", "Latin"),
-                ("la", "Latin"),
+                #("la", "Latin"),
                 #("lav", "Latvian"),
                 ("lv", "Latvian"),
                 ("lez", "Lezghian"),
@@ -2902,7 +2973,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("lu", "Luba-Katanga"),
                 #("lug", "Ganda"),
                 ("lg", "Ganda"),
-                ("lui", "Luiseno"),
+                #("lui", "Luiseno"),
                 ("lun", "Lunda"),
                 ("luo", "Luo (Kenya and Tanzania)"),
                 ("lus", "Lushai"),
@@ -3004,7 +3075,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("oto", "Otomian languages"),
                 #("paa", "Papuan languages"),
                 ("pag", "Pangasinan"),
-                ("pal", "Pahlavi"),
+                #("pal", "Pahlavi"),
                 ("pam", "Pampanga; Kapampangan"),
                 #("pan", "Panjabi; Punjabi"),
                 ("pa", "Panjabi; Punjabi"),
@@ -3014,9 +3085,9 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("per", "Persian"),
                 ("fa", "Persian"),
                 #("phi", "Philippine languages"),
-                ("phn", "Phoenician"),
+                #("phn", "Phoenician"),
                 #("pli", "Pali"),
-                ("pi", "Pali"),
+                #("pi", "Pali"),
                 #("pol", "Polish"),
                 ("pl", "Polish"),
                 ("pon", "Pohnpeian"),
@@ -3050,9 +3121,9 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("sah", "Yakut"),
                 #("sai", "South American Indian (Other)"),
                 #("sal", "Salishan languages"),
-                ("sam", "Samaritan Aramaic"),
+                #("sam", "Samaritan Aramaic"),
                 #("san", "Sanskrit"),
-                ("sa", "Sanskrit"),
+                #("sa", "Sanskrit"),
                 ("sas", "Sasak"),
                 ("sat", "Santali"),
                 ("scn", "Sicilian"),
@@ -3086,7 +3157,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("snd", "Sindhi"),
                 ("sd", "Sindhi"),
                 ("snk", "Soninke"),
-                ("sog", "Sogdian"),
+                #("sog", "Sogdian"),
                 #("som", "Somali"),
                 ("so", "Somali"),
                 #("son", "Songhai languages"),
@@ -3107,7 +3178,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("sun", "Sundanese"),
                 ("su", "Sundanese"),
                 ("sus", "Susu"),
-                ("sux", "Sumerian"),
+                #("sux", "Sumerian"),
                 #("swa", "Swahili"),
                 ("sw", "Swahili"),
                 #("swe", "Swedish"),
@@ -3163,7 +3234,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 ("tw", "Twi"),
                 ("tyv", "Tuvinian"),
                 ("udm", "Udmurt"),
-                ("uga", "Ugaritic"),
+                #("uga", "Ugaritic"),
                 #("uig", "Uighur; Uyghur"),
                 ("ug", "Uighur; Uyghur"),
                 #("ukr", "Ukrainian"),
@@ -3180,7 +3251,7 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
                 #("vie", "Vietnamese"),
                 ("vi", "Vietnamese"),
                 #("vol", "Volapük"),
-                ("vo", "Volapük"),
+                #("vo", "Volapük"),
                 ("vot", "Votic"),
                 #("wak", "Wakashan languages"),
                 ("wal", "Walamo"),
@@ -3225,6 +3296,8 @@ class IS_ISO639_2_LANGUAGE_CODE(IS_IN_SET):
         extra_codes = settings.get_L10n_extra_codes()
         if extra_codes:
             lang += extra_codes
+        if mis:
+            lang.append(("mis", "Miscellaneous"))
 
         return list(set(lang)) # Remove duplicates
 
@@ -3296,6 +3369,7 @@ class IS_IBAN(Validator):
             raise ValidationError(translate(self.error_message))
 
         return iban
+
     # -------------------------------------------------------------------------
     @staticmethod
     def represent(value, row=None):
@@ -3316,5 +3390,75 @@ class IS_IBAN(Validator):
             iban = s3_str(value).strip().replace(" ", "").upper()
             reprstr = " ".join(re.findall('..?.?.?', iban))
         return reprstr
+
+# =============================================================================
+class SKIP_VALIDATION(Validator):
+    """
+        Pseudo-validator that allows introspection of field options
+        during GET, but does nothing during POST. Used for Ajax-validated
+        inline-components to prevent them from throwing validation errors
+        when the outer form gets submitted.
+    """
+
+    def __init__(self, other=None):
+        """
+            Args:
+                other: the actual field validator
+
+            Example:
+                field.requires = SKIP_VALIDATION(field.requires)
+        """
+
+        if other and isinstance(other, (list, tuple)):
+            other = other[0]
+        self.other = other
+        if other:
+            if hasattr(other, "multiple"):
+                self.multiple = other.multiple
+            if hasattr(other, "options"):
+                self.options = other.options
+            if hasattr(other, "formatter"):
+                self.formatter = other.formatter
+
+    # -------------------------------------------------------------------------
+    def validate(self, value, record_id=None):
+        """
+            Validation
+
+            Args:
+                value: the value
+                record_id: the record ID (unused, for API compatibility)
+        """
+
+        other = self.other
+        if current.request.env.request_method == "POST" or not other:
+            return value
+        if not isinstance(other, (list, tuple)):
+            other = [other]
+        for r in other:
+            value = validator_caller(r, value, record_id)
+
+        return value
+
+    ## -------------------------------------------------------------------------
+    #def __call__(self, value, record_id=None):
+        #"""
+            #Validation
+
+            #Args:
+                #value: the value
+                #record_id: the record ID (unused, for API compatibility)
+        #"""
+
+        #other = self.other
+        #if current.request.env.request_method == "POST" or not other:
+            #return value, None
+        #if not isinstance(other, (list, tuple)):
+            #other = [other]
+        #for r in other:
+            #value, error = r(value)
+            #if error:
+                #return value, error
+        #return value, None
 
 # END =========================================================================

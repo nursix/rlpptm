@@ -124,6 +124,20 @@ def config(settings):
     #settings.L10n.translate_gis_location = True
     # Uncomment this to Translate Organisation Names/Acronyms
     #settings.L10n.translate_org_organisation = True
+    # Customize units of measure
+    settings.L10n.units_of_measure = {"pc": T("piece##unit"),
+                                      "pair": T("pair##unit"),
+                                      "set": T("set##unit"),
+                                      "mg": T("mg##unit"),
+                                      "g": T("g##unit"),
+                                      "kg": T("kg##unit"),
+                                      "m": T("m##unit"),
+                                      "ml": T("ml##unit"),
+                                      "L": T("L##unit"),
+                                      "btl": T("Bottle##unit"),
+                                      "pkg": T("Package##unit"),
+                                      }
+
     # Finance settings
     settings.fin.currencies = {
         "EUR" : "Euros",
