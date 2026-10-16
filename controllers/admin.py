@@ -483,6 +483,8 @@ def event():
 
     def prep(r):
 
+        settings.base.bigtable = True
+
         from core import S3DateTime
 
         table = auth.settings.table_event
